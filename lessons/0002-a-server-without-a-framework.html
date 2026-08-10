@@ -397,10 +397,12 @@ $ curl http://127.0.0.1:9000/hello?name=world</code></pre>
 
 <h2>ASGI — the async contract</h2>
 
-<p>WSGI's contract is synchronous: your function runs, returns, done.
-That means it cannot handle WebSockets (which are long-lived connections) or
-HTTP/2 server push. <a href="https://asgi.readthedocs.io/en/latest/specs/main.html">ASGI</a>
-(v3.0, 2019) replaces it with an async callable:</p>
+<p>WSGI's contract is synchronous. Your function runs, it returns, and the
+request is over. WSGI cannot hold a WebSocket, because a WebSocket is a
+long-lived connection that carries many messages in both directions. WSGI also
+blocks one worker for each open client, so a stream of server-sent events is
+expensive. <a href="https://asgi.readthedocs.io/en/latest/specs/main.html">ASGI</a>
+(v3.0, 2019) replaces the contract with an async callable:</p>
 
 <pre class="wide"><code><span class="c-key">async def</span> <span class="c-fn">application</span>(scope, receive, send):
     <span class="c-str">"""scope: a dict describing the connection.

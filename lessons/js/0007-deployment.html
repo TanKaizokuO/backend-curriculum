@@ -60,18 +60,27 @@
 }</code></pre>
 
 <h2>Step 3 · Write a production Dockerfile</h2>
-<p>Build a minimal production container image using official Node.js Alpine base images and non-root execution users:</p>
+<p>Build a small production image. Start from the official Node.js Alpine base
+image. Install the dependencies as root. Then drop to the <code>node</code> user
+for the run step.</p>
 
 <p class="filename">Dockerfile</p>
 <pre class="wide"><code><span class="c-key">FROM</span> node:22-alpine
 <span class="c-key">WORKDIR</span> /app
+<span class="c-key">COPY</span> package.json package-lock.json ./
+<span class="c-key">RUN</span> npm ci --omit=dev
+<span class="c-key">COPY</span> . .
 <span class="c-key">USER</span> node
-<span class="c-key">COPY</span> --chown=node:node package*.json ./
-<span class="c-key">RUN</span> npm ci --only=production
-<span class="c-key">COPY</span> --chown=node:node . .
 <span class="c-key">ENV</span> PORT=8000 NODE_ENV=production
 <span class="c-key">EXPOSE</span> 8000
 <span class="c-key">CMD</span> [<span class="c-str">"node"</span>, <span class="c-str">"server.js"</span>]</code></pre>
+
+<p class="sidenote">Keep <code>USER node</code> after the install. If you switch
+the user first, <code>npm ci</code> cannot write to <code>/app</code> and the
+build stops. <code>npm ci</code> also needs
+<code class="filename">package-lock.json</code>, so copy the lock file together
+with the manifest. The dependencies stay root-owned, so the application cannot
+change its own code at run time.</p>
 
 <h2>Step 4 · Separate build, release, and run steps</h2>
 <p>Do not execute SQL database migrations inside application startup handlers or container build steps. Execute migrations during a dedicated release step using <code class="filename">migrate.js</code> before starting application containers.</p>
@@ -125,37 +134,71 @@ databases:
     user: learner
     plan: free</code></pre>
 
-<section class="quiz">
-  <h3>Check your understanding</h3>
+<h2>Check yourself</h2>
 
-  <div class="quiz-question" data-answer="2">
-    <p class="question">1. Why must a server process bind to host address 0.0.0.0 inside a Docker container?</p>
-    <div class="options">
-      <label><input type="radio" name="q1" value="0"> Because 0.0.0.0 enables TLS encryption automatically.</label>
-      <label><input type="radio" name="q1" value="1"> Because Node.js rejects connections on 127.0.0.1 when running as non-root user.</label>
-      <label><input type="radio" name="q1" value="2"> Because 127.0.0.1 binds strictly to container loopback, blocking requests routed from the container network interface.</label>
-      <label><input type="radio" name="q1" value="3"> Because Render requires 0.0.0.0 for static file caching.</label>
-    </div>
-    <div class="explanation">
-      <p>Correct! Binding to 127.0.0.1 limits socket access to inside the container. 0.0.0.0 binds to all network interfaces, allowing external proxy traffic.</p>
-    </div>
-  </div>
+<p>Answer before you scroll back. A wrong answer now teaches you more than a
+right answer after a re-read.</p>
 
-  <div class="quiz-question" data-answer="1">
-    <p class="question">2. When should database migrations run during deployment?</p>
-    <div class="options">
-      <label><input type="radio" name="q2" value="0"> During Docker image build time (docker build).</label>
-      <label><input type="radio" name="q2" value="1"> During a dedicated release step before starting new application server processes.</label>
-      <label><input type="radio" name="q2" value="2"> Inside every HTTP request handler before querying tables.</label>
-      <label><input type="radio" name="q2" value="3"> After stopping all database instances.</label>
-    </div>
-    <div class="explanation">
-      <p>Correct! Running migrations during a separate release step ensures transactional schema updates complete before new web instances accept live traffic.</p>
-    </div>
-  </div>
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why must the server bind to 0.0.0.0 inside a container?",
+    "options": [
+      "127.0.0.1 is the loopback of the container, so traffic from the container network never arrives",
+      "0.0.0.0 turns on TLS for you",
+      "Node.js refuses 127.0.0.1 when the process is not root",
+      "Render needs 0.0.0.0 to cache static files"
+    ],
+    "answer": 0,
+    "why": "A container owns a private loopback interface. A listener on 127.0.0.1 accepts connections from inside that container only. A listener on 0.0.0.0 accepts connections on every interface, so the published port and the platform proxy reach it." }
+  </script>
+</div>
 
-  <div class="quiz-score"></div>
-</section>
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "When does a migration run in a deployment?",
+    "options": [
+      "In a release step of its own, after the build and before the new processes start",
+      "In the docker build step",
+      "In each request handler, before the first query",
+      "After you stop every database instance"
+    ],
+    "answer": 0,
+    "why": "The build step has no database, and one image serves every environment. A request handler runs the migration many times and races itself. A release step runs once, against the real database, while the old version still answers traffic." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "The Dockerfile puts USER node before npm ci. What happens?",
+    "options": [
+      "The build stops, because the node user cannot write to the root-owned /app",
+      "The build succeeds and the image is smaller",
+      "npm ci installs the dev dependencies as well",
+      "The container starts as root at run time"
+    ],
+    "answer": 0,
+    "why": "WORKDIR /app creates a directory that root owns. Install first, then switch the user. The dependencies stay root-owned, so the application cannot rewrite its own code at run time." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "Which file must sit next to package.json in the image, or npm ci fails?",
+    "answer": "package-lock.json",
+    "accept": ["package-lock", "the lock file", "lockfile", "lock file"],
+    "why": "npm ci installs the exact tree the lock file records. Without the lock file it refuses to run. npm install would work, but it can resolve a different version than your laptop did." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "List what must be true before you call the deployment finished.",
+    "answer": "1. The image builds from a clean checkout, and the container starts with no file from your laptop. 2. Every setting arrives from the environment, and no secret sits in the repository or in an image layer. 3. The migration runs in a release step, and a second run changes nothing. 4. The process binds to 0.0.0.0 and reads the port from the environment. 5. /healthz answers 200 only when the database answers, and the platform uses it. 6. The container runs as a user that is not root. 7. The README records the live URL and the redeploy command.",
+    "why": "Each line maps to a failure you can see: a missing file, a leaked password, a broken schema, a refused connection, a dead instance in the pool, a root shell, and a reviewer who cannot find the service." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
 
 <h2>Read this next</h2>
 <div class="source">

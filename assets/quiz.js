@@ -39,7 +39,10 @@
 (function () {
   "use strict";
 
-  var PAGE_KEY = "quiz:" + location.pathname.split("/").pop();
+  /* Scope the key to the last two path segments so lessons/0007-*.html and
+     lessons/js/0007-*.html do not share a score, and so moving the repo does
+     not reset the history. */
+  var PAGE_KEY = "quiz:" + location.pathname.split("/").filter(Boolean).slice(-2).join("/");
   var state = load();
   var widgets = [];
 

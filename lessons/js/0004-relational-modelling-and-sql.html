@@ -298,37 +298,71 @@ app.<span class="c-fn">listen</span>(<span class="c-num">8000</span>, () => {
 
 <p>The handler opens a transaction with <code>BEGIN</code>. If any operation fails, the handler catches the exception, rolls back changes with <code>ROLLBACK</code>, and returns status code 409 when the database reports duplicate key violation code <code>23505</code>.</p>
 
-<section class="quiz">
-  <h3>Check your understanding</h3>
+<h2>Check yourself</h2>
 
-  <div class="quiz-question" data-answer="2">
-    <p class="question">1. Why must tag associations be stored in a junction table like <code>bookmark_tags</code> rather than a comma-separated text column?</p>
-    <div class="options">
-      <label><input type="radio" name="q1" value="0"> Comma-separated strings require more storage space than relational keys.</label>
-      <label><input type="radio" name="q1" value="1"> PostgreSQL does not allow text columns in SELECT queries.</label>
-      <label><input type="radio" name="q1" value="2"> Junction tables enforce foreign key integrity and enable fast relational joins and indexes.</label>
-      <label><input type="radio" name="q1" value="3"> Node.js cannot parse comma-separated strings from database rows.</label>
-    </div>
-    <div class="explanation">
-      <p>Correct! Relational schemas separate entities to enforce foreign keys, prevent text parsing errors, and optimize query indexes.</p>
-    </div>
-  </div>
+<p>Answer before you scroll back. A wrong answer now teaches you more than a
+right answer after a re-read.</p>
 
-  <div class="quiz-question" data-answer="1">
-    <p class="question">2. How do parameterised queries in Node.js <code>pg</code> prevent SQL injection?</p>
-    <div class="options">
-      <label><input type="radio" name="q1_2" value="0"> They strip HTML tags from input parameters before executing queries.</label>
-      <label><input type="radio" name="q1_2" value="1"> Parameters pass separately from SQL commands, treating input values strictly as data.</label>
-      <label><input type="radio" name="q1_2" value="2"> They encode all input strings into Base64 format.</label>
-      <label><input type="radio" name="q1_2" value="3"> Express sanitizes query strings automatically before calling database drivers.</label>
-    </div>
-    <div class="explanation">
-      <p>Correct! Positional placeholders (<code>$1</code>) send user data separately from the SQL statement, preventing parameter string contents from altering SQL syntax.</p>
-    </div>
-  </div>
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why do tag links belong in a junction table instead of a comma-separated text column?",
+    "options": [
+      "A junction table enforces the foreign keys and lets you index both sides of the join",
+      "PostgreSQL rejects a text column inside a SELECT statement",
+      "A text column needs more disk space than two integer keys",
+      "The pg driver cannot read a comma-separated string from a row"
+    ],
+    "answer": 0,
+    "why": "The database checks each tag_id against the tags table, so a broken link never lands. You also get an index on each side of the join. A text column gives you neither, and your JavaScript must parse it on every read." }
+  </script>
+</div>
 
-  <div class="quiz-score"></div>
-</section>
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "How does a parameterised query in the pg driver stop SQL injection?",
+    "options": [
+      "The server receives the statement and the values apart, so a value never becomes syntax",
+      "The driver strips the HTML tags out of each parameter first",
+      "The driver encodes every parameter as Base64 text",
+      "Express cleans the query string before the driver runs"
+    ],
+    "answer": 0,
+    "why": "The placeholder $1 keeps the value out of the SQL text. The parser reads the statement once, and the value arrives later as data. Nothing inside the value can change the shape of the statement." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "Which SQL clause makes the database reject a tag_id that no tag row owns?",
+    "answer": "REFERENCES",
+    "accept": ["references", "foreign key", "references tags(id)", "foreign key constraint"],
+    "why": "A REFERENCES clause declares a foreign key. The database checks it on every insert and every update, so the bad row fails before your code sees it." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "A bookmark row disappears. What happens to its rows in bookmark_tags?",
+    "options": [
+      "ON DELETE CASCADE removes them; without it the database refuses the delete",
+      "The database always removes them, because they point at a missing row",
+      "The database always keeps them, and the tag_id becomes NULL",
+      "Nothing, because a junction table has no foreign keys"
+    ],
+    "answer": 0,
+    "why": "A foreign key blocks a delete that would orphan a child row. ON DELETE CASCADE tells the database to remove the child rows instead. You choose the rule when you create the table." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "Name the constraints in your schema, and the bad row that each one stops.",
+    "answer": "1. PRIMARY KEY on bookmarks.id. It stops two rows with the same identity. 2. NOT NULL on bookmarks.url. It stops a bookmark with no address. 3. UNIQUE on bookmarks.url. It stops the same page twice. 4. NOT NULL and UNIQUE on tags.name. It stops a nameless tag and a duplicate tag. 5. PRIMARY KEY (bookmark_id, tag_id) on bookmark_tags. It stops the same tag on the same bookmark twice. 6. REFERENCES with ON DELETE CASCADE on both columns of bookmark_tags. It stops a link to a row that does not exist. Each rule lives in the database, so a second client cannot skip it.",
+    "why": "Validation in Express protects one code path. A constraint protects every code path, including psql, a migration, and the next service you write." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
 
 <h2>Read this next</h2>
 <div class="source">

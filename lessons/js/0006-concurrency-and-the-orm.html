@@ -102,37 +102,71 @@ Strategy: 1. Naive (Read-Modify-Write in JS)
 <h2>Step 5 · Evaluate ORM abstractions</h2>
 <p>Object-Relational Mapping libraries map database rows to JavaScript objects. Changing an object property (e.g. <code>bookmark.visitCount += 1</code>) and calling <code>save()</code> recreates the naive read-modify-write defect unless atomic updates or locking are explicitly specified.</p>
 
-<section class="quiz">
-  <h3>Check your understanding</h3>
+<h2>Check yourself</h2>
 
-  <div class="quiz-question" data-answer="1">
-    <p class="question">1. Why does a standard database transaction not prevent lost updates in read-modify-write operations?</p>
-    <div class="options">
-      <label><input type="radio" name="q1" value="0"> Transactions only execute DDL commands like CREATE TABLE.</label>
-      <label><input type="radio" name="q1" value="1"> Under READ COMMITTED isolation, transactions read committed values independently, allowing subsequent writes to overwrite concurrent updates.</label>
-      <label><input type="radio" name="q1" value="2"> PostgreSQL disables table indexes during active transactions.</label>
-      <label><input type="radio" name="q1" value="3"> Express cancels open transactions after 100 milliseconds.</label>
-    </div>
-    <div class="explanation">
-      <p>Correct! READ COMMITTED guarantees queries see committed data, but does not block other transactions from modifying rows between your SELECT and UPDATE statements.</p>
-    </div>
-  </div>
+<p>Answer before you scroll back. A wrong answer now teaches you more than a
+right answer after a re-read.</p>
 
-  <div class="quiz-question" data-answer="0">
-    <p class="question">2. Which approach fixes the lost update problem with minimum execution latency?</p>
-    <div class="options">
-      <label><input type="radio" name="q2" value="0"> Single atomic SQL statement (UPDATE ... SET x = x + 1).</label>
-      <label><input type="radio" name="q2" value="1"> Application-level array locks in Node.js memory.</label>
-      <label><input type="radio" name="q2" value="2"> REPEATABLE READ isolation without retry handlers.</label>
-      <label><input type="radio" name="q2" value="3"> Disabling connection pooling in pg module.</label>
-    </div>
-    <div class="explanation">
-      <p>Correct! Atomic updates process modifications entirely inside PostgreSQL in a single database round-trip without locks or retries.</p>
-    </div>
-  </div>
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why does a plain transaction not stop a lost update?",
+    "options": [
+      "READ COMMITTED lets another transaction change the row between your SELECT and your UPDATE",
+      "A transaction carries DDL statements such as CREATE TABLE only",
+      "PostgreSQL turns the indexes off while a transaction is open",
+      "Express cancels a transaction after 100 milliseconds"
+    ],
+    "answer": 0,
+    "why": "READ COMMITTED promises that you read committed data. It promises nothing about the row after you read it. The second writer overwrites the first, and both requests report success." }
+  </script>
+</div>
 
-  <div class="quiz-score"></div>
-</section>
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Which fix removes the lost update at the lowest cost?",
+    "options": [
+      "One atomic statement: UPDATE bookmarks SET visit_count = visit_count + 1",
+      "A lock table held in Node.js memory",
+      "REPEATABLE READ with no retry loop",
+      "Turn the pg connection pool off"
+    ],
+    "answer": 0,
+    "why": "The database reads the row and writes it inside one statement, so no gap exists. You pay one round trip, no explicit lock, and no retry. REPEATABLE READ without a retry loop turns the lost update into error 40001 instead." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "Which SQLSTATE code does PostgreSQL raise when REPEATABLE READ aborts your transaction?",
+    "answer": "40001",
+    "accept": ["40001", "serialization_failure", "serialization failure"],
+    "why": "40001 is serialization_failure. Catch this code and retry the whole transaction. Any other code is a real error and must not go through the retry loop." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "An ORM maps the row to an object. You write bookmark.visitCount += 1 and call save(). What runs?",
+    "options": [
+      "A read, then a write of a value your process computed — the naive pattern again",
+      "An atomic UPDATE, because the ORM detects the increment",
+      "A SELECT FOR UPDATE, because save() opens a transaction",
+      "Nothing, because an ORM refuses a counter column"
+    ],
+    "answer": 0,
+    "why": "The ORM records the new value, not the operation. It emits SET visit_count = 13, so two concurrent handlers both write 13. Ask the ORM for an atomic expression or for a row lock." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "Name the three server-side fixes for a lost update, and say when you choose each one.",
+    "answer": "1. One atomic statement, such as SET visit_count = visit_count + 1. Choose it when the new value depends on the old value alone. 2. SELECT ... FOR UPDATE inside a transaction. Choose it when you must run business logic between the read and the write, and keep the transaction short, because it blocks every other writer of that row. 3. REPEATABLE READ with a retry loop on error 40001. Choose it when conflicts are rare, because each conflict costs a full retry.",
+    "why": "The measurements rank them for this workload: the single statement is fastest, the row lock costs more, and the retry loop costs most, because twenty threads fight for one row." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
 
 <h2>Read this next</h2>
 <div class="source">

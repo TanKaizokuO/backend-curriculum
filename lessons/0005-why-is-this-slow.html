@@ -105,16 +105,20 @@ bookmarks-# <span class="c-key">SELECT</span> id, url <span class="c-key">FROM</
  Planning Time: 0.348 ms
  Execution Time: 9.846 ms</code></pre>
 
-<p>Read the third line again. To return <strong>one</strong> row, PostgreSQL
-looked at all 200&nbsp;000 and threw away 199&nbsp;999 of them. It read 2568
-pages of disk to do it. That is a <strong>sequential scan</strong>: read
-everything, keep what matches.</p>
+<p>Read the <code>Rows Removed by Filter</code> line again. To return
+<strong>one</strong> row, PostgreSQL examined all 200&nbsp;000 rows and
+discarded 199&nbsp;999 of them. The <code>Buffers</code> line counts the 8&nbsp;kB
+pages it touched: 2568 of them. <code>shared hit</code> means the server found
+every page in its own memory cache, so this run read nothing from the disk. A
+cold cache reports <code>shared read</code> instead, and the same plan is much
+slower. This is a <strong>sequential scan</strong>: read everything, keep what
+matches.</p>
 
-<p>Ten milliseconds sounds survivable. It is not, and the reason is the shape of
-the number rather than its size: the work grows in a straight line with the
-number of rows. At two million rows this query takes a hundred milliseconds. It
-is also on every request, and it is holding a connection from your pool while it
-runs.</p>
+<p>Ten milliseconds sounds survivable. It is not. The shape of the growth
+matters more than the size of the number: a sequential scan costs time in
+direct proportion to the row count. Ten times more rows cost about ten times
+more time. The query also runs on every request, and it holds a connection from
+your pool for the whole time.</p>
 
 <h2>Step 2 · Read the plan</h2>
 
@@ -416,9 +420,10 @@ single query       1.3 ms      1 queries   100 rows
 the join is 7x faster</code></pre>
 
 <p>Seven times. Real, but not alarming — and that is the trap. Your database is
-on <code>localhost</code>, where a round trip costs about 40 microseconds. In
-production it is on another machine and a round trip costs about a millisecond.
-The N+1 version pays that 101 times; the join pays it once.</p>
+on <code>localhost</code>. The 100 extra queries add 8.2 ms in total, so one
+round trip costs about 80 microseconds here. In production the database sits on
+another machine, and one round trip costs about a millisecond. The N+1 version
+pays that cost 101 times. The join pays it once.</p>
 
 <p>You do not have to imagine this. <code class="filename">slow_link.py</code>
 is a small TCP proxy that forwards to PostgreSQL and adds one millisecond in

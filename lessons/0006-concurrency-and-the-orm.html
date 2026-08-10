@@ -62,9 +62,11 @@ applied 0004_add_visit_count</code></pre>
 
 <p class="sidenote">This <code>ALTER TABLE</code> is instant on 200&nbsp;000
 rows. PostgreSQL 11 and later store the new default in the catalogue, so the
-server rewrites no row. A default that calls a function, such as
-<code>now()</code>, does rewrite the table — and that statement holds an
-<code>ACCESS EXCLUSIVE</code> lock while it runs.</p>
+server rewrites no row. The fast path holds for any default that is not
+volatile, and <code>now()</code> is one of them. A volatile default, such as
+<code>random()</code>, needs a different value in each row, so the server
+rewrites the table and holds an <code>ACCESS EXCLUSIVE</code> lock while it
+runs.</p>
 
 <h2>Step 1 · Make the failure observable</h2>
 

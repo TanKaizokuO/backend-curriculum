@@ -190,37 +190,77 @@ the join is 67x faster</code></pre>
 
 <p>Network latency makes the N+1 loop 67 times slower than a single SQL query.</p>
 
-<section class="quiz">
-  <h3>Check your understanding</h3>
+<h2>Check yourself</h2>
 
-  <div class="quiz-question" data-answer="1">
-    <p class="question">1. What does <code>EXPLAIN (ANALYZE, BUFFERS)</code> show that bare <code>EXPLAIN</code> does not?</p>
-    <div class="options">
-      <label><input type="radio" name="q1" value="0"> Table schema definitions and column datatypes.</label>
-      <label><input type="radio" name="q1" value="1"> Actual execution timings, row counts, and buffer page accesses.</label>
-      <label><input type="radio" name="q1" value="2"> Index definitions created on temporary tables.</label>
-      <label><input type="radio" name="q1" value="3"> Network packet byte counters between Node.js and PostgreSQL.</label>
-    </div>
-    <div class="explanation">
-      <p>Correct! <code>ANALYZE</code> executes the query and compares actual row counts, timings, and buffer page reads against planner estimates.</p>
-    </div>
-  </div>
+<p>Answer before you scroll back. A wrong answer now teaches you more than a
+right answer after a re-read.</p>
 
-  <div class="quiz-question" data-answer="2">
-    <p class="question">2. Why does the N+1 query problem degrade performance over real network connections?</p>
-    <div class="options">
-      <label><input type="radio" name="q2" value="0"> Node.js locks the event loop when processing multiple SQL statements.</label>
-      <label><input type="radio" name="q2" value="1"> PostgreSQL rejects queries when an application opens more than 10 transactions.</label>
-      <label><input type="radio" name="q2" value="2"> Every extra query incurs a full TCP round-trip latency penalty between Express and PostgreSQL.</label>
-      <label><input type="radio" name="q2" value="3"> Express buffers response payloads until all database connections close.</label>
-    </div>
-    <div class="explanation">
-      <p>Correct! Performing N database requests incurs N individual round-trip network delays, multiplying latency overall.</p>
-    </div>
-  </div>
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "What does EXPLAIN (ANALYZE, BUFFERS) add that a bare EXPLAIN does not?",
+    "options": [
+      "The real timings, the real row counts, and the pages the query touched",
+      "The column types and the table definition",
+      "The indexes on every temporary table",
+      "The byte counters for the socket between Node.js and PostgreSQL"
+    ],
+    "answer": 0,
+    "why": "A bare EXPLAIN prints estimates only. ANALYZE runs the query and prints what happened, so you can compare the estimate against reality. BUFFERS adds the page counts." }
+  </script>
+</div>
 
-  <div class="quiz-score"></div>
-</section>
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why is an N+1 bug mild on a laptop and severe in production?",
+    "options": [
+      "The cost is one network round trip for each query, and the network is slower in production",
+      "Node.js blocks the event loop when it sends many statements",
+      "PostgreSQL refuses a client that opens more than ten transactions",
+      "Express holds the response until every pool connection closes"
+    ],
+    "answer": 0,
+    "why": "Each query is fast, so no single plan looks wrong. The damage is 101 round trips. On localhost a round trip costs microseconds. Across a data centre it costs about a millisecond." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "Which plan line tells you how many rows the scan read and then discarded?",
+    "answer": "Rows Removed by Filter",
+    "accept": ["rows removed by filter", "Rows Removed"],
+    "why": "A large number here means the scan did work that it threw away. That is the fastest signal of a missing index or of an index the planner cannot use." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "A plan shows Buffers: shared hit=2568. What does hit mean?",
+    "options": [
+      "PostgreSQL found all 2568 pages in its own memory cache",
+      "PostgreSQL read all 2568 pages from the disk",
+      "PostgreSQL returned 2568 rows to the client",
+      "The planner estimated a cost of 2568 units"
+    ],
+    "answer": 0,
+    "why": "hit counts pages served from the shared buffer cache. read counts pages fetched from the operating system. The same plan on a cold cache reports read, and it is much slower." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Which query can use an index on (a, b, c)?",
+    "options": [
+      "WHERE a = 1 AND b = 2",
+      "WHERE b = 2 AND c = 3",
+      "WHERE c = 3",
+      "WHERE b = 2"
+    ],
+    "answer": 0,
+    "why": "The index is sorted by a first, then by b inside each group of equal a. A query that does not restrict a cannot use the sort order, so the planner scans the table instead." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
 
 <h2>Read this next</h2>
 <div class="source">
