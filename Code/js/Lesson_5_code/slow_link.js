@@ -1,9 +1,10 @@
 /**
  * A TCP proxy that adds a fixed delay to every message.
  *
- * Your database is on localhost, so a round trip costs about 40 microseconds.
- * In production the database is on another machine and a round trip costs about
- * 1 millisecond. That is 25 times more, and N+1 pays it N times.
+ * Your database is on localhost, where one round trip measures about 80
+ * microseconds. In production the database is on another machine and a round
+ * trip costs about 1 millisecond. That is roughly 12 times more, and N+1 pays
+ * it N times.
  *
  * This proxy puts the production number on your laptop. Run it in one terminal:
  *

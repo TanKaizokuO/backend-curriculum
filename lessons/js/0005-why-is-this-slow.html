@@ -169,26 +169,37 @@ app.<span class="c-fn">get</span>(<span class="c-str">'/bookmarks'</span>, <span
 
 <h2>Step 6 · Simulate network latency with slow_link.js</h2>
 
-<p>Run <code>n_plus_1.js</code> to benchmark N+1 query execution against a single aggregated query:</p>
+<p>Run <code>n_plus_1.js</code>. It times the N+1 loop against one aggregated
+query:</p>
 
 <pre class="wide"><code>$ export DATABASE_URL="postgresql://learner:lesson4@localhost:55432/bookmarks"
 $ node n_plus_1.js
-N+1               14.2 ms    101 queries   100 rows
-single query       1.1 ms      1 queries   100 rows
+N+1               22.4 ms    101 queries   100 rows   first tags: ["tag-2","tag-3","tag-4"]
+single query       0.9 ms      1 queries   100 rows   first tags: ["tag-2","tag-3","tag-4"]
 
-the join is 13x faster</code></pre>
+the join is 25x faster</code></pre>
 
-<p>Start <code>slow_link.js</code> in a terminal to add 1&nbsp;ms latency to database connections on port 55433. Run <code>n_plus_1.js</code> over port 55433 to observe network round-trip costs:</p>
+<p>Both versions return the same rows and the same tags. Only the query count
+differs: 101 against 1.</p>
 
-<pre class="wide"><code>$ node slow_link.js &
+<p>Now add the distance. Start <code>slow_link.js</code> in a second terminal.
+It is a small TCP proxy. It listens on port 55433, forwards to PostgreSQL on
+port 55432, and adds one millisecond in each direction. Point
+<code>DATABASE_URL</code> at the slow port. Run the same script again:</p>
+
+<pre class="wide"><code>$ node slow_link.js &amp;
+slow link: localhost:55433 -&gt; localhost:55432 (+1 ms each way)
+
 $ export DATABASE_URL="postgresql://learner:lesson4@localhost:55433/bookmarks"
 $ node n_plus_1.js
-N+1              215.4 ms    101 queries   100 rows
-single query       3.2 ms      1 queries   100 rows
+N+1              254.8 ms    101 queries   100 rows   first tags: ["tag-2","tag-3","tag-4"]
+single query       3.9 ms      1 queries   100 rows   first tags: ["tag-2","tag-3","tag-4"]
 
-the join is 67x faster</code></pre>
+the join is 65x faster</code></pre>
 
-<p>Network latency makes the N+1 loop 67 times slower than a single SQL query.</p>
+<p>The code did not change. The database did not change. Only the distance
+changed, and a 25× problem became a 65× problem. The cost of N+1 is the round
+trip, and the round trip is the part that grows in production.</p>
 
 <h2>Check yourself</h2>
 
