@@ -87,8 +87,24 @@ ten logins that push an unrelated `/healthz` from 3.5 ms to 1727.8 ms.
 | 10 | Caching | A cache is a copy that can be wrong. Name the moment it goes stale before you add it. | `Code/Lesson_10_code/`, `Code/js/Lesson_10_code/` |
 | 11 | Observability | You cannot debug what you cannot see. A log line, a metric, and a trace answer different questions. | `Code/Lesson_11_code/`, `Code/js/Lesson_11_code/` |
 | 12 | Scaling | Add a second instance and every assumption about local state breaks. | `Code/Lesson_12_code/`, `Code/js/Lesson_12_code/` |
+| 13 | Version control | A commit is a snapshot with a parent. History is a graph, not a list. | `Code/Lesson_13_code/`, `Code/js/Lesson_13_code/` |
+| 14 | How a request finds your server | A name becomes an address through caches you do not control. | `Code/Lesson_14_code/`, `Code/js/Lesson_14_code/` |
+| 15 | The edge: reverse proxy and TLS | The process that answers port 443 is not your application. | `Code/Lesson_15_code/`, `Code/js/Lesson_15_code/` |
+| 16 | Rules the browser enforces | CORS and CSP are instructions to the browser. They protect the user, not the server. | `Code/Lesson_16_code/`, `Code/js/Lesson_16_code/` |
+| 17 | Attacking your own API | Most breaches are authorization bugs, not broken cryptography. | `Code/Lesson_17_code/`, `Code/js/Lesson_17_code/` |
+| 18 | Delegated identity | OAuth grants access. OpenID Connect proves identity. They are not the same token. | `Code/Lesson_18_code/`, `Code/js/Lesson_18_code/` |
+| 19 | Other API shapes | The shape of the API decides who writes the query: you or the client. | `Code/Lesson_19_code/`, `Code/js/Lesson_19_code/` |
+| 20 | Real-time data | Pick the cheapest transport that meets the latency the feature needs. | `Code/Lesson_20_code/`, `Code/js/Lesson_20_code/` |
+| 21 | NoSQL | Choose the store from the access pattern. Every store gives up something. | `Code/Lesson_21_code/`, `Code/js/Lesson_21_code/` |
+| 22 | Search engines | A database finds rows that match. A search engine ranks documents. | `Code/Lesson_22_code/`, `Code/js/Lesson_22_code/` |
+| 23 | Message brokers | A queue turns work you must finish now into work you promise to finish. | `Code/Lesson_23_code/`, `Code/js/Lesson_23_code/` |
+| 24 | Replication, sharding, CAP | Every distributed guarantee is bought with another one. | `Code/Lesson_24_code/`, `Code/js/Lesson_24_code/` |
+| 25 | Building for scale | Overload is a queue problem. Choose how you fail, or the system chooses. | `Code/Lesson_25_code/`, `Code/js/Lesson_25_code/` |
+| 26 | Containers and orchestration | An orchestrator is a control loop that keeps a declared state true. | `Code/Lesson_26_code/`, `Code/js/Lesson_26_code/` |
+| 27 | Splitting the monolith | A split distributes the work and the failures with it. | `Code/Lesson_27_code/`, `Code/js/Lesson_27_code/` |
+| 28 | Design and architecture | A pattern is a name for pressure you already feel in the code. | `Code/Lesson_28_code/`, `Code/js/Lesson_28_code/` |
 
-Details for each planned lesson:
+### Details for planned lessons
 
 9. **Testing and CI.** `pytest` with `httpx` against `vitest` with
    `supertest`. A real PostgreSQL container for the integration tests, not a
@@ -104,6 +120,115 @@ Details for each planned lesson:
 12. **Scaling.** Two API instances behind one proxy. The lesson breaks
     in-memory state on purpose, then fixes it. Read replicas, connection
     limits, and backpressure.
+13. **Version control.** Covers roadmap section 3. Branches, merge against
+    rebase, the index, `reflog`, and pull requests/reviews. The observable
+    failure: two branches edit the same handler, a force-push removes an
+    approved commit, and `git reflog` recovers it.
+14. **How a request finds your server.** Covers roadmap section 1 (DNS,
+    domains, hosting). Resolvers, root/TLD servers, record types (`A`, `AAAA`,
+    `CNAME`, `MX`, `TXT`), and TTL. The observable failure: changing an `A`
+    record with an 86400s TTL while the browser uses the cached IP for hours.
+15. **The edge: reverse proxy and TLS.** Covers roadmap sections 8 & 19 (Nginx,
+    Caddy, HTTPS/TLS). TLS termination, SNI, certificates, `X-Forwarded-For`.
+    Observable failures: self-signed certificate rejection, proxy payload size
+    limits (`413`), missing forwarding headers.
+16. **Rules the browser enforces.** Covers CORS, CSP, and cookies (sections 8
+    & 9). Same-origin policy, preflight requests, `SameSite`, `HttpOnly`,
+    `Secure`. Observable failure: `http://localhost:5173` calls API, server logs
+    `200`, browser drops the response due to CORS policy.
+17. **Attacking your own API.** Covers OWASP risks & server security (section 8).
+    Broken Object Level Authorization (BOLA), mass assignment, injection, rate
+    limiting. Observable failure: changing an ID in the path allows reading
+    another user's private data.
+18. **Delegated identity.** Covers OAuth 2.0, OpenID Connect, SAML, and Basic
+    auth (section 9). Authorization code flow with PKCE, access tokens vs ID
+    tokens, scopes. Observable failure: treating an access token as proof of
+    identity allowing token reuse across client applications.
+19. **Other API shapes.** Covers GraphQL, SOAP, and HATEOAS (section 6). Schema,
+    resolvers, N+1 problem in GraphQL, DataLoader, query depth limits.
+    Observable failure: a single nested GraphQL query causing 60 redundant SQL
+    queries.
+20. **Real-time data.** Covers real-time communication (section 20). Short
+    polling, long polling, Server-Sent Events, WebSockets, and subscriptions.
+    Observable failures: short polling overhead at scale, missing proxy upgrade
+    headers, multi-instance socket routing failures.
+21. **NoSQL.** Covers NoSQL database families (section 14). Document, key-value,
+    graph, time-series, column-family. Observable failure: MongoDB unindexed
+    joins in application loops; loss of unpersisted Redis data on restart.
+22. **Search engines.** Covers search engines (section 18). Inverted indexes,
+    analyzers, stemming, relevance scoring. Elasticsearch, Solr, PostgreSQL FTS.
+    Observable failure: search for `running` failing to match `run` due to an
+    incorrect analyzer.
+23. **Message brokers.** Covers message queues (section 16). RabbitMQ and Kafka.
+    Queues, topics, consumer groups, idempotency, dead-letter queues. Observable
+    failure: unacknowledged message redelivery running duplicate jobs.
+24. **Replication, sharding, and CAP.** Covers database scaling & engines
+    (sections 4, 5, 15). Streaming replication, lag, failover, shard keys, CAP
+    theorem. Observable failure: immediate read after write hitting a lagged
+    replica and returning missing data.
+25. **Building for scale.** Covers resiliency & scaling (section 21). Timeouts,
+    retries with jitter, circuit breakers, bulkheads, load shedding, expansion
+    migrations. Observable failure: un-timed slow dependency filling worker
+    pools and cascading failure to healthy endpoints.
+26. **Containers and orchestration.** Covers container orchestration (section 17).
+    Namespaces, cgroups, Kubernetes pods, deployments, services, probes.
+    Observable failure: rolling deploy without readiness probes causing `502`
+    errors before DB pools open.
+27. **Splitting the monolith.** Covers architecture patterns (section 13). Monolith
+    vs microservices, sagas, service boundaries, cold starts. Observable
+    failure: multi-service transaction failure leaving split state without a saga
+    compensation.
+28. **Design and architecture.** Covers software design (section 12). Strategy,
+    Factory, Adapter, Repository patterns; DDD, TDD, CQRS, event sourcing.
+    Observable failure: pass-through repository interfaces adding boilerplate
+    without testability or abstraction value.
+
+## Two roadmap sections need no lesson
+
+- **Section 2, Pick a Language.** The choice is made. JavaScript and Python are
+  marked. Go, Rust, Java, C#, PHP, and Ruby are alternatives, not a backlog.
+- **Section 4, Relational Databases.** PostgreSQL is the recommendation. MySQL,
+  MariaDB, MS SQL, and Oracle are alternatives to the same idea. Lesson 24
+  spends one page on what changes when the engine changes.
+
+Two sections are also out of order in the roadmap. Git (section 3) and DNS
+(section 1) are marked *learn anytime*. They arrive at 13 and 14 here because
+the course needed a running server before it needed a deploy pipeline.
+
+## After Lesson 28
+
+Roadmap section 23 lists related tracks: DevOps, basic infrastructure, full
+stack, and design principles. These are separate roadmaps, not lessons here.
+Lessons 7, 15, 25, and 26 already cover the infrastructure a backend developer
+must own.
+
+## Coverage
+
+| Roadmap section | Lessons |
+| --- | --- |
+| 1. Internet | 14 |
+| 2. Pick a language | Done (Python, TypeScript) |
+| 3. Version control | 13 |
+| 4. Relational databases | 4, 24 |
+| 5. More about databases | 4, 5, 6, 24 |
+| 6. APIs | 3, 8, 19 |
+| 7. Caching | 10, 15 |
+| 8. Web security | 8, 15, 16, 17 |
+| 9. Authentication | 8, 16, 18 |
+| 10. Testing | 9 |
+| 11. CI / CD | 9 |
+| 12. Design and architecture | 28 |
+| 13. Architectural patterns | 7, 27 |
+| 14. NoSQL | 21 |
+| 15. Scaling databases | 5, 24 |
+| 16. Message brokers | 23 |
+| 17. Containers | 7, 26 |
+| 18. Search engines | 22 |
+| 19. Web servers | 15 |
+| 20. Real-time data | 20 |
+| 21. Building for scale | 12, 25 |
+| 22. Observability | 11 |
+| 23. Related tracks | Out of scope |
 
 ## Rules that hold for every lesson
 
