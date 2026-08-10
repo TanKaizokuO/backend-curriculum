@@ -1,9 +1,10 @@
 # Backend, from a socket to a deploy
 
-Seven lessons that build one JSON API. Lesson 1 starts with `socket.accept()` and
-a hand-written HTTP response. Lesson 7 ends with a container that reads its
-configuration from the environment, runs its own migrations, and answers a
-health check.
+Eight lessons that build one JSON API. Lesson 1 starts with `socket.accept()`
+and a hand-written HTTP response. Lesson 7 ends with a container that reads
+its configuration from the environment, runs its own migrations, and answers
+a health check. Lesson 8 adds accounts, and it teaches Python and TypeScript
+side by side.
 
 Each lesson states one idea, shows the failure that motivates it, and ends in
 something a reviewer can open. The numbers in this repository are real output
@@ -11,7 +12,8 @@ from real runs, not estimates.
 
 The deployable service is [`Code/Lesson_7_code/`](./Code/Lesson_7_code/). Its
 [README](./Code/Lesson_7_code/README.md) holds the stack, the endpoints, and the
-measurements.
+measurements. The order of the course is
+[`lesson_plan.md`](./lesson_plan.md).
 
 ## The lessons
 
@@ -26,6 +28,7 @@ Open the HTML files in a browser. Each one carries its own retrieval quiz.
 | 5 | [Why is this slow?](./lessons/0005-why-is-this-slow.html) | Ask the database what it did, and read the answer. | [`Code/Lesson_5_code/`](./Code/Lesson_5_code/) |
 | 6 | [Concurrency and the ORM](./lessons/0006-concurrency-and-the-orm.html) | A transaction protects you from a crash. It does not protect you from another transaction. | [`Code/Lesson_6_code/`](./Code/Lesson_6_code/) |
 | 7 | [Deployment](./lessons/0007-deployment.html) | A deploy is one image plus one set of environment variables. | [`Code/Lesson_7_code/`](./Code/Lesson_7_code/) |
+| 8 | [Authentication](./lessons/0008-authentication.html) | The server must never trust the client. It must only trust what it can verify. | [`Code/Lesson_8_code/`](./Code/Lesson_8_code/) · [`Code/js/Lesson_8_code/`](./Code/js/Lesson_8_code/) |
 
 ## What the repository demonstrates
 
@@ -67,14 +70,28 @@ four strategies, from `Code/Lesson_6_code/lost_update.py`.
 
 The two-statement version exited zero and returned a plausible wrong number.
 
-## Two tracks
+**A password hash is a price list.** One core, bcrypt at cost 12, from
+`Code/Lesson_8_code/hash_speed.py`.
 
-The primary track is Python with FastAPI. `lessons/js/` and `Code/js/` hold a
-secondary track that ports the same seven lessons to Node.js and Express. The
-JavaScript track is a condensed reference, not a replacement: it repeats the
-failures and the fixes, and it omits the long explanations.
+| Function | Guesses per second | Eight lower-case letters |
+| --- | --- | --- |
+| SHA-256 | 6,006,030 | 9.7 hours |
+| bcrypt, cost 12 | 6 | 1,087 years |
+
+The same word list broke the SHA-256 table in 0.03 ms and the bcrypt table in
+27.3 s. A slow hash buys time. It does not repair a weak password.
+
+## Two languages
+
+Lessons 1 to 7 are Python with FastAPI. `lessons/js/` and `Code/js/`
+hold a condensed port of those seven lessons to Node.js and Express.
+
+From Lesson 8, one lesson teaches both languages. Each idea appears once,
+then in Python, then in TypeScript.
 [LR-0001](./learning-records/0001-language-anchor-python-first.md) records why
-the anchor is Python.
+the anchor was Python.
+[LR-0002](./learning-records/0002-dual-language-curriculum.md) records why both
+run together now.
 
 ## Run it
 
@@ -85,14 +102,14 @@ python Code/Lesson_1_code/server.py
 curl -v localhost:8080/
 ```
 
-Lessons 3 to 7 need FastAPI:
+Lessons 3 to 8 need FastAPI:
 
 ```shell
 python -m venv .venv && . .venv/bin/activate
-pip install -r Code/Lesson_7_code/requirements.txt
+pip install -r Code/Lesson_8_code/requirements.txt
 ```
 
-Lessons 4 to 7 need PostgreSQL. Do not use SQLite: the types, the constraints,
+Lessons 4 to 8 need PostgreSQL. Do not use SQLite: the types, the constraints,
 and the concurrency behaviour all differ.
 
 ```shell
@@ -104,19 +121,21 @@ docker run -d --name pg-bookmarks \
     postgres:17
 
 export DATABASE_URL="postgresql://learner:lesson4@localhost:55432/bookmarks"
-python Code/Lesson_7_code/migrate.py
+python Code/Lesson_8_code/migrate.py
 ```
 
 The full service runs on one machine with Docker Compose. See
 [`Code/Lesson_7_code/README.md`](./Code/Lesson_7_code/README.md).
 
-Each JavaScript lesson directory carries its own `package.json`. Run
-`npm install` inside the directory you want.
+Each JavaScript and TypeScript lesson directory carries its own
+`package.json`. Run `npm install` inside the directory you want. The Lesson 8
+TypeScript project needs Node 22.6 or later, because Node runs the `.ts`
+files directly.
 
 ## Layout
 
 ```
-lessons/            the seven lessons, plus lessons/js/ for the Node.js port
+lessons/            the eight lessons, plus lessons/js/ for the Node.js port
 reference/          reference cards: HTTP anatomy, reading a query plan
 reference-pdfs/     specifications kept for offline reading
 summaries/          consolidated recall material
@@ -125,6 +144,7 @@ bookmarks-api/      the Lesson 3 in-memory API
 assets/             the shared dark stylesheet and the quiz engine
 MISSION.md          why this exists and what success looks like
 ROADMAP.md          the topic checklist, ticked by the learner
+lesson_plan.md      the order of the course, and what each lesson proves
 GLOSSARY.md         terms, each tied to the lesson that established it
 RESOURCES.md        verified links, with a staleness date
 learning-records/   decisions and the evidence behind them

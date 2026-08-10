@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 8 · Authentication</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 08 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../GLOSSARY.md">Glossary</a> ·
+    <a href="../lesson_plan.md">Plan</a> ·
+    <a href="0007-deployment.html">← Lesson 07</a>
+  </p>
+  <h1>Authentication
+    <span class="sub">Python and TypeScript, one idea at a time.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">Your API is public. Anybody can write to it. Today you add
+accounts, and you keep two questions apart: who is this, and what may they do?
+This is also the first lesson in two languages. Each idea appears once. Then
+you write it in Python, and then you write it in TypeScript. The second
+version is recognition, not new material.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>The server must <strong>never trust the client</strong>. It must only
+  trust what it can verify — a hash that it computed, or a signature that it
+  made with a key that only it holds.</p>
+</div>
+
+<div class="note">
+  <span class="note-label">How the two languages sit together</span>
+  <p>The Python project is <code>Code/Lesson_8_code/</code>. The TypeScript
+  project is <code>Code/js/Lesson_8_code/</code>. The routes match, the status
+  codes match, and both write the same version strings to
+  <code>schema_migrations</code>. One PostgreSQL database serves both.</p>
+  <p>Node 22.6 and later run a <code>.ts</code> file directly. Node strips the
+  types and runs the JavaScript. Node does not check the types.
+  <code>npm run typecheck</code> is the only step that checks them. Remember
+  this: at run time, a TypeScript server has exactly the same protection as a
+  JavaScript server, which is none.</p>
+</div>
+
+<h2>Step 0 · Three words that people mix up</h2>
+
+<p>Learn the three words now. An interviewer asks for them, and the HTTP
+status codes follow from them.</p>
+
+<table>
+  <thead>
+    <tr><th>Word</th><th>The question</th><th>Your answer today</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Identification</strong></td>
+      <td>Who do you say you are?</td>
+      <td>An email address in the request body.</td>
+    </tr>
+    <tr>
+      <td><strong>Authentication</strong></td>
+      <td>Can you prove it?</td>
+      <td>A password, then a session cookie or a signed token.</td>
+    </tr>
+    <tr>
+      <td><strong>Authorisation</strong></td>
+      <td>May you do this?</td>
+      <td>The <code>user_id</code> column on the row that you want to delete.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Two status codes carry the difference, and RFC 9110 defines both.
+<code>401 Unauthorized</code> means "I do not know who you are". The name is a
+mistake in the standard; the code is about authentication.
+<code>403 Forbidden</code> means "I know who you are, and the answer is no".
+Send a <code>WWW-Authenticate</code> header with the 401. Send nothing extra
+with the 403, because a second attempt with the same credential fails again.</p>
+
+<h2>Step 1 · Do it wrong first: keep the password</h2>
+
+<p>Start with the naive design. The <code>users</code> table has a
+<code>password</code> column. Registration writes the password. Login compares
+two strings. The code is short and it works.</p>
+
+<p>Then somebody copies your table. A leak is not a strange event. It is the
+event that every rule in this lesson prepares for. Assume the attacker holds
+your rows, then ask what those rows are worth.</p>
+
+<p>The first answer is easy: a plain-text column is a breach of every other
+site that the user visits, because people reuse passwords. So you hash the
+password. The next question is the one that matters. <strong>Which hash?</strong></p>
+
+<p class="filename">Code/Lesson_8_code/hash_speed.py — run it before you read on</p>
+<pre class="wide"><code>$ python hash_speed.py
+word list: 64 passwords
+bcrypt rounds: 12
+
+=== The leak, as SHA-256 ==========================================
+ada@example.com        f52fbd32b2b3b86ff88ef6c490628285f482af15ddcb29541f94bcf526a3f6c7
+alan@example.com       1c8bfe8f801d79745c4631d09fff36c82aa37fc4cce4fc946683d7b336b63032
+grace@example.com      f52fbd32b2b3b86ff88ef6c490628285f482af15ddcb29541f94bcf526a3f6c7
+edsger@example.com     6ea09c25a7f1dcbd677077edaadfacdc41202e5be88e4ccf4c35207e343990bd
+barbara@example.com    203b70b5ae883932161bbd0bded9357e763e63afce98b16230be33f0b94c2cc5
+
+Ada and Grace never told each other their password.
+The table tells you they share one.</code></pre>
+
+<p>Read Ada's row and Grace's row again. They are the same 64 characters. A
+hash is a function, so equal inputs give equal outputs. The attacker learns
+which accounts share a password, and one cracked account opens the other.</p>
+
+<p>The fix for that is a <strong>salt</strong>: random bytes, different for
+each user, mixed into the hash and stored next to it. bcrypt does this for
+you. The salt sits inside the string that bcrypt returns.</p>
+
+<pre class="wide"><code>=== The same leak, as bcrypt ======================================
+ada@example.com        $2b$12$NdHHEprVU2agM0RXe0YpJ.csAYs9KHW7XrQfe9AZiOHoQsDR9SiSe
+grace@example.com      $2b$12$UDxRNNk9ioMAw4FfdpXjM.uiXzBOtHttSUKlGakTDpLAzphnDzjN6</code></pre>
+
+<p>Read the string from the left. <code>$2b$</code> names the algorithm.
+<code>$12$</code> is the cost. The next 22 characters are the salt. The rest
+is the hash. One column holds all four parts, so you never manage a salt
+column yourself.</p>
+
+<h3>The second defect: speed</h3>
+
+<p>SHA-256 is a fast hash, and that is its purpose. A fast hash is the wrong
+tool here, because the attacker also runs it fast. The same program measures
+both functions on one core of this machine.</p>
+
+<pre class="wide"><code>=== Crack the SHA-256 table =======================================
+5 of 5 accounts in 0.03 ms
+
+=== Attack the bcrypt table with the same word list ===============
+5 of 5 accounts in 27.3 s
+
+=== Guess rate of each function ===================================
+SHA-256 :       6,006,030 guesses/second, one CPU core
+bcrypt  :               6 guesses/second, one CPU core
+ratio   :         986,247x
+
+A password of eight lower-case letters: 208,827,064,576 possibilities.
+SHA-256 : 9.7 hours on this one core
+bcrypt  : 1,087 years on this one core</code></pre>
+
+<p>The TypeScript run gives the same shape. bcrypt is the same C library in
+both languages, so the bcrypt row barely moves.</p>
+
+<pre class="wide"><code>$ npm run hash-speed
+5 of 5 accounts in 0.18 ms          # SHA-256
+5 of 5 accounts in 24.5 s           # bcrypt
+SHA-256 :       2,725,691 guesses/second, one CPU core
+bcrypt  :               7 guesses/second, one CPU core</code></pre>
+
+<p class="sidenote">Node reports fewer SHA-256 guesses per second than Python
+because <code>crypto.createHash()</code> builds an object for each call. The
+absolute rate is a property of this benchmark. The ratio between the two
+functions is the property that matters, and it stays near one million.</p>
+
+<div class="note note--warn">
+  <span class="note-label">Read the crack result again</span>
+  <p>bcrypt did not save the five accounts. The word list held every password,
+  so the attacker got all five. bcrypt bought 27.3 seconds instead of 0.03
+  milliseconds. A slow hash buys time against a guess. It does not repair a
+  password that is on the first page of the list.</p>
+</div>
+
+<h3>The rule, and the two lines that apply it</h3>
+
+<p>Use a slow hash with a per-user salt and a tunable cost. bcrypt, scrypt,
+and Argon2id all qualify. Choose the cost so that one login takes about 250 ms
+on your own server, then raise the cost as hardware improves.</p>
+
+<p class="filename">Code/Lesson_8_code/security.py</p>
+<pre class="wide"><code><span class="c-key">import</span> bcrypt
+
+<span class="c-key">def</span> <span class="c-fn">hash_password</span>(password: <span class="c-key">str</span>) -&gt; <span class="c-key">str</span>:
+    raw = password.encode(<span class="c-str">"utf-8"</span>)[:MAX_PASSWORD_BYTES]
+    salt = bcrypt.gensalt(rounds=settings.bcrypt_rounds)
+    <span class="c-key">return</span> bcrypt.hashpw(raw, salt).decode(<span class="c-str">"ascii"</span>)
+
+<span class="c-key">def</span> <span class="c-fn">verify_password</span>(password: <span class="c-key">str</span>, password_hash: <span class="c-key">str</span>) -&gt; <span class="c-key">bool</span>:
+    raw = password.encode(<span class="c-str">"utf-8"</span>)[:MAX_PASSWORD_BYTES]
+    <span class="c-key">try</span>:
+        <span class="c-key">return</span> bcrypt.checkpw(raw, password_hash.encode(<span class="c-str">"ascii"</span>))
+    <span class="c-key">except</span> ValueError:
+        <span class="c-key">return</span> <span class="c-key">False</span></code></pre>
+
+<p class="filename">Code/js/Lesson_8_code/src/security.ts</p>
+<pre class="wide"><code><span class="c-key">import</span> bcrypt <span class="c-key">from</span> <span class="c-str">'bcrypt'</span>;
+
+<span class="c-key">export async function</span> <span class="c-fn">hashPassword</span>(password: <span class="c-key">string</span>): Promise&lt;<span class="c-key">string</span>&gt; {
+  <span class="c-key">return</span> bcrypt.<span class="c-fn">hash</span>(<span class="c-fn">clamp</span>(password), config.bcryptRounds);
+}
+
+<span class="c-key">export async function</span> <span class="c-fn">verifyPassword</span>(password: <span class="c-key">string</span>, hash: <span class="c-key">string</span>): Promise&lt;<span class="c-key">boolean</span>&gt; {
+  <span class="c-key">try</span> {
+    <span class="c-key">return await</span> bcrypt.<span class="c-fn">compare</span>(<span class="c-fn">clamp</span>(password), hash);
+  } <span class="c-key">catch</span> {
+    <span class="c-key">return false</span>;
+  }
+}</code></pre>
+
+<p>Two details hide in those blocks.</p>
+
+<ol class="steps">
+  <li><strong>bcrypt reads 72 bytes.</strong> It ignores the rest. Two long
+  passwords with the same first 72 bytes are the same password. Declare the
+  limit in the request model, so the API rejects a longer value instead of
+  cutting it in silence.</li>
+
+  <li><strong>Never compare hashes yourself.</strong> Call
+  <code>checkpw</code> or <code>compare</code>. The library reads the cost and
+  the salt out of the stored string, hashes the candidate the same way, and
+  compares in constant time.</li>
+</ol>
+
+<h2>Step 2 · The account, as a table</h2>
+
+<p>The schema states the rule, as it did in Lesson 4. There is no
+<code>password</code> column, and the database never learns a password.</p>
+
+<p class="filename">migrations/0005_create_users.sql — the same file in both projects</p>
+<pre class="wide"><code><span class="c-key">CREATE TABLE</span> users (
+    id             <span class="c-key">INTEGER</span> <span class="c-key">GENERATED ALWAYS AS IDENTITY</span> <span class="c-key">PRIMARY KEY</span>,
+    email          <span class="c-key">TEXT</span>        <span class="c-key">NOT NULL</span> <span class="c-key">UNIQUE</span>,
+    password_hash  <span class="c-key">TEXT</span>        <span class="c-key">NOT NULL</span>,
+    created_at     <span class="c-key">TIMESTAMPTZ</span> <span class="c-key">NOT NULL</span> <span class="c-key">DEFAULT</span> now(),
+
+    <span class="c-key">CONSTRAINT</span> users_email_is_lower <span class="c-key">CHECK</span> (email = lower(email)),
+    <span class="c-key">CONSTRAINT</span> users_email_has_at   <span class="c-key">CHECK</span> (position(<span class="c-str">'@'</span> <span class="c-key">IN</span> email) &gt; 1)
+);</code></pre>
+
+<p>The <code>UNIQUE</code> index stops a second account with the same email.
+The <code>CHECK</code> keeps the column lower case, so
+<code>Ada@Example.com</code> cannot register after <code>ada@example.com</code>.
+Both routes write <code>lower($1)</code>, and the constraint proves that every
+future route does the same.</p>
+
+<h2>Step 3 · Register and sign in</h2>
+
+<p>Start the Python API on port 8008 and run the requests below. The
+TypeScript API answers the same way on port 8009.</p>
+
+<pre class="wide"><code>$ curl -s -X POST localhost:8008/auth/register \
+    -H 'content-type: application/json' \
+    -d '{"email":"Ada@Example.com","password":"correct horse battery staple"}'
+{"id":1,"email":"ada@example.com"}
+HTTP 201
+
+$ # the same email again
+{"detail":"email already registered"}
+HTTP 409
+
+$ # a password of five characters
+{"detail":[{"type":"string_too_short","loc":["body","password"],
+            "msg":"String should have at least 8 characters"}]}
+HTTP 422
+
+$ # the right email, the wrong password
+{"detail":"wrong email or password"}
+HTTP 401
+
+$ # an email that never registered
+{"detail":"wrong email or password"}
+HTTP 401</code></pre>
+
+<p>Note the capital letters in the request and the lower case in the response.
+The route wrote <code>lower(%s)</code>, so the row obeys the constraint.</p>
+
+<p>Note also the last two answers. They are the same string. Never write "no
+such user" and "wrong password" as two different messages. The pair is a list
+of your customers, and an attacker collects it with a script.</p>
+
+<div class="note note--warn">
+  <span class="note-label">The same answer is not enough</span>
+  <p>A message is one channel. The clock is another. Step 7 measures the clock
+  and closes it.</p>
+</div>
+
+<h2>Step 4 · Observable failure: the token that the client can edit</h2>
+
+<p>The password check is done. Now the API must remember it. A browser sends
+one request for each page, and the user does not retype the password each
+time. So the server gives the client something to send back.</p>
+
+<p>The naive version of "something" is a JSON object in base64. Run the
+program and read the first section.</p>
+
+<p class="filename">Code/Lesson_8_code/forge_token.py</p>
+<pre class="wide"><code>$ python forge_token.py
+
+=== Attack 1 · edit an unsigned token =============================
+the server gave Mallory: eyJzdWIiOiAiMiIsICJlbWFpbCI6ICJtYWxsb3J5QGV4YW1wbGUuY29tIiwgImFkbWluIjogZmFsc2V9
+the server reads       : {'sub': '2', 'email': 'mallory@example.com', 'admin': False}
+
+Mallory sends back    : eyJzdWIiOiAiMSIsICJlbWFpbCI6ICJhZGFAZXhhbXBsZS5jb20iLCAiYWRtaW4iOiB0cnVlfQ==
+the server reads      : {'sub': '1', 'email': 'ada@example.com', 'admin': True}
+
+The server believes it. Mallory is now Ada, and Ada is an admin.
+Nothing crashed. No log line looks wrong.</code></pre>
+
+<p>Base64 is an encoding, not a lock. Mallory decoded the value, changed three
+fields, and encoded it again. The attack needs three lines of Python and no
+key. This is the Lesson 6 shape again: a plausible wrong answer, a clean exit
+code, and a log that looks healthy.</p>
+
+<h3>The fix: sign the bytes</h3>
+
+<p>Add a third part. Compute HMAC-SHA256 over the first two parts with a
+secret key, and append the result. The client can still read the claims. The
+client cannot produce a new signature, because it does not hold the key.</p>
+
+<p class="filename">Code/Lesson_8_code/security.py</p>
+<pre class="wide"><code><span class="c-key">def</span> <span class="c-fn">_sign</span>(message: <span class="c-key">str</span>) -&gt; <span class="c-key">str</span>:
+    signature = hmac.new(
+        settings.secret_key.encode(<span class="c-str">"utf-8"</span>),
+        message.encode(<span class="c-str">"ascii"</span>),
+        hashlib.sha256,
+    ).digest()
+    <span class="c-key">return</span> b64url_encode(signature)
+
+<span class="c-key">def</span> <span class="c-fn">verify_token</span>(token: <span class="c-key">str</span>) -&gt; <span class="c-key">dict</span>:
+    part1, part2, part3 = token.split(<span class="c-str">"."</span>)
+
+    <span class="c-com"># compare_digest, not ==. A plain comparison stops at the first</span>
+    <span class="c-com"># wrong byte, and the time it takes leaks the correct prefix.</span>
+    <span class="c-key">if not</span> hmac.compare_digest(_sign(<span class="c-str">f"{part1}.{part2}"</span>), part3):
+        <span class="c-key">raise</span> TokenError(<span class="c-str">"bad signature"</span>)
+
+    header = json.loads(b64url_decode(part1))
+    payload = json.loads(b64url_decode(part2))
+
+    <span class="c-com"># Read the algorithm from your own list, never from the token.</span>
+    <span class="c-key">if</span> header.get(<span class="c-str">"alg"</span>) != <span class="c-str">"HS256"</span>:
+        <span class="c-key">raise</span> TokenError(<span class="c-str">"unexpected algorithm"</span>)
+
+    <span class="c-key">if</span> payload.get(<span class="c-str">"exp"</span>, <span class="c-num">0</span>) &lt; time.time():
+        <span class="c-key">raise</span> TokenError(<span class="c-str">"expired"</span>)
+
+    <span class="c-key">return</span> payload</code></pre>
+
+<p class="filename">Code/js/Lesson_8_code/src/security.ts</p>
+<pre class="wide"><code><span class="c-key">function</span> <span class="c-fn">sign</span>(message: <span class="c-key">string</span>): <span class="c-key">string</span> {
+  <span class="c-key">return</span> crypto.<span class="c-fn">createHmac</span>(<span class="c-str">'sha256'</span>, config.secretKey).<span class="c-fn">update</span>(message).<span class="c-fn">digest</span>(<span class="c-str">'base64url'</span>);
+}
+
+<span class="c-key">export function</span> <span class="c-fn">verifyToken</span>(token: <span class="c-key">string</span>): Claims {
+  <span class="c-key">const</span> parts = token.<span class="c-fn">split</span>(<span class="c-str">'.'</span>);
+  <span class="c-key">if</span> (parts.length !== <span class="c-num">3</span>) <span class="c-key">throw new</span> <span class="c-fn">TokenError</span>(<span class="c-str">'a token has three parts'</span>);
+  <span class="c-key">const</span> [part1, part2, part3] = parts <span class="c-key">as</span> [<span class="c-key">string</span>, <span class="c-key">string</span>, <span class="c-key">string</span>];
+
+  <span class="c-com">// timingSafeEqual, not ===. Same reason as compare_digest.</span>
+  <span class="c-key">const</span> expected = Buffer.<span class="c-fn">from</span>(<span class="c-fn">sign</span>(<span class="c-str">`${part1}.${part2}`</span>));
+  <span class="c-key">const</span> given = Buffer.<span class="c-fn">from</span>(part3);
+  <span class="c-key">if</span> (expected.length !== given.length || !crypto.<span class="c-fn">timingSafeEqual</span>(expected, given)) {
+    <span class="c-key">throw new</span> <span class="c-fn">TokenError</span>(<span class="c-str">'bad signature'</span>);
+  }
+  <span class="c-com">// … the same algorithm check and the same expiry check follow</span>
+}</code></pre>
+
+<p>Three attacks now fail. The program prints each one.</p>
+
+<pre class="wide"><code>=== Attack 2 · edit a signed token ================================
+the server answers    : TokenError: bad signature
+
+=== Attack 3 · tell the server that there is no algorithm =========
+Mallory sends         : eyJhbGciOiAibm9uZSIsICJ0eXAiOiAiSldUIn0.eyJzdWIiOiAiMSIs...
+a verifier that trusts the header reads: {'sub': '1', 'email': 'ada@example.com'}
+our verifier answers  : TokenError: bad signature
+
+=== Attack 4 · use a token after it expires =======================
+now                   : mallory@example.com
+1.1 seconds later     : TokenError: expired</code></pre>
+
+<p>Attack 3 deserves a sentence of its own. The header of a JWT names the
+algorithm. A verifier that reads that field and obeys it accepts
+<code>"alg": "none"</code>, and then every token is valid. RFC 8725 states the
+rule: the server holds the list of algorithms that it accepts. Our verifier
+checks the signature first, so the forged header never reaches a decision.</p>
+
+<div class="note note--warn">
+  <span class="note-label">A token is not a secret box</span>
+  <p>Anybody can read the claims. No key is needed for that, because base64url
+  is an encoding. A signature proves who wrote the claims. It does not hide
+  them. Never put a secret, a password, or a private note in a token.</p>
+</div>
+
+<h3>You already wrote the library</h3>
+
+<p>Run <code>python security.py</code> and <code>npm run security</code>. Each
+one builds a token by hand, builds the same token with the library, and
+compares.</p>
+
+<pre class="wide"><code>$ python security.py
+hand written: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3IiwiZW1haWwiOiJhZGFAZXhhbXBsZS5jb20i...
+PyJWT       : eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3IiwiZW1haWwiOiJhZGFAZXhhbXBsZS5jb20i...
+same bytes  : True
+my verifier reads PyJWT's token : ada@example.com
+PyJWT reads my token            : ada@example.com
+
+$ npm run security
+same bytes  : true</code></pre>
+
+<p>The token that you built by hand is a JWT. RFC 7519 describes exactly the
+three parts that you produced. Use the library in production, because it also
+handles the claims that you did not write. Now you know what it does.</p>
+
+<h2>Step 5 · The other answer: a session</h2>
+
+<p>A token carries the facts. A session carries a pointer. The server stores
+the facts in a row, and the client holds the id of that row.</p>
+
+<p class="filename">migrations/0006_create_sessions.sql</p>
+<pre class="wide"><code><span class="c-key">CREATE TABLE</span> sessions (
+    id          <span class="c-key">TEXT</span>        <span class="c-key">PRIMARY KEY</span>,   <span class="c-com">-- 32 random bytes, hex encoded</span>
+    user_id     <span class="c-key">INTEGER</span>     <span class="c-key">NOT NULL</span> <span class="c-key">REFERENCES</span> users (id) <span class="c-key">ON DELETE CASCADE</span>,
+    created_at  <span class="c-key">TIMESTAMPTZ</span> <span class="c-key">NOT NULL</span> <span class="c-key">DEFAULT</span> now(),
+    expires_at  <span class="c-key">TIMESTAMPTZ</span> <span class="c-key">NOT NULL</span>
+);</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">Use the cryptographic generator</span>
+  <p>Generate the id with <code>secrets.token_hex(32)</code> in Python and
+  <code>crypto.randomBytes(32)</code> in Node. Never use
+  <code>random</code> or <code>Math.random()</code>. Those generators are
+  predictable, and a predictable session id is a login for a stranger.</p>
+</div>
+
+<p>The login route writes the row and sets the cookie. Read the four flags.</p>
+
+<p class="filename">Code/Lesson_8_code/main.py</p>
+<pre class="wide"><code>response.set_cookie(
+    SESSION_COOKIE,
+    session_id,
+    max_age=settings.session_ttl_minutes * <span class="c-num">60</span>,
+    httponly=<span class="c-key">True</span>,                    <span class="c-com"># JavaScript cannot read it</span>
+    samesite=<span class="c-str">"lax"</span>,                   <span class="c-com"># it does not travel with a cross-site POST</span>
+    secure=settings.cookie_secure,    <span class="c-com"># HTTPS only, outside development</span>
+    path=<span class="c-str">"/"</span>,
+)</code></pre>
+
+<p class="filename">Code/js/Lesson_8_code/src/server.ts</p>
+<pre class="wide"><code>res.<span class="c-fn">cookie</span>(SESSION_COOKIE, sessionId, {
+  maxAge: config.sessionTtlSeconds * <span class="c-num">1000</span>,
+  httpOnly: <span class="c-key">true</span>,
+  sameSite: <span class="c-str">'lax'</span>,
+  secure: config.cookieSecure,
+  path: <span class="c-str">'/'</span>,
+});</code></pre>
+
+<table>
+  <thead>
+    <tr><th>Flag</th><th>What it stops</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>HttpOnly</code></td>
+      <td>A script on your page reads <code>document.cookie</code> and posts
+      the session to an attacker. With this flag, the script sees nothing.</td>
+    </tr>
+    <tr>
+      <td><code>SameSite=Lax</code></td>
+      <td>Another site posts a form to your API and the browser attaches your
+      cookie. This is CSRF. Lax keeps the cookie off cross-site writes.</td>
+    </tr>
+    <tr>
+      <td><code>Secure</code></td>
+      <td>The cookie travels over plain HTTP, where anybody on the network
+      reads it.</td>
+    </tr>
+    <tr>
+      <td><code>Max-Age</code></td>
+      <td>A stolen cookie works forever. The browser drops it at the deadline,
+      and the <code>expires_at</code> column enforces the same deadline on the
+      server.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Sign in and look at the response header.</p>
+
+<pre class="wide"><code>$ curl -s -c jar.txt -D - -o /dev/null -X POST localhost:8008/auth/login \
+    -H 'content-type: application/json' \
+    -d '{"email":"ada@example.com","password":"correct horse battery staple"}'
+HTTP/1.1 200 OK
+set-cookie: session=bc2a024b4d07ee467d5d83497e9461d86ee26fa3ee3634c08b9797d213f56ad9; HttpOnly; Max-Age=604800; Path=/; SameSite=lax
+
+$ curl -s -b jar.txt localhost:8008/auth/me
+{"id":1,"email":"ada@example.com"}
+
+$ curl -s -D - localhost:8008/auth/me | grep -i -E 'www-authenticate|detail'
+www-authenticate: Bearer
+{"detail":"not signed in"}</code></pre>
+
+<p>The cookie holds 64 hex characters and nothing else. No name, no role, no
+expiry that the client controls. Every fact stays on the server side.</p>
+
+<h2>Step 6 · The measurement that decides between them</h2>
+
+<p>People argue about sessions and tokens. One command settles most of the
+argument. Sign in twice — once for a cookie, once for a token — then log
+out, then use both credentials again.</p>
+
+<pre class="wide"><code>cookie before logout : 200
+token  before logout : 200
+POST /auth/logout    : 204
+cookie after  logout : 401
+token  after  logout : 200</code></pre>
+
+<p>The TypeScript server prints the same five lines. The result is not a bug.
+It is the definition of a signed token. The server keeps no record of it, so
+there is nothing to delete. The token stays valid until <code>exp</code>.</p>
+
+<div class="note note--key">
+  <span class="note-label">The trade in one line</span>
+  <p>A session costs one database read for each request and gives you an
+  instant logout. A token costs no read and gives you no logout.</p>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Question</th>
+      <th>Session cookie</th>
+      <th>Signed token</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Where is the state?</td><td>A row in your database</td><td>In the client</td></tr>
+    <tr><td>Cost for each request</td><td>One indexed <code>SELECT</code></td><td>One HMAC, no I/O</td></tr>
+    <tr><td>Logout now</td><td>Yes. <code>DELETE</code> the row</td><td>No. Wait for <code>exp</code></td></tr>
+    <tr><td>Ban a user now</td><td>Yes, with one <code>DELETE</code></td><td>No, unless you add a list to check</td></tr>
+    <tr><td>Works across services</td><td>Only where the database reaches</td><td>Anywhere that holds the key</td></tr>
+    <tr><td>Browser attaches it</td><td>Yes, automatically</td><td>No. Your code sends the header</td></tr>
+    <tr><td>Needs CSRF care</td><td>Yes, because the browser attaches it</td><td>No, for the same reason reversed</td></tr>
+    <tr><td>Size on the wire</td><td>About 64 bytes</td><td>200 bytes and up</td></tr>
+  </tbody>
+</table>
+
+<p>Choose from the requirement, not from fashion.</p>
+
+<ol class="steps">
+  <li><strong>A browser application with one backend.</strong> Use a session
+  cookie. You get logout, and the browser does the work.</li>
+
+  <li><strong>A mobile client, or a script, or a service that calls another
+  service.</strong> Use a token. There is no cookie jar, and the caller may
+  not reach your database.</li>
+
+  <li><strong>Both, which is the common answer.</strong> Issue a short token,
+  15 minutes or less, and keep a long refresh session in the database. The
+  short life bounds the damage; the row gives you the withdrawal.</li>
+</ol>
+
+<p>A short expiry is the only defence that a plain token has. That is why
+<code>TOKEN_TTL_MINUTES</code> defaults to 15 and
+<code>SESSION_TTL_MINUTES</code> defaults to a week.</p>
+
+<h2>Step 7 · Close the clock channel</h2>
+
+<p>Step 3 gave the same message for an unknown email and for a wrong password.
+The message is one channel. Now measure the other one. Two routes exist for
+this measurement, and both are wrong on purpose.</p>
+
+<p>Python, seven requests for each cell, mean:</p>
+
+<table>
+  <thead>
+    <tr><th>Route</th><th>Unknown email</th><th>Known email, wrong password</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>/auth/login-leaky</code></td><td>6.8 ms</td><td>190.6 ms</td></tr>
+    <tr><td><code>/auth/login</code></td><td>186.6 ms</td><td>187.3 ms</td></tr>
+  </tbody>
+</table>
+
+<p>TypeScript, the same measurement:</p>
+
+<table>
+  <thead>
+    <tr><th>Route</th><th>Unknown email</th><th>Known email, wrong password</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>/auth/login-leaky</code></td><td>13.6 ms</td><td>174.8 ms</td></tr>
+    <tr><td><code>/auth/login</code></td><td>168.6 ms</td><td>168.8 ms</td></tr>
+  </tbody>
+</table>
+
+<p>The leaky route answers an unknown email 28 times faster. An attacker sends
+a list of ten thousand addresses, sorts by response time, and keeps the slow
+ones. Those are your users.</p>
+
+<p>The fix is three lines. When the email does not exist, hash a dummy
+password anyway, then give the same answer.</p>
+
+<p class="filename">Code/Lesson_8_code/security.py and main.py</p>
+<pre class="wide"><code>DUMMY_HASH = hash_password(<span class="c-str">"this password belongs to nobody"</span>)
+
+<span class="c-key">def</span> <span class="c-fn">waste_time_like_a_real_login</span>() -&gt; <span class="c-key">None</span>:
+    verify_password(<span class="c-str">"wrong"</span>, DUMMY_HASH)
+
+<span class="c-com"># in the login route</span>
+<span class="c-key">if</span> row <span class="c-key">is None</span>:
+    <span class="c-key">await</span> run_in_threadpool(waste_time_like_a_real_login)
+    <span class="c-key">raise</span> HTTPException(status_code=<span class="c-num">401</span>, detail=<span class="c-str">"wrong email or password"</span>)</code></pre>
+
+<p>The measured gap falls to 0.7 ms in Python and 0.2 ms in TypeScript. Both
+sit inside the noise of the network.</p>
+
+<h2>Step 8 · The 250 ms that stops your whole server</h2>
+
+<p>bcrypt is slow on purpose. That is the feature. It is also a problem,
+because both of your servers run one thread for application code.</p>
+
+<p>Lesson 5 measured a query. Lesson 6 measured a counter. Measure this one
+the same way. Send ten logins at the same time, and ask <code>/healthz</code>
+twenty times while they run. <code>/healthz</code> costs one
+<code>SELECT 1</code>.</p>
+
+<pre class="wide"><code>$ python event_loop_block.py
+/healthz with nothing else running : 3.5 ms
+
+login route               logins total  /healthz p50  /healthz max
+/auth/login-blocking           1752 ms        4.4 ms     1727.8 ms
+/auth/login                     227 ms        3.9 ms       13.7 ms
+
+$ npm run block
+/healthz with nothing else running : 3.3 ms
+
+login route               logins total  /healthz p50  /healthz max
+/auth/login-blocking           1567 ms        3.2 ms     1192.8 ms
+/auth/login                     488 ms        2.6 ms        5.7 ms</code></pre>
+
+<p>Read the last column. A health check that costs 3 ms took 1.7 seconds in
+Python and 1.2 seconds in TypeScript. Nothing was wrong with the health check.
+Ten password hashes held the thread, and every other request waited in line.
+A platform that probes the health path every five seconds marks that instance
+unhealthy and restarts it, exactly when your users try to sign in.</p>
+
+<p>Read the second column as well. The blocking route also serialises the
+logins. One thread runs one hash at a time.</p>
+
+<p>The fix has a different name in each language and the same shape.</p>
+
+<table>
+  <thead>
+    <tr><th>Language</th><th>Wrong</th><th>Right</th><th>Where the work goes</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Python</td>
+      <td><code>verify_password(...)</code> in an <code>async def</code></td>
+      <td><code>await run_in_threadpool(verify_password, ...)</code></td>
+      <td>Starlette's thread pool</td>
+    </tr>
+    <tr>
+      <td>TypeScript</td>
+      <td><code>bcrypt.compareSync(...)</code></td>
+      <td><code>await bcrypt.compare(...)</code></td>
+      <td>The libuv thread pool</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note note--ok">
+  <span class="note-label">A rule you can carry to any language</span>
+  <p>Find every function that costs more than a few milliseconds of CPU and
+  runs on the request path. Move each one off the event loop. Password
+  hashing, image work, and PDF generation are the usual three.</p>
+</div>
+
+<h2>Step 9 · Protect the routes</h2>
+
+<p>Both frameworks answer the same question — is this request signed in? —
+at a different place in the file.</p>
+
+<p class="filename">Code/Lesson_8_code/main.py — FastAPI uses a dependency</p>
+<pre class="wide"><code><span class="c-key">async def</span> <span class="c-fn">current_user</span>(
+    session: <span class="c-key">str</span> | <span class="c-key">None</span> = Cookie(default=<span class="c-key">None</span>, alias=SESSION_COOKIE),
+    authorization: <span class="c-key">str</span> | <span class="c-key">None</span> = Header(default=<span class="c-key">None</span>),
+) -&gt; User:
+    <span class="c-com"># the cookie wins, then the bearer token, then 401</span>
+    ...
+
+<span class="c-fn">@app.post</span>(<span class="c-str">"/bookmarks"</span>, status_code=<span class="c-num">201</span>)
+<span class="c-key">async def</span> <span class="c-fn">create_bookmark</span>(bookmark: BookmarkCreate, user: User = Depends(current_user)):
+    ...</code></pre>
+
+<p class="filename">Code/js/Lesson_8_code/src/server.ts — Express uses middleware</p>
+<pre class="wide"><code><span class="c-key">async function</span> <span class="c-fn">requireUser</span>(req: Request, res: Response, next: NextFunction) {
+  <span class="c-com">// the cookie wins, then the bearer token, then 401</span>
+}
+
+app.<span class="c-fn">post</span>(<span class="c-str">'/bookmarks'</span>, requireUser, <span class="c-fn">route</span>(<span class="c-key">async</span> (req, res) =&gt; {
+  ...
+}));</code></pre>
+
+<p>The dependency returns a value, and the handler receives it as an argument.
+The middleware attaches the value to the request and calls
+<code>next()</code>. Both stop the request with a 401 before the handler runs.
+Pick the seam that your framework gives you, and use only that one.</p>
+
+<h3>Authentication, then authorisation</h3>
+
+<p>Migration 0007 adds a <code>user_id</code> column to <code>bookmarks</code>.
+The delete route now asks two questions in order.</p>
+
+<pre class="wide"><code>$ # nobody
+$ curl -X POST localhost:8008/bookmarks -d '{"url":"https://ada.example/1"}'
+{"detail":"not signed in"}
+HTTP 401
+
+$ # Ada, signed in
+{"id":200001,"url":"https://ada.example/1","title":"Ada note","visit_count":0,"user_id":1,"tags":["auth"]}
+HTTP 201
+
+$ # Mallory deletes Ada's bookmark
+{"detail":"not your bookmark"}
+HTTP 403
+
+$ # Ada deletes her own
+HTTP 204
+
+$ # Ada deletes a row that does not exist
+{"detail":"Bookmark not found"}
+HTTP 404</code></pre>
+
+<p class="sidenote">A 403 tells the caller that the row exists. Sometimes that
+fact is itself private, and then a 404 is the better answer for both cases.
+Decide this for each resource, and write the decision in the code.</p>
+
+<h3>One difference between the two stacks that is not about auth</h3>
+
+<p>Read the Python row and the TypeScript row for the same bookmark.</p>
+
+<pre class="wide"><code>Python     {"id":200001,...,"visit_count":0,"user_id":1}
+TypeScript {"id":"200002",...,"visit_count":"0","user_id":4}</code></pre>
+
+<p>The <code>bookmarks.id</code> column is a <code>bigint</code>. A JavaScript
+number holds 53 bits of integer, and a <code>bigint</code> holds 64, so
+<code>node-postgres</code> returns the value as a string. It protects
+precision. The <code>users.id</code> column is an <code>integer</code>, so it
+arrives as a number. psycopg returns both as Python integers, because Python
+has no such limit. Check the type at the edge of each service. Do not assume
+that two clients of one database agree.</p>
+
+<h2>Step 10 · What this lesson does not give you</h2>
+
+<p>Say these limits in an interview. They show that you know the shape of the
+subject.</p>
+
+<ol class="steps">
+  <li><strong>No rate limit.</strong> An attacker may try passwords as fast as
+  your server answers. Add a limit for each IP address and for each account,
+  and add a lock after a number of failures.</li>
+
+  <li><strong>No password reset.</strong> The reset flow is a second
+  authentication system, and most breaches enter through it.</li>
+
+  <li><strong>No CSRF token.</strong> <code>SameSite=Lax</code> covers the
+  common case. A form that posts across sites needs a token as well.</li>
+
+  <li><strong>No refresh tokens, no OAuth, no multi-factor.</strong> Each one
+  is a lesson.</li>
+
+  <li><strong>No HTTPS on your laptop.</strong> The <code>Secure</code> flag
+  is off in development and on everywhere else. Every rule in this lesson
+  assumes TLS. Lesson 7 gave you that on the platform.</li>
+</ol>
+
+<h2>Practice</h2>
+
+<p>Do these in order. Steps 1 to 5 use Python. Steps 6 to 8 repeat the work in
+TypeScript, and they go faster.</p>
+
+<ol class="steps">
+  <li><strong>Run the three programs before you read their output again.</strong>
+  <code>python hash_speed.py</code>, <code>python forge_token.py</code>,
+  <code>python security.py</code>. Write down your own numbers. They differ
+  from mine, and the ratios do not.</li>
+
+  <li><strong>Apply the migrations and register an account.</strong>
+  <code>python migrate.py</code>, then <code>uvicorn main:app --port 8008</code>,
+  then register with a capital letter in the email. Read the row with
+  <code>psql</code>. Confirm that the email is lower case and that no column
+  holds your password.</li>
+
+  <li><strong>Prove the logout difference yourself.</strong> Get a cookie and
+  a token for the same account. Call <code>/auth/logout</code>. Call
+  <code>/auth/me</code> with each credential. Explain the two status codes in
+  one sentence each.</li>
+
+  <li><strong>Measure the timing leak.</strong> Send seven requests to
+  <code>/auth/login-leaky</code> with an unknown email, then seven with a real
+  one. Repeat against <code>/auth/login</code>. Then delete both
+  <code>login-leaky</code> routes from your project.</li>
+
+  <li><strong>Measure the blocked event loop.</strong> Run
+  <code>python event_loop_block.py</code>. Then delete both
+  <code>login-blocking</code> routes.</li>
+
+  <li><strong>Bring up the TypeScript project.</strong> <code>npm install</code>,
+  <code>npm run migrate</code>, <code>npm start</code>. The migration runner
+  must print <code>skip</code> seven times, because the Python runner already
+  applied them.</li>
+
+  <li><strong>Run the same requests against port 8009.</strong> Register, log
+  in, create a bookmark, and try to delete somebody else's. Confirm the same
+  five status codes: 201, 409, 401, 403, 204.</li>
+
+  <li><strong>Break the type check on purpose.</strong> Change
+  <code>req.user!.id</code> to <code>req.user!.email</code> in the delete
+  route. Run <code>npm start</code> and watch the server accept the file. Then
+  run <code>npm run typecheck</code> and watch <code>tsc</code> report the
+  error. Explain in one sentence why the running server did not care.</li>
+
+  <li><strong>Write it up.</strong> Add an "Authentication" section to
+  <code>Code/Lesson_7_code/README.md</code> with three rows: the hash and its
+  cost, the credential that you chose and why, and the blocked-event-loop
+  measurement. That table is interview material.</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<p>Answer before you scroll back. A wrong answer now is worth more than a
+right answer that came from a re-read.</p>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Your leaked users table stores SHA-256 hashes with no salt. Two rows hold the same 64 characters. What does the attacker learn?",
+    "options": [
+      "Those two accounts share one password, so cracking one opens both",
+      "Nothing, because a hash cannot be reversed",
+      "The length of the password that both users chose",
+      "That the two rows were written in the same transaction"
+    ],
+    "answer": 0,
+    "why": "A hash is a function: equal inputs give equal outputs. The salt exists to break that equality. bcrypt stores a per-user salt inside the hash string, so the same password produces two unrelated rows." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Measured on one core: SHA-256 does about 6,000,000 guesses per second and bcrypt at cost 12 does about 6. What is the correct conclusion?",
+    "options": [
+      "A slow hash raises the price of every guess by about a million times",
+      "bcrypt cannot be cracked, so any password is safe with it",
+      "SHA-256 is broken and must never be used for anything",
+      "The ratio only holds on this laptop and means nothing elsewhere"
+    ],
+    "answer": 0,
+    "why": "The absolute rates move with the hardware. The ratio does not. And bcrypt did not save the five demo accounts, because every one of their passwords was on a 64-word list." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "A JWT has three parts. Name them in order, and say which one the client cannot produce.",
+    "answer": "header, payload, signature; the client cannot produce the signature",
+    "accept": ["header payload signature", "header, payload, signature", "signature"],
+    "why": "The header and the payload are base64url of JSON, and anybody can read or write those. The signature needs SECRET_KEY, which only the server holds." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "A request arrives with a token whose header says {\"alg\": \"none\"} and whose third part is empty. What must your verifier do?",
+    "options": [
+      "Reject it, because the accepted algorithm list belongs to the server",
+      "Accept it, because the header states the sender's intention",
+      "Accept it only when the payload has not expired",
+      "Reject it only when the payload claims an administrator role"
+    ],
+    "answer": 0,
+    "why": "RFC 8725 states the rule. A verifier that reads alg out of the token accepts alg none and every token becomes valid. Check the signature against your own algorithm first." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "You log out, then send the old session cookie and the old JWT to /auth/me. The measured answers were 401 and 200. Why?",
+    "options": [
+      "The logout deleted the session row; nothing exists to delete for a signed token",
+      "The JWT library caches the last successful verification for 15 minutes",
+      "The cookie expired at the same moment by coincidence",
+      "The token belongs to a different user, so the route skipped the check"
+    ],
+    "answer": 0,
+    "why": "This is the definition of a signed token, not a bug. The server keeps no record of it, so it stays valid until exp. That single fact decides most session-against-token arguments." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "/auth/login-leaky answered an unknown email in 6.8 ms and a wrong password in 190.6 ms. What is the defect, and what is the fix?",
+    "options": [
+      "The clock lists your users; hash a dummy password when the email is unknown",
+      "The route is too slow; cache the user row to make both answers fast",
+      "The error messages differ; make both return the same JSON body",
+      "The database is missing an index on users.email"
+    ],
+    "answer": 0,
+    "why": "Both routes already returned the same message. The response time was the second channel. One dummy bcrypt verification on the unknown-email path closed the gap to 0.7 ms." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Ten concurrent logins pushed an unrelated /healthz from 3.5 ms to 1727.8 ms. What happened?",
+    "options": [
+      "bcrypt ran on the event loop, so every other request waited for the thread",
+      "The connection pool ran out of connections and queued the health check",
+      "PostgreSQL locked the users table while it read the password hash",
+      "The health check itself became slow under load"
+    ],
+    "answer": 0,
+    "why": "Both servers run one thread for application code. 250 ms of CPU in an async handler blocks everything. run_in_threadpool in Python and bcrypt.compare in Node move the work to a pool: the same test then peaked at 13.7 ms and 5.7 ms." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "Which status code means 'I do not know who you are', and which means 'I know, and the answer is no'?",
+    "answer": "401 for unknown, 403 for known and refused",
+    "accept": ["401 403", "401 and 403", "401, 403"],
+    "why": "401 is about authentication and carries WWW-Authenticate. 403 is about authorisation, and a second attempt with the same credential fails again. The delete route uses 401, 403, and 404 for three different situations." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "A colleague says: 'JWTs are stateless, so they scale better. Use them for our browser application.' Answer them.",
+    "answer": "Agree with the fact, then name the cost. A JWT saves one indexed SELECT for each request, which is a few hundred microseconds. In exchange there is no logout, no ban, and no password-change invalidation, because the server keeps no record of the token. For a browser application with one backend the session cookie is the better default: the browser attaches it, HttpOnly keeps scripts away from it, and a DELETE ends it everywhere at once. If we need tokens for a mobile client later, issue a short token of 15 minutes and keep a refresh session row in the database. That keeps the withdrawal and bounds the damage. Also note that a database read is not the bottleneck: bcrypt at login costs about 190 ms, and the session lookup costs about 1 ms.",
+    "why": "The strong answer accepts the true part, prices the trade in measured numbers, and gives the hybrid that most production systems use." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<div class="source">
+  <h4>Primary sources</h4>
+
+  <p id="src-owasp-storage"><a href="https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html">OWASP
+  — Password Storage Cheat Sheet</a></p>
+  <p><strong>Read this one first, and read all of it.</strong> It is the
+  authority for Step 1: Argon2id, scrypt, and bcrypt, with the parameters that
+  each one needs, and the 72-byte limit of bcrypt. Verified 2026-08-10.</p>
+
+  <p id="src-owasp-session"><a href="https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html">OWASP
+  — Session Management Cheat Sheet</a></p>
+  <p>Read the sections "Session ID Properties" and "Cookies". They state the
+  64-bit minimum for entropy, and the reason for each flag in the Step 5
+  table. Verified 2026-08-10.</p>
+
+  <p id="src-owasp-auth"><a href="https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html">OWASP
+  — Authentication Cheat Sheet</a></p>
+  <p>The source of the identical error message in Step 3, and of the rate
+  limits in Step 10. Verified 2026-08-10.</p>
+
+  <p id="src-rfc7519"><a href="https://www.rfc-editor.org/rfc/rfc7519">RFC 7519
+  — JSON Web Token</a></p>
+  <p>Read section 4.1, the registered claim names. You used four of them:
+  <code>sub</code>, <code>exp</code>, <code>iat</code>, and your own
+  <code>email</code>. Verified 2026-08-10.</p>
+
+  <p id="src-rfc8725"><a href="https://www.rfc-editor.org/rfc/rfc8725">RFC 8725
+  — JSON Web Token Best Current Practices</a></p>
+  <p>Short and direct. Section 3.1 is the rule that Attack 3 breaks. Read
+  sections 2 and 3 in full before you ship a token. Verified 2026-08-10.</p>
+
+  <p id="src-rfc6265"><a href="https://www.rfc-editor.org/rfc/rfc6265">RFC 6265
+  — HTTP State Management Mechanism</a></p>
+  <p>The definition of <code>Set-Cookie</code>. Use it as a lookup.
+  <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie">MDN's
+  page on the same header</a> is the faster read, and it carries the current
+  <code>SameSite</code> behaviour. Both verified 2026-08-10.</p>
+
+  <p id="src-mdn-auth"><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Authentication">MDN
+  — HTTP authentication</a></p>
+  <p>The <code>WWW-Authenticate</code> header and the difference between 401
+  and 403, with the RFC 9110 wording. Verified 2026-08-10.</p>
+
+  <p id="src-fastapi-security"><a href="https://fastapi.tiangolo.com/tutorial/security/">FastAPI
+  — Security</a></p>
+  <p>Read it after this lesson, not before. It shows
+  <code>OAuth2PasswordBearer</code>, which produces the same token that you
+  built by hand in Step 4. Verified 2026-08-10.</p>
+
+  <p id="src-node-crypto"><a href="https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b">Node.js
+  — crypto.timingSafeEqual</a></p>
+  <p>One paragraph, and it states why the lengths must match before you call
+  it. The Python equivalent is
+  <a href="https://docs.python.org/3/library/hmac.html">hmac.compare_digest</a>.
+  Both verified 2026-08-10.</p>
+</div>
+
+<h2>Where this goes</h2>
+
+<p>You now have accounts, two credentials, and an owner column. The project
+answers 401, 403, and 404 for three different situations, and each one is
+measured, not assumed.</p>
+
+<p>Lesson 9 is testing and CI. Authentication is the right thing to test
+first, because the failures are quiet: a route that forgets
+<code>Depends(current_user)</code> looks fine in a browser and hands your data
+to anybody. A test that calls the route with no credential and expects a 401
+catches that in one second, on every push.</p>
+
+<div class="ask">
+  <p><strong>Ask me things.</strong> Four questions are worth asking now. When
+  does Argon2id beat bcrypt, and what parameters does it need? How do you
+  revoke one JWT before it expires, and what does that cost? Where does a
+  refresh token live in a browser, given that <code>localStorage</code> is
+  readable by any script? And how do you test a route that needs a login,
+  without a real password hash in every test?</p>
+  <p>One thing I want to know. Did the two languages help or crowd the page?
+  This is the first lesson in both, and the format is easy to change: I can
+  keep them side by side, or split each lesson into a Python half and a
+  TypeScript half.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0007-deployment.html">← Lesson 07: Deployment</a>
+  <span>Lesson 09: Testing and CI →</span>
+</nav>
+
+</main>
+</body>
+</html>

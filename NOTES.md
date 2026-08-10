@@ -159,12 +159,57 @@ Scratchpad for teaching preferences and working state. Not a journal — see
   PID 1, watching files that never change. Verified through `/proc`, 66.45 MiB
   resident for one application.
 
-  **Next steps:** The learner has read Lesson 7. We are waiting for their deploy URL
-  to update `Code/Lesson_7_code/README.md`.
+  **Outcome:** the learner did not deploy. Render asks for a credit card, even
+  on the free plan. `Code/Lesson_7_code/README.md` now states that the service
+  is container-ready and proved with Docker Compose, and that the cloud deploy
+  is skipped. Do not ask for a URL again.
+
+- **Session 8 (2026-08-10):** Shipped Lesson 0008 (authentication — password
+  hashing, sessions, JWTs, and the two questions 401 and 403). **First
+  dual-language lesson.** One HTML file teaches Python and TypeScript side by
+  side; there is no `lessons/js/0008`. Code in `Code/Lesson_8_code/`
+  (`config.py`, `security.py`, `main.py`, `hash_speed.py`, `forge_token.py`,
+  `event_loop_block.py`, migrations 0005–0007, `wordlist.txt`) and
+  `Code/js/Lesson_8_code/` (`src/config.ts`, `src/security.ts`,
+  `src/server.ts`, `src/migrate.ts`, and the three twin demos). Also created
+  `lesson_plan.md`. Glossary +5 (authentication, authorisation, JSON Web
+  Token, salt, session); RESOURCES gained an "Authentication & TypeScript"
+  section with nine entries, fetched and verified 2026-08-10. Everything ran
+  against PostgreSQL 17.10 (Docker), Python 3.12 with bcrypt 5.0.0 and
+  PyJWT 2.13.0, and Node 24.19 with bcrypt 6, express 4.21, zod 4, and
+  TypeScript 5.9. `npx tsc --noEmit` passes.
+  **Format call:** Node 22.6+ runs `.ts` files directly, so the TypeScript
+  project has no build step and no bundler. `npm run typecheck` is the only
+  thing that checks types, and practice step 8 makes the learner prove it.
+  **What worked (reuse):** three observable failures, each measured.
+  (a) The SHA-256 table falls to a 64-word list in 0.03 ms; bcrypt costs the
+  same attacker 27.3 s and *still loses all five accounts*. The second half of
+  that sentence is the part that teaches. (b) `forge_token.py` edits an
+  unsigned token and the server hands over an administrator. (c) Ten
+  concurrent logins push `/healthz` from 3.5 ms to 1727.8 ms in Python and
+  1192.8 ms in TypeScript — Lesson 5's measurement discipline applied to CPU
+  instead of I/O.
+  **What worked (reuse):** the logout table. `cookie after logout: 401`,
+  `token after logout: 200`. Five lines end an argument that usually takes a
+  blog post.
+  **What worked (reuse):** the deliberately wrong route kept in the tree, from
+  Lesson 7's `naive/`. `/auth/login-leaky` and `/auth/login-blocking` exist to
+  be measured and then deleted, and practice steps 4 and 5 delete them.
+  **Cross-language finding worth keeping:** the hand-written HMAC token and
+  the library token are byte-identical in *both* languages. That kills the
+  "the library does something magic" belief in one line of output.
+  **Hazard:** `node-postgres` returns `bigint` as a string, so
+  `bookmarks.id` arrives as `"200002"` in TypeScript and `200001` in Python,
+  while `users.id` (an `integer`) arrives as a number in both. It is in the
+  lesson as a sidenote. Expect it to bite in Lesson 9's tests.
+  **Open:** ask whether two languages in one page helped or crowded it. The
+  split into two files is still available and cheap.
 
 ## Curriculum spine (working plan, revise freely)
 
-The roadmap in `ROADMAP.md` is a checklist, not an order. Working sequence:
+`lesson_plan.md` now holds the order of the course, and it is the file to
+update first. This list is the short version. `ROADMAP.md` is a scope
+checklist, not an order.
 
 1. ~~HTTP from the socket up~~ ✓
 2. ~~A server without a framework~~ ✓
@@ -175,16 +220,20 @@ The roadmap in `ROADMAP.md` is a checklist, not an order. Working sequence:
    UPDATE`, then SQLAlchemy 2.x over the same schema with `echo=True`~~ ✓
 7. ~~Deployment: twelve-factor config, Docker, a managed database, a release
    step, a health check, and the CV README~~ ✓
-8. **Language decision made:** The learner requested both. From Lesson 8 onward, every lesson MUST teach both Python/FastAPI and TypeScript/Node.js side-by-side.
-9. Auth: sessions vs JWT, password hashing (in both Python and TS).
-10. Testing + CI, then caching, observability, scaling (in both Python and TS).
+8. ~~Authentication: password hashing, sessions against JWTs, 401 against
+   403 — the first lesson in Python **and** TypeScript~~ ✓
+9. Testing + CI: pytest with httpx, vitest with supertest, a real PostgreSQL
+   container, then GitHub Actions. Test the auth routes first
+10. Caching, then observability, then scaling (all in both languages)
+
 ## Open threads
 
-- **Language decision resolved:** The learner chose to pursue both Python and TypeScript simultaneously. Future lessons will cover both stacks.
-- **Deployment verification.** Awaiting the live URL from the learner to update their README.
-- Find a code-review venue where the learner can get real feedback on project code.
-  (Candidate: Code Review Stack Exchange — see RESOURCES.md.)
-- `GLOSSARY.md` now has twenty-one terms. Next candidates: dependency injection,
+- **Language decision resolved.** Both languages, one lesson. From Lesson 8
+  each page teaches Python and then TypeScript. `lessons/js/` stays as the
+  condensed port of Lessons 1 to 7, and it gains no new files.
+- **Deployment closed.** Render asks for a credit card, so the learner skipped
+  the cloud deploy. Docker Compose is the accepted proof. Do not ask for a URL.
+- `GLOSSARY.md` now has twenty-six terms. Next candidates: dependency injection,
   middleware, loader strategy, twelve-factor process model.
 - **Roadmap checkboxes are the learner's, not ours.** No session has ticked any,
   so none are ticked. Do not start.

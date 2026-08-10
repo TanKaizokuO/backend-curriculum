@@ -4,7 +4,7 @@ Cold-start briefing for a new chat. Read this first, then `MISSION.md`, then `NO
 This file is the *state of play*; `NOTES.md` is the working scratchpad and
 `learning-records/` holds decisions that must not be silently reversed.
 
-Last updated: **2026-08-10** (end of Session 7).
+Last updated: **2026-08-10** (end of Session 8).
 
 ---
 
@@ -13,6 +13,7 @@ Last updated: **2026-08-10** (end of Session 7).
 You are the teacher for this workspace. The learner is a fluent Python programmer who has
 never built a server and is working toward a backend/full-stack job at ~14–15 hrs/week.
 Lessons are self-contained dark-mode HTML files in `lessons/`, built on the shared assets.
+From Lesson 8 each lesson teaches Python **and** TypeScript in one file.
 
 Do not restate the mission back to the learner — they wrote it. Pick up and teach.
 
@@ -22,14 +23,16 @@ Do not restate the mission back to the learner — they wrote it. Pick up and te
 
 | | |
 | --- | --- |
-| Sessions completed | 7 |
-| Lessons shipped | `0001-a-server-is-bytes-on-a-socket.html`, `0002-a-server-without-a-framework.html`, `0003-fastapi.html`, `0004-relational-modelling-and-sql.html`, `0005-why-is-this-slow.html`, `0006-concurrency-and-the-orm.html`, `0007-deployment.html` |
+| Sessions completed | 8 |
+| Lessons shipped | `0001-a-server-is-bytes-on-a-socket.html`, `0002-a-server-without-a-framework.html`, `0003-fastapi.html`, `0004-relational-modelling-and-sql.html`, `0005-why-is-this-slow.html`, `0006-concurrency-and-the-orm.html`, `0007-deployment.html`, `0008-authentication.html` (Python + TypeScript) |
+| Course order | `lesson_plan.md` — the order, the one idea of each lesson, and what each one proved. Update it first when the plan changes. |
 | Reference docs | `reference/http-message-anatomy.html`, `reference/reading-a-query-plan.html` |
 | Reference PDFs | `reference-pdfs/` — ASGI spec, RFC 9110 Methods, PEP 3333 key points, HTTP Messages Reference (`HTTP_Messages_Reference.pdf`) |
-| Lesson code | `Code/Lesson_1_code/`, `Code/Lesson_2_code/`, `Code/Lesson_4_code/` (schema migrations, `migrate.py`, DB-backed `main.py`, injection demo), `Code/Lesson_5_code/` (`seed.sql`, migration 0003, `main.py` with search + a deliberate N+1 endpoint, `n_plus_1.py`, `slow_link.py`), `Code/Lesson_6_code/` (migration 0004, `lost_update.py`, `orm_models.py`, `orm_n_plus_1.py`, `orm_increment.py`, `main.py` with the visit counter), `Code/Lesson_7_code/` (the deployable project: `config.py`, `main.py` with `/healthz`, `migrate.py`, `migrations/0001`–`0004`, `Dockerfile`, `.dockerignore`, `compose.yaml`, `.env.example`, `render.yaml`, `README.md`, and `naive/` for the four failures) |
-| Learning records | LR-0001 (language anchor: Python first) |
-| Glossary | `GLOSSARY.md` — twenty-one terms (Lesson 7 added config, container image, health check, release step) |
-| Next on the spine | **Dual-language curriculum.** The learner decided to learn both. From Lesson 8 onward, each lesson MUST teach both Python and TypeScript in the backend. Still awaiting the live URL to update the CV README. |
+| Lesson code | `Code/Lesson_1_code/`, `Code/Lesson_2_code/`, `Code/Lesson_4_code/` (schema migrations, `migrate.py`, DB-backed `main.py`, injection demo), `Code/Lesson_5_code/` (`seed.sql`, migration 0003, `main.py` with search + a deliberate N+1 endpoint, `n_plus_1.py`, `slow_link.py`), `Code/Lesson_6_code/` (migration 0004, `lost_update.py`, `orm_models.py`, `orm_n_plus_1.py`, `orm_increment.py`, `main.py` with the visit counter), `Code/Lesson_7_code/` (the deployable project: `config.py`, `main.py` with `/healthz`, `migrate.py`, `migrations/0001`–`0004`, `Dockerfile`, `.dockerignore`, `compose.yaml`, `.env.example`, `render.yaml`, `README.md`, and `naive/` for the four failures), `Code/Lesson_8_code/` + `Code/js/Lesson_8_code/` (accounts, in both languages) |
+| Learning records | LR-0001 (language anchor: Python first), LR-0002 (both languages from Lesson 8) |
+| Glossary | `GLOSSARY.md` — twenty-six terms (Lesson 8 added authentication, authorisation, JSON Web Token, salt, session) |
+| Next on the spine | **Lesson 9: testing and CI**, in both languages. Test the Lesson 8 auth routes first, because a route that forgets its dependency looks healthy in a browser. |
+
 ### Lesson 0001 covers
 
 Raw HTTP over a TCP socket, no framework. Structure: the one idea → request shape →
@@ -238,7 +241,68 @@ needs a paid instance type, so the correct design and the free-plan workaround d
 The lesson gives both, and tells the learner to say so in an interview. Free plan limits
 that matter: a web service spins down after 15 minutes idle and takes about a minute to
 return; a free database expires 30 days after creation, with no backups.
-**Learner Status:** The learner has completed Lesson 7 and requested that future lessons teach both Python and TypeScript simultaneously. We are waiting for them to paste the live deployment URL to finalize `Code/Lesson_7_code/README.md`.
+
+**Learner status.** The learner finished Lesson 7 and did not deploy. Render asks for a
+credit card, even on the free plan. `Code/Lesson_7_code/README.md` now states that the
+service is container-ready and proved with Docker Compose. Do not ask for a URL again.
+
+### Lesson 0008 covers
+
+Authentication, and the first lesson in two languages. Structure: the one idea (the
+server must never trust the client; it must only trust what it can verify) → three words
+and two status codes (identification, authentication, authorisation; 401 against 403) →
+**observable failure 1**, `hash_speed.py`: a SHA-256 leak shows that Ada and Grace share
+a password, a 64-word list breaks all five accounts in 0.03 ms, and the same list against
+bcrypt costs 27.3 s and *still takes all five* → the guess rates (SHA-256 6,006,030/s
+against bcrypt 6/s on one core, a ratio near one million) → salt, work factor, and the
+72-byte limit of bcrypt → migration 0005 with a `CHECK` that keeps the email lower case →
+register and login with real transcripts (201, 409, 422, 401, and the identical message
+for an unknown email) → **observable failure 2**, `forge_token.py`: an unsigned token is
+edited in three lines and the server hands over an administrator → HMAC-SHA256 by hand,
+`compare_digest` and `timingSafeEqual`, the `alg: none` rule from RFC 8725, expiry, and
+"a token is not a secret box" → the hand-written token and the library token are
+**byte-identical in both languages** → migration 0006 and the session cookie, with the
+four flags in a table → **the measurement that decides**: after logout the cookie
+answers 401 and the token answers 200 → the eight-row comparison table and the hybrid
+recommendation → **observable failure 3**, the timing leak: `/auth/login-leaky` answers
+an unknown email in 6.8 ms and a real one in 190.6 ms, and the dummy hash closes the gap
+to 0.7 ms → **observable failure 4**, the blocked event loop: ten logins push `/healthz`
+from 3.5 ms to 1727.8 ms in Python and 1192.8 ms in TypeScript; `run_in_threadpool` and
+`bcrypt.compare` fix it → a FastAPI dependency against Express middleware → migration
+0007, ownership, and 401/403/404 in one transcript → what the lesson does not cover
+(rate limits, password reset, CSRF tokens, refresh tokens, OAuth, MFA) → nine practice
+steps, two of which delete the deliberately wrong routes → nine quiz questions → OWASP,
+RFC 7519, RFC 8725, RFC 6265, MDN, FastAPI, and the two constant-time comparison pages
+as sources.
+
+**Everything in this lesson was executed before shipping**: PostgreSQL 17.10 (Docker),
+Python 3.12 with bcrypt 5.0.0, PyJWT 2.13.0, FastAPI 0.141.1; Node 24.19 with bcrypt 6,
+express 4.21, zod 4, TypeScript 5.9. Every transcript, timing, and status code is real
+output. `npx tsc --noEmit` passes.
+
+**Format note.** Node 22.6 and later run `.ts` files directly, so the TypeScript project
+has no build step and no bundler. `npm run typecheck` is the only step that checks types.
+Practice step 8 makes the learner break a type on purpose, watch the server run anyway,
+and then watch `tsc` catch it.
+
+**Teaching hooks worth reusing.** (a) *The fix that is not a fix.* bcrypt bought 27.3
+seconds and still lost every account, because the passwords were on the list. The
+learner's own conclusion ("a slow hash makes me safe") breaks in the same output that
+taught them the hash. (b) *Five lines end an argument.* The logout table
+(`cookie: 401`, `token: 200`) settles sessions against JWTs faster than any prose. (c)
+*The same defect in two vocabularies*, as in Lesson 6: `run_in_threadpool` and
+`bcrypt.compare` are the same fix with two names, and the two measurements sit in one
+code block.
+
+**Two routes exist to be deleted.** `/auth/login-leaky` and `/auth/login-blocking` are
+wrong on purpose, in both projects. This is Lesson 7's `naive/` pattern. Practice steps 4
+and 5 measure them and remove them. If the learner keeps them, that is a bug, not a
+style choice.
+
+**Hazard.** `node-postgres` returns `bigint` as a string, so `bookmarks.id` arrives as
+`"200002"` in TypeScript and `200001` in Python, while `users.id` (an `integer`) arrives
+as a number in both. The lesson carries this as a sidenote. Expect it in Lesson 9's
+tests.
 
 ### Built infrastructure
 
@@ -291,6 +355,22 @@ return; a free database expires 30 days after creation, with no backups.
   Warning: `docker compose down -v` deletes the named volume and all rows.
 - `reference/reading-a-query-plan.html` — the plan-reading card: what each field means,
   every node type they will meet, the index rules, and a fixed diagnosis order.
+- `Code/Lesson_8_code/` — accounts, in Python. `config.py` (Lesson 7's class plus
+  `SECRET_KEY`, the two TTLs, and `BCRYPT_ROUNDS`), `security.py` (bcrypt helpers, the
+  dummy hash for constant-time login, a hand-written HS256 token, and the PyJWT twin —
+  `python security.py` proves the two are byte-identical), `main.py` (register, login,
+  token, me, logout, logout-everywhere, owned bookmarks), `migrate.py`,
+  `migrations/0001`–`0007`, `wordlist.txt` (64 common passwords), and three measurement
+  programs: `hash_speed.py`, `forge_token.py`, `event_loop_block.py`. Two routes are
+  wrong on purpose: `/auth/login-leaky` and `/auth/login-blocking`.
+- `Code/js/Lesson_8_code/` — the TypeScript twin. `src/config.ts` (zod over
+  `process.env`), `src/security.ts`, `src/server.ts` (Express 4 with `cookie-parser`,
+  `requireUser` middleware), `src/migrate.ts` (writes the **same** version strings as
+  `migrate.py`, so one database serves both stacks), and `src/hashSpeed.ts`,
+  `src/forgeToken.ts`, `src/eventLoopBlock.ts`. No build step: Node runs the `.ts` files.
+  `npm run typecheck` is the only type check. API on port **8009**; Python runs on 8008.
+- `lesson_plan.md` — the order of the course: what is done, what each finished lesson
+  proved, what Lesson 8 covers, and four planned lessons with their one idea.
 
 ---
 
@@ -305,18 +385,20 @@ return; a free database expires 30 days after creation, with no backups.
    produces no artifact is a lesson that produces no CV line.
 4. **Sources are verified, not recalled.** `RESOURCES.md` entries were fetched. Anything
    new gets fetched before it is cited, and dated.
-5. **Python + FastAPI is settled** (LR-0001). Do not relitigate. **The TypeScript revisit
-   trigger has now fired**: Lesson 7 deploys the Python API. Ask the learner what they
-   want next; do not decide for them, and do not abandon Python by default.
+5. **Both languages, from Lesson 8** (LR-0002). Python + FastAPI stays the anchor
+   (LR-0001); TypeScript now rides beside it in the same file. Do not drop either, and do
+   not split Lesson 8 into two pages without asking the learner first.
 6. **Record decisions, not diary.** A new `learning-records/NNNN-*.md` only when a choice
    constrains future lessons and the evidence is non-obvious.
-7. **Ignore JS directories.** The directories `lessons/js/`, `Code/js/`, and `reference-pdfs/js/` exist as a secondary reference port. Do not update or track them in HANDOFF.md — the curriculum's sole active teaching spine is Python + FastAPI.
+7. **`lessons/js/` is frozen.** It holds a condensed port of Lessons 1 to 7. Do not add
+   Lesson 8 or later files to it. New TypeScript teaching goes in the main lesson page,
+   and new TypeScript code goes in `Code/js/Lesson_N_code/`.
 8. **All lesson prose follows ASD-STE100 Simplified Technical English** (`AGENTS.md`).
    One meaning for each word, one part of speech for each word, active voice, simple
    tenses, sentences of 20–25 words maximum, no -ing constructions, no idiom. This
    applies to lessons, reference cards, glossary entries, and summaries — not to code,
    SQL, or terminal output. Lessons 1–5 predate the rule; convert them when they are
-   next edited. Lesson 6 is the first lesson written under it; Lesson 7 follows it too.
+   next edited. Lessons 6, 7 and 8 follow it.
 9. **Ignore `summaries/` directory.** The `summaries/` folder contains generated summaries for Lessons 1, 2, and 3. Future agents must totally ignore this directory.
 
 ---
@@ -324,31 +406,31 @@ return; a free database expires 30 days after creation, with no backups.
 ## Open threads
 
 - **Learner ran Lesson 1 code.** Confirmed: both `client.py` and `server.py`.
-- **`GLOSSARY.md` updated.** Twenty-one terms total. New from Lesson 7: config, container
-  image, health check, release step. Note this workspace promotes terms at lesson time,
-  before the learner has demonstrated them — check usage next session and revise anything
-  that did not land.
+- **`GLOSSARY.md` updated.** Twenty-six terms total. New from Lesson 8: authentication,
+  authorisation, JSON Web Token, salt, session. Note this workspace promotes terms at
+  lesson time, before the learner has demonstrated them — check usage next session and
+  revise anything that did not land.
 - **Code-review venue.** Code Review Stack Exchange is now *raised* — it is named in
   Lesson 5's closing `.ask` block, alongside r/PostgreSQL for plan questions. Ask next
   session whether they posted, and offer to read the post before it goes up.
 - **Location / in-person community** — never asked. `RESOURCES.md` lists it as a gap.
-- **TypeScript entry point — the trigger has fired.** Lesson 7's closing `.ask` block
-  asks the question directly: TypeScript next, or authentication in Python first? Wait for
-  the answer before you plan Lesson 8.
+- **The language question is answered.** The learner asked for both. LR-0002 records it,
+  and Lesson 8 is the first lesson in both. Ask once whether the two languages in one
+  page helped or crowded it; a split into a Python half and a TypeScript half is cheap.
 - **Bookmarks API** — the learner's `bookmarks-api/main.py` is still the in-memory
   version, and it has a latent bug: the path is `/bookmarks/{id}` while the handler takes
   `bookmark_id`, and `request` is unannotated. Walk them through migrating it to the
   Lesson 4 shape rather than handing over the finished file.
 - **HTTP Messages PDF** — reminder delivered in Lesson 4's opening note; Session 5 did not
   get to ask (no learner reply in session). Still open — ask.
-- **Learner has not replied in-session since Lesson 4.** Lessons 4, 5, 6 and 7 were all
-  shipped without confirmation that the practice was done. **Ask before teaching Lesson
-  8**, and ask concretely: did they run `lost_update.py`, and did they deploy Lesson 7?
-  Lesson 7's `.ask` block asks for the first deploy log and for the URL, so an answer may
-  already be waiting. If the project is not deployed, the right move is a working session
-  on the deploy, not a new lesson.
-- **The live URL is unknown.** `Code/Lesson_7_code/README.md` carries a marked placeholder
-  where the URL goes. Fill it in only from a URL the learner sends. Never invent one.
+- **Learner has not replied in-session since Lesson 4, except on process.** Lessons 4 to
+  8 were shipped without confirmation that the practice was done. Ask concretely before
+  Lesson 9: did they run `hash_speed.py` and `event_loop_block.py`, and did they delete
+  the two deliberately wrong routes?
+- **No live URL, and that is settled.** Render asks for a credit card, so the learner
+  skipped the cloud deploy. `Code/Lesson_7_code/README.md` says the service is
+  container-ready and proved with Docker Compose. Do not ask again, and never invent
+  a URL. A free platform that takes no card is worth one search if the learner raises it.
 - **Docker note.** The `pg-bookmarks` container is now created with a named volume
   (`-v pg-bookmarks-data:/var/lib/postgresql/data`); the Lesson 4 `docker run` line has no
   volume, so a container recreation silently loses the data. Lesson 4's text was left
@@ -358,40 +440,36 @@ return; a free database expires 30 days after creation, with no backups.
 
 ## Next lesson: spec
 
-**Ask first, then choose.** Lesson 7 ends with an open question, and the answer decides
-the next lesson. Two candidates, both prepared:
+### Lesson 0009 — testing and CI, in both languages
 
-### Candidate A — the language decision (LR-0001's trigger)
+- **The observable failure to open with.** Delete `Depends(current_user)` from
+  `POST /bookmarks`, or drop `requireUser` from the Express route. The server starts, the
+  browser looks normal, and a stranger writes to the database. Then write the one test
+  that catches it: call the route with no credential, expect 401. That test runs in
+  milliseconds and it would have caught a real breach.
+- **The mechanism before the library.** Show what a test runner does: collect, run,
+  assert, report. Then use `pytest` with `httpx.ASGITransport`, and `vitest` with
+  `supertest`.
+- **A real database, not a mock and not SQLite.** Lesson 4 already gives the reason.
+  Start a PostgreSQL container for the suite, run `migrate.py` against it, and roll back
+  each test in a transaction. Measure the suite time both ways.
+- **What to test, and what not to.** Test the contract: status codes, the ownership 403,
+  the 401 with no credential, the duplicate 409, and the identical message for an unknown
+  email. Do not test that FastAPI routes or that bcrypt hashes.
+- **The fixture problem that Lesson 8 creates.** bcrypt at cost 12 costs 190 ms for each
+  login, so a suite with 40 logins takes 8 seconds. Lower the cost in the test
+  environment through `BCRYPT_ROUNDS`, and say why that is safe.
+- **CI.** One GitHub Actions workflow with a `services: postgres` block. It runs the
+  migrations, then the Python suite, then `npm run typecheck` and the TypeScript suite.
+  A red check on a pull request is the artifact.
+- **The artifact.** A badge and a `tests/` directory in the repository, plus a line in
+  the CV README that names the number of tests and the suite time.
+- Sources: fetch and date them. Candidates: the pytest documentation, `httpx` async
+  testing, the FastAPI testing chapter, Vitest, `supertest`, and the GitHub Actions
+  documentation for service containers.
 
-The Python API is deployed, which is the condition LR-0001 set. This is a conversation,
-not a lesson: what a TypeScript port buys in the job market, what it costs in weeks, and
-which parts of Lessons 1–7 transfer without change (sockets, HTTP framing, indexes, the
-lost update) against which parts do not (the type system, the async model, the
-ecosystem). If the learner says yes, the first TypeScript artifact should be the *same*
-bookmarks API, so the diff is the lesson. Write a second learning record for the
-decision, whichever way it goes.
+### Carry-over rules
 
-### Candidate B — Lesson 0008, authentication
-
-- **The observable failure to open with.** Store a password with a fast hash, or with no
-  hash, then crack it in front of the learner. Then show a session cookie without
-  `HttpOnly` read by one line of JavaScript, and a JWT with `alg: none` accepted by a
-  naive verifier.
-- **The mechanism before the library.** Sign a token by hand with `hmac`, then read it
-  back. Only after that reach for a library.
-- **The real decision.** Sessions against tokens: where the state lives, what logout
-  means in each, and why "stateless" is a cost as well as a benefit. Revocation is the
-  question that separates the two.
-- **Password storage.** Argon2id against bcrypt, with the parameters and the reason.
-  Measure the hash time; a slow hash is the feature.
-- **The artifact.** `POST /login`, a protected `POST /bookmarks`, and a FastAPI dependency
-  that carries the current user. Add both to the deployed service, so the CV artifact
-  grows instead of forking.
-- Sources: fetch and date them. Candidates: OWASP Password Storage Cheat Sheet,
-  RFC 8725 (JWT Best Current Practices), RFC 9700 if it covers the OAuth guidance needed,
-  the FastAPI security chapter, and the `argon2-cffi` documentation.
-
-### Either way
-
-Lesson 8 must extend the deployed service, not a local copy. The deploy is now the spine
-of the project, and every later lesson should ship to it.
+Lesson 9 extends the Lesson 8 projects; it does not fork them. Keep the transcripts real,
+keep the numbers measured, and keep both languages in one page unless the learner asks
+for a split.

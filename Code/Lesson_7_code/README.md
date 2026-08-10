@@ -7,8 +7,7 @@ environment, and it applies its own schema migrations before it starts.
 The repository holds the measurements that justify each design choice. Every
 number below is real output from a run on this machine.
 
-*Live URL:* not deployed yet. Put the `https://<name>.onrender.com` address
-here after the first deploy, and add `GET /healthz` next to it.
+*Live URL:* Pending. The service is fully containerized and deploy-ready (proven via Docker Compose), but cloud deployment on Render is skipped due to platform credit card requirements.
 
 ## Stack
 

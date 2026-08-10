@@ -94,6 +94,27 @@ Scope skeleton: [`ROADMAP.md`](./ROADMAP.md) — local scope checklist. **Use it
 - [Uvicorn — Settings](https://github.com/Kludex/uvicorn/blob/master/docs/settings.md)
   v0.52.1, verified 2026-08-10 from the repository source; `uvicorn.org` did not resolve from this machine on that date. The authority on `--host`, `--port`, `--proxy-headers` (enabled by default), and `--forwarded-allow-ips` (defaults to `127.0.0.1`; the literal `'*'` trusts everything).
 
+### Authentication & TypeScript
+
+- [OWASP — Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+  Verified 2026-08-10. The authority for Lesson 8, Step 1. Argon2id first, then scrypt, then bcrypt, each with the parameters to use. States the bcrypt 72-byte limit and the reason a work factor must rise over time. Read all of it; it is short.
+- [OWASP — Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
+  Verified 2026-08-10. "Session ID Properties" gives the entropy floor; "Cookies" gives `HttpOnly`, `Secure`, `SameSite`, and the expiry rules. Use for: every cookie flag decision.
+- [OWASP — Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)
+  Verified 2026-08-10. The source of the identical error message for a wrong password and an unknown account, and of the rate-limit and lockout advice that Lesson 8 leaves open.
+- [RFC 7519 — JSON Web Token](https://www.rfc-editor.org/rfc/rfc7519)
+  May 2015. §4.1 registered claims (`sub`, `exp`, `iat`, `nbf`, `aud`, `iss`). Use for: settling what a claim name means. Specs do not go stale.
+- [RFC 8725 — JWT Best Current Practices](https://www.rfc-editor.org/rfc/rfc8725)
+  February 2020, BCP 225. §3.1 is the `alg: none` rule that Lesson 8's Attack 3 breaks. **Read §2 and §3 in full before shipping a token.**
+- [RFC 6265 — HTTP State Management](https://www.rfc-editor.org/rfc/rfc6265) and [MDN — Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)
+  Both verified 2026-08-10. The RFC defines the header; MDN carries the current `SameSite` behaviour and is the faster read.
+- [MDN — HTTP authentication](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Authentication)
+  Verified 2026-08-10. `WWW-Authenticate`, and the 401-against-403 distinction in the RFC 9110 wording.
+- [FastAPI — Security](https://fastapi.tiangolo.com/tutorial/security/)
+  Verified 2026-08-10. Read *after* Lesson 8. `OAuth2PasswordBearer` produces the same token the lesson builds by hand.
+- [Node.js — crypto.timingSafeEqual](https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b) and [Python — hmac.compare_digest](https://docs.python.org/3/library/hmac.html)
+  Both verified 2026-08-10. One paragraph each. Why a constant-time comparison is required, and why the lengths must match first.
+
 ### Architecture
 
 - [Kleppmann — Distributed Systems notes (Cambridge)](https://www.cl.cam.ac.uk/teaching/2526/ConcDisSys/dist-sys-notes.pdf)

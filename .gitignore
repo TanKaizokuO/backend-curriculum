@@ -1,21 +1,49 @@
 # Python
-.venv/
 __pycache__/
 *.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
-# Node
+# Node & TypeScript
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.vitest/
+coverage/
+.tsbuildinfo
+dist/
+build/
 
-# Secrets. The example files are committed; the real ones never are.
+# Secrets & Environment
 .env
 .env.*
+.env.local
 !.env.example
 
-# Machine-local agent settings. Holds absolute paths from this workstation.
-.claude/settings.local.json
-
-# Editor and OS
-.DS_Store
-.idea/
+# IDEs & Editors
 .vscode/
+.idea/
 *.swp
+*.swo
+*~
+.claude/
+
+# Logs & Databases
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# OS & System
+.DS_Store
+Thumbs.db

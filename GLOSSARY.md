@@ -14,6 +14,18 @@ followed by a failing one makes PostgreSQL answer the subsequent `COMMIT` with
 `ROLLBACK`, and the first row never existed. This is why every multi-statement
 write in an API belongs inside one transaction.
 
+**Authentication** (Lesson 8) — The proof that the caller is who they claim to
+be: a password check, then a session cookie or a signed token on each later
+request. It answers "who is this?" and its failure code is `401`, with a
+`WWW-Authenticate` header. Distinct from *authorisation*. The password check
+must cost the same for a real account and for an unknown one, or the response
+time lists your users.
+
+**Authorisation** (Lesson 8) — The decision about what an identified caller
+may do, for example the `user_id` column on the row they want to delete. It
+answers "may they?" and its failure code is `403`. A `401` invites a new
+credential; a `403` does not, because the same credential fails again.
+
 ## C
 
 **Config** (Lesson 7) — Everything that varies between deploys: connection
@@ -83,6 +95,14 @@ relationship, holding one row per pair with a foreign key to each side and a
 composite primary key over both: `bookmark_tags (bookmark_id, tag_id)`. It has
 no surrogate `id` because the pair *is* its identity. Also called a join, link,
 or association table.
+
+**JSON Web Token (JWT)** (Lesson 8) — Three base64url parts joined by dots:
+header, payload, signature. The signature is HMAC or a public-key algorithm
+over the first two parts. The client can read every claim, so a JWT hides
+nothing; it only proves who wrote the claims. The server keeps no record, so
+the token stays valid until `exp` and a logout cannot withdraw it. Two rules:
+take the accepted algorithm from your own list, never from the header
+(`alg: none`), and keep the life short.
 
 ## L
 
@@ -172,6 +192,19 @@ platform may run it twice.
 **Safe method** (Lesson 1, reference card) — A request method that does not
 modify server state. GET and HEAD are safe. Safety means a cache can serve them
 without side effects and a crawler can follow links freely. RFC 9110 §9.2.1.
+
+**Salt** (Lesson 8) — Random bytes, different for each user, mixed into a
+password hash and stored beside it. Without a salt, two users with the same
+password produce the same hash, and the leaked table shows which accounts
+share a password. bcrypt puts the cost and the 22-character salt inside the
+string that it returns: `$2b$12$<salt><hash>`. You never manage a salt column.
+
+**Session** (Lesson 8) — Server-held state for a signed-in user, addressed by
+one opaque id in a cookie. The id carries no facts; every fact stays in the
+`sessions` row. This gives the property a signed token cannot give: one
+`DELETE` ends the session at once, everywhere. Generate the id with a
+cryptographic generator (`secrets.token_hex`, `crypto.randomBytes`), never
+with `random` or `Math.random()`.
 
 **Start-line** (Lesson 1) — The first line of an HTTP message. For a request it
 is the *request line*: `METHOD target HTTP/version`. For a response it is the

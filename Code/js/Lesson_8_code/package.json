@@ -1,0 +1,34 @@
+{
+  "name": "bookmarks-auth-ts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lesson 8 — accounts, sessions, and tokens, in TypeScript",
+  "type": "module",
+  "scripts": {
+    "migrate": "node src/migrate.ts",
+    "start": "node src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "hash-speed": "node src/hashSpeed.ts",
+    "forge": "node src/forgeToken.ts",
+    "block": "node src/eventLoopBlock.ts",
+    "security": "node src/security.ts"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.3",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/cookie-parser": "^1.4.9",
+    "@types/express": "^4.17.23",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "typescript": "^5.9.3"
+  }
+}

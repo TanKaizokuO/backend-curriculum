@@ -23,7 +23,7 @@ A beginner-friendly version and a DevOps beginner roadmap are linked separately.
 
 ## 2. Pick a Language
 
-- [ ] JavaScript
+- [x] ~~JavaScript~~
 - [x] ~~Python~~
 - [ ] Go
 - [ ] Rust
@@ -62,7 +62,7 @@ A beginner-friendly version and a DevOps beginner roadmap are linked separately.
 
 ## 6. Learn about APIs
 
-- [ ] REST
+- [x] ~~REST~~
 - [x] ~~JSON APIs~~
 - [ ] GraphQL
 - [x] ~~gRPC~~
@@ -123,7 +123,7 @@ A beginner-friendly version and a DevOps beginner roadmap are linked separately.
 - [ ] SOA
 - [ ] Serverless
 - [ ] Service mesh
-- [ ] Twelve-factor apps
+- [x] ~~Twelve-factor apps~~
 
 ## 14. NoSQL Databases
 
@@ -149,7 +149,7 @@ A beginner-friendly version and a DevOps beginner roadmap are linked separately.
 
 ## 17. Containerization vs Virtualization
 
-- [ ] Docker
+- [x] ~~Docker~~
 - [ ] Kubernetes
 - [ ] LXC
 - [ ] Difference & usage
