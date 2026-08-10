@@ -1,0 +1,71 @@
+# The deploy, as a file.
+#
+# This is a Render Blueprint. It declares the database, the web service, and
+# the wire between them. You commit it. Render reads it. Nobody clicks a
+# button, and nobody types a password into a form.
+#
+# Validate it before you push:
+#
+#   render blueprints validate render.yaml
+#
+# The schema is at https://render.com/schema/render.yaml.json
+# Docs read on 2026-08-10: https://render.com/docs/blueprint-spec
+
+databases:
+  # A managed PostgreSQL database. Render runs it, backs it up, and patches
+  # it. You get a connection string, not a server.
+  #
+  # Warning: a Free database expires 30 days after you create it, and Render
+  # deletes it 14 days later. A Free database also has no backup. Use `basic`
+  # or higher for anything you want to keep.
+  - name: bookmarks-db
+    databaseName: bookmarks
+    plan: free
+    region: oregon
+
+services:
+  - type: web
+    name: bookmarks-api
+    runtime: docker
+    plan: starter
+    region: oregon          # the same region as the database, for the private network
+    rootDir: Code/Lesson_7_code
+    dockerfilePath: ./Dockerfile
+
+    # The release step. Render runs it after the build and before the new
+    # version starts. If it fails, the deploy fails and the old version keeps
+    # the traffic.
+    #
+    # Warning: `preDeployCommand` needs a paid instance type. On a Free
+    # instance you have no release step, so chain the migration into the
+    # start command instead, and accept that two instances can run it at the
+    # same time:
+    #
+    #   dockerCommand: sh -c "python migrate.py && exec uvicorn main:app --host 0.0.0.0 --port $PORT"
+    #
+    # The runner in migrate.py is idempotent, so a second run prints `skip`
+    # for every migration.
+    preDeployCommand: python migrate.py
+
+    # Render sends a GET to this path every few seconds. The endpoint runs
+    # `SELECT 1`, so a healthy answer means the database answers too. A new
+    # deploy gets traffic only after this path returns 200.
+    healthCheckPath: /healthz
+
+    envVars:
+      # The database writes its own connection string into the service. The
+      # password never appears in the repository, in the image, or in a
+      # terminal.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bookmarks-db
+          property: connectionString
+
+      - key: APP_ENV
+        value: production
+
+      - key: LOG_LEVEL
+        value: info
+
+      # Render sets PORT to 10000 by default. The Dockerfile reads it with
+      # ${PORT:-8000}, so the container binds the port the platform expects.

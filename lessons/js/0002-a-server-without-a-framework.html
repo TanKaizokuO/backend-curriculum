@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JS Lesson 2 · A Server Without A Framework</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../../assets/course.css">
+<link rel="stylesheet" href="../../assets/quiz.css">
+<script src="../../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · JS Lesson 02 ·
+    <a href="../../MISSION.md">Mission</a> ·
+    <a href="../../RESOURCES.md">Resources</a> ·
+    <a href="../../reference/http-message-anatomy.html">Reference: HTTP anatomy</a> ·
+    <a href="0001-a-server-is-bytes-on-a-socket.html">← JS Lesson 01</a>
+  </p>
+  <h1>A Server Without A Framework (JS)
+    <span class="sub">Parse the request. Route it. Answer correctly. Then hand it to something better.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">In JS Lesson 1, you wrote a server that ignored what the client asked for.
+Every request got <code>200 OK</code> and the same greeting. Today you make your JavaScript
+read the request, parse the headers and path, route to handler functions,
+and respond with correct HTTP status codes.</p>
+
+<p class="sidenote">In this lesson, you build a server that parses the start line,
+extracts headers and query parameters, routes by method and path, and handles
+errors. You also meet the native callback contract that delegates parsing work to Node's HTTP module.</p>
+
+<h2>The one idea</h2>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+<p>A web framework is a <strong>standard calling convention</strong> between server engine
+components and your application code. When you build this convention yourself, you
+understand what a library like Express does for you.</p>
+
+<h2>Step 1 · Parse the start line</h2>
+
+<p>JS Lesson 1's server read socket data and threw it away. The first real task is to isolate
+the request line (the first line of the request) and split it into method, target, and HTTP version.</p>
+
+<p class="filename">server.js — start-line parser</p>
+<pre class="wide"><code><span class="c-key">function</span> <span class="c-fn">parseRequestLine</span>(raw) {
+    <span class="c-com">// Convert buffer to ASCII and grab the first line</span>
+    <span class="c-key">const</span> requestStr = raw.<span class="c-fn">toString</span>(<span class="c-str">'ascii'</span>);
+    <span class="c-key">const</span> firstLine = requestStr.<span class="c-fn">split</span>(<span class="c-str">'\r\n'</span>)[<span class="c-num">0</span>];
+    <span class="c-key">const</span> parts = firstLine.<span class="c-fn">split</span>(<span class="c-str">' '</span>);
+    
+    <span class="c-key">if</span> (parts.length !== <span class="c-num">3</span>) {
+        <span class="c-key">throw new</span> <span class="c-fn">Error</span>(<span class="c-str">`Malformed request line: ${firstLine}`</span>);
+    }
+    
+    <span class="c-key">const</span> [method, target, version] = parts;
+    <span class="c-key">return</span> { method, target, version };
+}</code></pre>
+
+<p>Three things to note:</p>
+<ul>
+  <li><strong>ASCII parsing:</strong> Start-lines and headers are defined as ASCII by spec. Request bodies can contain binary or UTF-8, but we only decode the head as ASCII.</li>
+  <li><strong>Validation:</strong> If the start-line does not split into exactly three space-separated parts, the request is invalid. The server must answer <code>400 Bad Request</code> instead of crashing.</li>
+  <li><strong>Runtime replacement:</strong> The parsing code you write here is plumbing that Node.js or a framework does for you. Knowing this mechanism helps you debug errors.</li>
+</ul>
+
+<h2>Step 2 · Parse headers and query strings</h2>
+
+<p>HTTP headers follow the start-line. Each line is a <code>Name: value</code> pair. Header names are
+<strong>case-insensitive</strong> by specification (<a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-5.1">RFC 9110 §5.1</a>).
+Our parser must normalise header names to lower-case on arrival.</p>
+
+<p class="filename">server.js — headers and query parser</p>
+<pre class="wide"><code><span class="c-key">function</span> <span class="c-fn">parseHeaders</span>(raw) {
+    <span class="c-key">const</span> requestStr = raw.<span class="c-fn">toString</span>(<span class="c-str">'ascii'</span>);
+    <span class="c-com">// Headers end at \r\n\r\n. Skip the first line (request line).</span>
+    <span class="c-key">const</span> parts = requestStr.<span class="c-fn">split</span>(<span class="c-str">'\r\n\r\n'</span>);
+    <span class="c-key">const</span> headerLines = parts[<span class="c-num">0</span>].<span class="c-fn">split</span>(<span class="c-str">'\r\n'</span>).<span class="c-fn">slice</span>(<span class="c-num">1</span>);
+    <span class="c-key">const</span> headers = {};
+
+    <span class="c-key">for</span> (<span class="c-key">const</span> line <span class="c-key">of</span> headerLines) {
+        <span class="c-key">if</span> (!line) <span class="c-key">continue</span>;
+        <span class="c-key">const</span> colonIdx = line.<span class="c-fn">indexOf</span>(<span class="c-str">':'</span>);
+        <span class="c-key">if</span> (colonIdx === -<span class="c-num">1</span>) <span class="c-key">continue</span>;
+        <span class="c-key">const</span> name = line.<span class="c-fn">slice</span>(<span class="c-num">0</span>, colonIdx).<span class="c-fn">trim</span>().<span class="c-fn">toLowerCase</span>();
+        <span class="c-key">const</span> value = line.<span class="c-fn">slice</span>(colonIdx + <span class="c-num">1</span>).<span class="c-fn">trim</span>();
+        headers[name] = value;
+    }
+    <span class="c-key">return</span> headers;
+}
+
+<span class="c-key">function</span> <span class="c-fn">parseQuery</span>(target) {
+    <span class="c-com">// Parse query string using standard URL API. Require a dummy base URL.</span>
+    <span class="c-key">const</span> parsed = <span class="c-key">new</span> <span class="c-fn">URL</span>(target, <span class="c-str">'http://localhost'</span>);
+    <span class="c-key">const</span> query = {};
+    <span class="c-key">for</span> (<span class="c-key">const</span> [key, value] <span class="c-key">of</span> parsed.searchParams.<span class="c-fn">entries</span>()) {
+        query[key] = value;
+    }
+    <span class="c-key">return</span> { path: parsed.pathname, query };
+}</code></pre>
+
+<div class="note">
+  <span class="note-label">Why lower-case header names?</span>
+  <p>If a client sends <code>Content-Length: 42</code>, another sends <code>content-length: 42</code>,
+  and a third sends <code>CONTENT-LENGTH: 42</code>, they are identical. Normalising to lower-case
+  on arrival means you can check <code>headers['content-length']</code> and cover all cases.
+  Node's HTTP module and Express do this automatically.</p>
+</div>
+
+<h2>Step 3 · Routing and status codes</h2>
+
+<p>Our server maps a <code>method</code> and <code>path</code> to a handler function. Store these routes
+in a plain JavaScript object, indexed by <code>"METHOD PATH"</code>.</p>
+
+<p class="filename">server.js — routing table</p>
+<pre class="wide"><code><span class="c-key">const</span> ROUTES = {
+    <span class="c-str">'GET /'</span>: (req) => {
+        <span class="c-key">return</span> { status: <span class="c-num">200</span>, type: <span class="c-str">'text/plain'</span>, body: <span class="c-str">'Welcome.\n'</span> };
+    },
+    <span class="c-str">'GET /hello'</span>: (req) => {
+        <span class="c-key">const</span> name = req.query.name || <span class="c-str">'stranger'</span>;
+        <span class="c-key">return</span> { status: <span class="c-num">200</span>, type: <span class="c-str">'text/plain'</span>, body: <span class="c-str">`Hello, ${name}!\n`</span> };
+    }
+};</code></pre>
+
+<p>If a client requests a path that is not registered, the server returns <code>404 Not Found</code>.
+If the path exists but for a different method (e.g., <code>POST /hello</code>), the server returns
+<code>405 Method Not Allowed</code> and <strong>must</strong> include
+the <code>Allow</code> header listing valid methods for that path (<a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.1">RFC 9110 §10.2.1</a>).</p>
+
+<h2>Step 4 · Put it all together</h2>
+
+<p>Here is the complete server combining parsing, routing, correct status codes, and manual string response assembly.</p>
+
+<p class="filename">server.js</p>
+<pre class="wide"><code><span class="c-key">const</span> net = <span class="c-fn">require</span>(<span class="c-str">'net'</span>);
+
+<span class="c-key">function</span> <span class="c-fn">parseRequestLine</span>(raw) {
+    <span class="c-key">const</span> firstLine = raw.<span class="c-fn">toString</span>(<span class="c-str">'ascii'</span>).<span class="c-fn">split</span>(<span class="c-str">'\r\n'</span>)[<span class="c-num">0</span>];
+    <span class="c-key">const</span> parts = firstLine.<span class="c-fn">split</span>(<span class="c-str">' '</span>);
+    <span class="c-key">if</span> (parts.length !== <span class="c-num">3</span>) <span class="c-key">throw new</span> <span class="c-fn">Error</span>(<span class="c-str">'Malformed'</span>);
+    <span class="c-key">return</span> { method: parts[<span class="c-num">0</span>], target: parts[<span class="c-num">1</span>], version: parts[<span class="c-num">2</span>] };
+}
+
+<span class="c-key">function</span> <span class="c-fn">parseHeaders</span>(raw) {
+    <span class="c-key">const</span> requestStr = raw.<span class="c-fn">toString</span>(<span class="c-str">'ascii'</span>);
+    <span class="c-key">const</span> parts = requestStr.<span class="c-fn">split</span>(<span class="c-str">'\r\n\r\n'</span>);
+    <span class="c-key">const</span> headerLines = parts[<span class="c-num">0</span>].<span class="c-fn">split</span>(<span class="c-str">'\r\n'</span>).<span class="c-fn">slice</span>(<span class="c-num">1</span>);
+    <span class="c-key">const</span> headers = {};
+    <span class="c-key">for</span> (<span class="c-key">const</span> line <span class="c-key">of</span> headerLines) {
+        <span class="c-key">const</span> colon = line.<span class="c-fn">indexOf</span>(<span class="c-str">':'</span>);
+        <span class="c-key">if</span> (colon === -<span class="c-num">1</span>) <span class="c-key">continue</span>;
+        headers[line.<span class="c-fn">slice</span>(<span class="c-num">0</span>, colon).<span class="c-fn">trim</span>().<span class="c-fn">toLowerCase</span>()] = line.<span class="c-fn">slice</span>(colon + <span class="c-num">1</span>).<span class="c-fn">trim</span>();
+    }
+    <span class="c-key">return</span> headers;
+}
+
+<span class="c-key">const</span> ROUTES = {
+    <span class="c-str">'GET /'</span>: () => ({ status: <span class="c-num">200</span>, type: <span class="c-str">'text/plain'</span>, body: <span class="c-str">'Welcome.\n'</span> }),
+    <span class="c-str">'GET /hello'</span>: (req) => {
+        <span class="c-key">const</span> name = req.query.name || <span class="c-str">'stranger'</span>;
+        <span class="c-key">return</span> { status: <span class="c-num">200</span>, type: <span class="c-str">'text/plain'</span>, body: <span class="c-str">`Hello, ${name}!\n`</span> };
+    }
+};
+
+<span class="c-key">const</span> PHRASES = { <span class="c-num">200</span>: <span class="c-str">'OK'</span>, <span class="c-num">400</span>: <span class="c-str">'Bad Request'</span>, <span class="c-num">404</span>: <span class="c-str">'Not Found'</span>, <span class="c-num">405</span>: <span class="c-str">'Method Not Allowed'</span> };
+
+<span class="c-key">function</span> <span class="c-fn">buildResponse</span>(status, contentType, body, extraHeaders = []) {
+    <span class="c-key">const</span> phrase = PHRASES[status] || <span class="c-str">'Unknown'</span>;
+    <span class="c-key">const</span> headers = [
+        <span class="c-str">`HTTP/1.1 ${status} ${phrase}`</span>,
+        <span class="c-str">`Content-Type: ${contentType}; charset=utf-8`</span>,
+        <span class="c-str">`Content-Length: ${Buffer.byteLength(body)}`</span>,
+        <span class="c-str">'Connection: close'</span>,
+        ...extraHeaders,
+        <span class="c-str">''</span>, <span class="c-str">''</span>
+    ];
+    <span class="c-key">return</span> Buffer.<span class="c-fn">concat</span>([Buffer.<span class="c-fn">from</span>(headers.<span class="c-fn">join</span>(<span class="c-str">'\r\n'</span>), <span class="c-str">'ascii'</span>), Buffer.<span class="c-fn">from</span>(body, <span class="c-str">'utf-8'</span>)]);
+}
+
+<span class="c-key">const</span> server = net.<span class="c-fn">createServer</span>((socket) => {
+    socket.<span class="c-fn">on</span>(<span class="c-str">'data'</span>, (raw) => {
+        <span class="c-key">try</span> {
+            <span class="c-key">const</span> { method, target } = <span class="c-fn">parseRequestLine</span>(raw);
+            <span class="c-key">const</span> urlObj = <span class="c-key">new</span> <span class="c-fn">URL</span>(target, <span class="c-str">'http://localhost'</span>);
+            <span class="c-key">const</span> path = urlObj.pathname;
+            
+            <span class="c-key">const</span> query = {};
+            <span class="c-key">for</span> (<span class="c-key">const</span> [k, v] <span class="c-key">of</span> urlObj.searchParams) query[k] = v;
+
+            <span class="c-key">const</span> headers = <span class="c-fn">parseHeaders</span>(raw);
+            <span class="c-key">const</span> reqKey = <span class="c-str">`${method} ${path}`</span>;
+
+            <span class="c-key">if</span> (ROUTES[reqKey]) {
+                <span class="c-key">const</span> res = ROUTES[reqKey]({ query, headers });
+                socket.<span class="c-fn">write</span>(<span class="c-fn">buildResponse</span>(res.status, res.type, res.body), () => socket.<span class="c-fn">end</span>());
+            } <span class="c-key">else</span> {
+                <span class="c-com">// Check if path exists under another method</span>
+                <span class="c-key">const</span> allowed = Object.keys(ROUTES)
+                    .<span class="c-fn">filter</span>(k => k.split(' ')[1] === path)
+                    .<span class="c-fn">map</span>(k => k.split(' ')[0]);
+
+                <span class="c-key">if</span> (allowed.length > <span class="c-num">0</span>) {
+                    socket.<span class="c-fn">write</span>(<span class="c-fn">buildResponse</span>(<span class="c-num">405</span>, <span class="c-str">'text/plain'</span>, <span class="c-str">'Method Not Allowed\n'</span>, [
+                        <span class="c-str">`Allow: ${allowed.join(', ')}`</span>
+                    ]), () => socket.<span class="c-fn">end</span>());
+                } <span class="c-key">else</span> {
+                    socket.<span class="c-fn">write</span>(<span class="c-fn">buildResponse</span>(<span class="c-num">404</span>, <span class="c-str">'text/plain'</span>, <span class="c-str">'Not Found\n'</span>), () => socket.<span class="c-fn">end</span>());
+                }
+            }
+        } <span class="c-key">catch</span> (err) {
+            socket.<span class="c-fn">write</span>(<span class="c-fn">buildResponse</span>(<span class="c-num">400</span>, <span class="c-str">'text/plain'</span>, <span class="c-str">'Bad Request\n'</span>), () => socket.<span class="c-fn">end</span>());
+        }
+    });
+});
+
+server.listen(<span class="c-num">8080</span>, <span class="c-str">'127.0.0.1'</span>);</code></pre>
+
+<h2>Practice · Run and test status codes</h2>
+<ol class="steps">
+  <li>Start the server: <code>node server.js</code></li>
+  <li>Test GET `/hello`: <code>curl -i http://127.0.0.1:8080/hello?name=Alice</code></li>
+  <li>Test 405 Method Not Allowed: <code>curl -i -X POST http://127.0.0.1:8080/hello</code> (Verify the <code>Allow: GET</code> header).</li>
+  <li>Test 404: <code>curl -i http://127.0.0.1:8080/missing</code></li>
+</ol>
+
+<h2>What the runtime replaces: Node.js HTTP module</h2>
+<p>In Python, WSGI defined the calling convention between web server and web application.
+In Node.js, the gateway contract lives in the standard library. The <code>http</code> module handles
+the TCP socket, buffer accumulation, and HTTP parsing. It provides a request/response callback contract.</p>
+
+<p class="filename">demo_http.js</p>
+<pre class="wide"><code><span class="c-key">const</span> http = <span class="c-fn">require</span>(<span class="c-str">'http'</span>);
+
+<span class="c-com">// This function is the callback contract</span>
+<span class="c-key">const</span> app = (req, res) => {
+    <span class="c-key">const</span> parsedUrl = <span class="c-key">new</span> <span class="c-fn">URL</span>(req.url, <span class="c-str">`http://${req.headers.host}`</span>);
+    
+    <span class="c-fn">console</span>.<span class="c-fn">log</span>(req.method, parsedUrl.pathname);
+    
+    res.<span class="c-fn">writeHead</span>(<span class="c-num">200</span>, { <span class="c-str">'Content-Type'</span>: <span class="c-str">'text/plain; charset=utf-8'</span> });
+    res.<span class="c-fn">end</span>(<span class="c-str">`You asked: ${req.method} ${parsedUrl.pathname}\n`</span>);
+};
+
+<span class="c-key">const</span> server = http.<span class="c-fn">createServer</span>(app);
+server.listen(<span class="c-num">9000</span>, () => <span class="c-fn">console</span>.<span class="c-fn">log</span>(<span class="c-str">'http listener up on 9000'</span>));</code></pre>
+
+<div class="note">
+  <span class="note-label">Comparison to raw socket</span>
+  <p>The <code>demo_http.js</code> program does not import <code>net</code>. It has no <code>socket.on('data')</code>, no <code>\r\n\r\n</code> string splits, and no <code>Content-Length</code> calculations. That is what Node's internal HTTP server does. Express, Koa, and Fastify are all built on top of this exact <code>(req, res)</code> listener.</p>
+</div>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "What HTTP status code is used when a path exists but the requested HTTP verb is not supported?",
+    "answer": "405",
+    "accept": ["405", "405 method not allowed", "method not allowed"],
+    "placeholder": "status code",
+    "why": "405 Method Not Allowed signals that the resource recognizes the path but cannot execute the requested method. It must carry an Allow header." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "In Node.js, what is the default gateway callback contract for HTTP servers?",
+    "options": [
+      "(environ, start_response) listener",
+      "(request, response) listener",
+      "async (scope, receive, send) listener",
+      "(socket) listener"
+    ],
+    "answer": 1,
+    "why": "Node's native http.createServer expects a callback matching the signature (IncomingMessage, ServerResponse), commonly written as (req, res) => {}." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why is it important to normalise header names to lowercase during parsing?",
+    "options": [
+      "To save memory in the headers object",
+      "Because HTTP headers are case-insensitive by spec, and normalization ensures lookup safety",
+      "Because Node.js only allows lowercase variables",
+      "To encrypt header names from network sniffers"
+    ],
+    "answer": 1,
+    "why": "RFC 9110 defines headers as case-insensitive. Downcasing all incoming header names means your handler lookup is deterministic regardless of client casing." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<h2>Read this next</h2>
+<div class="source">
+  <h4>Primary sources</h4>
+  <p><a href="https://nodejs.org/api/http.html">Node.js HTTP Module Documentation</a></p>
+  <p>The reference for Node's HTTP parser and server. Learn how <code>http.IncomingMessage</code> represents incoming requests and <code>http.ServerResponse</code> handles outgoing buffers.</p>
+
+  <p><a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.6">RFC 9110 — 405 Method Not Allowed</a></p>
+  <p>The spec page outlining the requirement of the 405 status code and its mandatory <code>Allow</code> header.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0001-a-server-is-bytes-on-a-socket.html">← JS Lesson 01: Bytes on a socket</a>
+  <a href="0003-express.html">JS Lesson 03: Express →</a>
+</nav>
+
+</main>
+</body>
+</html>

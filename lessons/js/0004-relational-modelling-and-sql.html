@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JS Lesson 4 · Relational modelling + SQL</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../../assets/course.css">
+<link rel="stylesheet" href="../../assets/quiz.css">
+<script src="../../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · JS Lesson 04 ·
+    <a href="../../MISSION.md">Mission</a> ·
+    <a href="../../RESOURCES.md">Resources</a> ·
+    <a href="../../reference/http-message-anatomy.html">Reference: HTTP anatomy</a> ·
+    <a href="0003-express.html">← JS Lesson 03</a>
+  </p>
+  <h1>Relational modelling + SQL
+    <span class="sub">Your data lives longer than your process.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">Your Express API works. But every bookmark dies when you stop the server process. Today you give the API permanent storage. You will complete these tasks: design a normalised schema; write SQL queries on a PostgreSQL server; enforce data constraints in the database; write a migration runner script in JavaScript; and connect PostgreSQL to Express with the <code>pg</code> library. At the end, you restart the server. Your data stays in the database.</p>
+
+<h2>The one idea</h2>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>A relational schema is a set of <strong>rules that your data must not break</strong>. You store each fact once, constraints prevent invalid states, and SQL declares schema rules and questions about your data.</p>
+</div>
+
+<p>The database is not a place to store raw JavaScript objects. The database is the final check for correctness. It is also the only component in your stack that retains correct data after your Node.js process crashes.</p>
+
+<h2>Step 0 · Start PostgreSQL with Docker</h2>
+
+<p>Do not use SQLite for this lesson. Real production servers use PostgreSQL. Use Docker to start a PostgreSQL 17 container:</p>
+
+<pre class="wide"><code>$ docker run -d --name pg-bookmarks \
+    -e POSTGRES_USER=learner \
+    -e POSTGRES_PASSWORD=lesson4 \
+    -e POSTGRES_DB=bookmarks \
+    -p 55432:5432 \
+    postgres:17
+
+$ docker exec -it pg-bookmarks psql -U learner -d bookmarks
+psql (17.10)
+Type "help" for help.
+
+bookmarks=#</code></pre>
+
+<p class="sidenote">Port <code>55432</code> prevents a port collision with local PostgreSQL servers. Set the connection string in your shell environment:</p>
+
+<pre class="wide"><code>$ export DATABASE_URL="postgresql://learner:lesson4@localhost:55432/bookmarks"</code></pre>
+
+<h2>Step 1 · Examine an unnormalised model</h2>
+
+<p>Consider a single table that holds tags inside a text column:</p>
+
+<p class="filename">the wrong table schema</p>
+<pre class="wide"><code><span class="c-key">CREATE TABLE</span> bookmarks_bad (
+    id     <span class="c-key">SERIAL PRIMARY KEY</span>,
+    url    <span class="c-key">TEXT</span>,
+    title  <span class="c-key">TEXT</span>,
+    tags   <span class="c-key">TEXT</span>
+);
+
+<span class="c-key">INSERT INTO</span> bookmarks_bad (url, title, tags) <span class="c-key">VALUES</span>
+  (<span class="c-str">'https://expressjs.com/'</span>,              <span class="c-str">'Express'</span>,        <span class="c-str">'javascript, web, api'</span>),
+  (<span class="c-str">'https://www.postgresql.org/docs/'</span>,   <span class="c-str">'Postgres docs'</span>,  <span class="c-str">'sql, database'</span>),
+  (<span class="c-str">'https://nodejs.org/'</span>,                 <span class="c-str">'Node.js'</span>,        <span class="c-str">'javascript, runtime'</span>);</code></pre>
+
+<p>Querying this table for the tag <code>web</code> with <code>LIKE '%web%'</code> creates problems:</p>
+
+<div class="note note--warn">
+  <span class="note-label">Text matching fails for list items</span>
+  <p>A query like <code>LIKE '%web%'</code> matches substrings inside words. A tag named <code>webassembly</code> matches <code>'%web%'</code> even when the bookmark does not have the tag <code>web</code>. Storing lists as comma-separated text disables relational operations.</p>
+</div>
+
+<h2>Step 2 · Design a normalised schema</h2>
+
+<p>Model the entity relationship properly. A bookmark has many tags. A tag belongs to many bookmarks. This relationship is <strong>many-to-many</strong>. Create a join table named <code>bookmark_tags</code>:</p>
+
+<pre class="wide"><code>  bookmarks                bookmark_tags                 tags
+  ─────────                ─────────────                 ────
+  id        ◀──────────────  bookmark_id
+  url                        tag_id       ──────────────▶  id
+  title                                                    name
+  created_at                 PK (bookmark_id, tag_id)</code></pre>
+
+<p class="filename">the normalised schema</p>
+<pre class="wide"><code><span class="c-key">CREATE TABLE</span> bookmarks (
+    id          <span class="c-key">BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY</span>,
+    url         <span class="c-key">TEXT NOT NULL UNIQUE</span>,
+    title       <span class="c-key">TEXT</span>,
+    created_at  <span class="c-key">TIMESTAMPTZ NOT NULL DEFAULT</span> now()
+);
+
+<span class="c-key">CREATE TABLE</span> tags (
+    id    <span class="c-key">BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY</span>,
+    name  <span class="c-key">TEXT NOT NULL UNIQUE</span>
+);
+
+<span class="c-key">CREATE TABLE</span> bookmark_tags (
+    bookmark_id  <span class="c-key">BIGINT NOT NULL REFERENCES</span> bookmarks(id) <span class="c-key">ON DELETE CASCADE</span>,
+    tag_id       <span class="c-key">BIGINT NOT NULL REFERENCES</span> tags(id)      <span class="c-key">ON DELETE CASCADE</span>,
+    <span class="c-key">PRIMARY KEY</span> (bookmark_id, tag_id)
+);
+
+<span class="c-key">CREATE INDEX</span> bookmark_tags_tag_id_idx <span class="c-key">ON</span> bookmark_tags (tag_id);</code></pre>
+
+<ul class="steps">
+  <li><strong><code>BIGINT GENERATED ALWAYS AS IDENTITY</code></strong> — SQL-standard auto-increment integer key.</li>
+  <li><strong><code>PRIMARY KEY</code></strong> — Unique identifier for each row.</li>
+  <li><strong><code>url TEXT NOT NULL UNIQUE</code></strong> — Prevents duplicate URLs at the database layer.</li>
+  <li><strong><code>REFERENCES ... ON DELETE CASCADE</code></strong> — Enforces referential integrity and deletes junction rows automatically when a bookmark is deleted.</li>
+  <li><strong><code>PRIMARY KEY (bookmark_id, tag_id)</code></strong> — Composite primary key that prevents duplicate tag assignments.</li>
+</ul>
+
+<h2>Step 3 · Database constraints</h2>
+
+<p>Constraints stop illegal database modifications. Test constraint enforcement in <code>psql</code>:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">INSERT INTO</span> bookmarks (url, title)
+            <span class="c-key">VALUES</span> (<span class="c-str">'https://expressjs.com/'</span>, <span class="c-str">'Express again'</span>);
+ERROR:  duplicate key value violates unique constraint "bookmarks_url_key"
+DETAIL:  Key (url)=(https://expressjs.com/) already exists.</code></pre>
+
+<p>The database rejects invalid rows before JavaScript code processes them.</p>
+
+<h2>Step 4 · Query data with SQL JOIN</h2>
+
+<p>Use SQL <code>JOIN</code> clauses to combine rows from <code>bookmarks</code>, <code>bookmark_tags</code>, and <code>tags</code>:</p>
+
+<pre class="wide"><code><span class="c-key">SELECT</span> b.id, b.url, b.title, b.created_at,
+       <span class="c-fn">coalesce</span>(<span class="c-fn">array_agg</span>(t.name <span class="c-key">ORDER BY</span> t.name)
+                <span class="c-key">FILTER</span> (<span class="c-key">WHERE</span> t.name <span class="c-key">IS NOT NULL</span>), <span class="c-str">'{}'</span>) <span class="c-key">AS</span> tags
+<span class="c-key">FROM</span> bookmarks b
+<span class="c-key">LEFT JOIN</span> bookmark_tags bt <span class="c-key">ON</span> bt.bookmark_id = b.id
+<span class="c-key">LEFT JOIN</span> tags t           <span class="c-key">ON</span> t.id = bt.tag_id
+<span class="c-key">GROUP BY</span> b.id
+<span class="c-key">ORDER BY</span> b.id <span class="c-key">DESC</span>;</code></pre>
+
+<p><code>array_agg</code> combines related tag names into a PostgreSQL array. <code>coalesce</code> handles bookmarks with zero tags and returns an empty array.</p>
+
+<h2>Step 5 · Write a migration runner in JavaScript</h2>
+
+<p>Database migrations track schema changes in version control. Save migrations in <code>migrations/0001_create_bookmarks.sql</code> and <code>migrations/0002_create_tags.sql</code>.</p>
+
+<p>Write <code>migrate.js</code> to run unapplied migrations in alphabetical order:</p>
+
+<p class="filename">migrate.js</p>
+<pre class="wide"><code><span class="c-key">const</span> fs = <span class="c-fn">require</span>(<span class="c-str">'fs'</span>);
+<span class="c-key">const</span> path = <span class="c-fn">require</span>(<span class="c-str">'path'</span>);
+<span class="c-key">const</span> { Client } = <span class="c-fn">require</span>(<span class="c-str">'pg'</span>);
+
+<span class="c-key">const</span> DSN = process.env.DATABASE_URL;
+<span class="c-key">const</span> MIGRATIONS_DIR = path.<span class="c-fn">join</span>(__dirname, <span class="c-str">'migrations'</span>);
+
+<span class="c-key">async function</span> <span class="c-fn">migrate</span>() {
+  <span class="c-key">const</span> client = <span class="c-key">new</span> <span class="c-fn">Client</span>({ connectionString: DSN });
+  <span class="c-key">await</span> client.<span class="c-fn">connect</span>();
+
+  <span class="c-key">try</span> {
+    <span class="c-key">await</span> client.<span class="c-fn">query</span>(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        version     TEXT PRIMARY KEY,
+        applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+
+    <span class="c-key">const</span> res = <span class="c-key">await</span> client.<span class="c-fn">query</span>(<span class="c-str">'SELECT version FROM schema_migrations'</span>);
+    <span class="c-key">const</span> applied = <span class="c-key">new</span> <span class="c-fn">Set</span>(res.rows.<span class="c-fn">map</span>(r => r.version));
+
+    <span class="c-key">const</span> files = fs.<span class="c-fn">readdirSync</span>(MIGRATIONS_DIR).<span class="c-fn">sort</span>();
+    <span class="c-key">for</span> (<span class="c-key">const</span> file <span class="c-key">of</span> files) {
+      <span class="c-key">if</span> (!file.<span class="c-fn">endsWith</span>(<span class="c-str">'.sql'</span>)) <span class="c-key">continue</span>;
+      <span class="c-key">const</span> version = path.<span class="c-fn">parse</span>(file).name;
+      <span class="c-key">if</span> (applied.<span class="c-fn">has</span>(version)) {
+        <span class="c-fn">console</span>.<span class="c-fn">log</span>(<span class="c-str">`skip    ${version}`</span>);
+        <span class="c-key">continue</span>;
+      }
+
+      <span class="c-key">const</span> sql = fs.<span class="c-fn">readFileSync</span>(path.<span class="c-fn">join</span>(MIGRATIONS_DIR, file), <span class="c-str">'utf8'</span>);
+      <span class="c-key">await</span> client.<span class="c-fn">query</span>(<span class="c-str">'BEGIN'</span>);
+      <span class="c-key">try</span> {
+        <span class="c-key">await</span> client.<span class="c-fn">query</span>(sql);
+        <span class="c-key">await</span> client.<span class="c-fn">query</span>(
+          <span class="c-str">'INSERT INTO schema_migrations (version) VALUES ($1)'</span>,
+          [version]
+        );
+        <span class="c-key">await</span> client.<span class="c-fn">query</span>(<span class="c-str">'COMMIT'</span>);
+        <span class="c-fn">console</span>.<span class="c-fn">log</span>(<span class="c-str">`applied ${version}`</span>);
+      } <span class="c-key">catch</span> (err) {
+        <span class="c-key">await</span> client.<span class="c-fn">query</span>(<span class="c-str">'ROLLBACK'</span>);
+        <span class="c-key">throw</span> err;
+      }
+    }
+  } <span class="c-key">finally</span> {
+    <span class="c-key">await</span> client.<span class="c-fn">end</span>();
+  }
+}
+
+<span class="c-fn">migrate</span>().<span class="c-fn">catch</span>(err => {
+  <span class="c-fn">console</span>.<span class="c-fn">error</span>(<span class="c-str">'Migration failed:'</span>, err);
+  process.<span class="c-fn">exit</span>(<span class="c-num">1</span>);
+});</code></pre>
+
+<h2>Step 6 · Parameterised queries prevent SQL injection</h2>
+
+<p>Do not build SQL statements with string concatenation. String concatenation enables SQL injection attacks.</p>
+
+<p class="filename">sql_injection_demo.js</p>
+<pre class="wide"><code><span class="c-key">const</span> { Client } = <span class="c-fn">require</span>(<span class="c-str">'pg'</span>);
+
+<span class="c-key">async function</span> <span class="c-fn">main</span>() {
+  <span class="c-key">const</span> client = <span class="c-key">new</span> <span class="c-fn">Client</span>({ connectionString: process.env.DATABASE_URL });
+  <span class="c-key">await</span> client.<span class="c-fn">connect</span>();
+
+  <span class="c-key">const</span> userInput = <span class="c-str">"' OR '1'='1"</span>;
+
+  <span class="c-com">// NEVER DO THIS: vulnerable to SQL injection</span>
+  <span class="c-key">const</span> naive = <span class="c-str">`SELECT id, title FROM bookmarks WHERE title = '${userInput}'`</span>;
+  <span class="c-fn">console</span>.<span class="c-fn">log</span>(<span class="c-str">'naive SQL :'</span>, naive);
+
+  <span class="c-com">// DO THIS: parameterised query</span>
+  <span class="c-key">const</span> safeRes = <span class="c-key">await</span> client.<span class="c-fn">query</span>(
+    <span class="c-str">'SELECT id, title FROM bookmarks WHERE title = $1'</span>,
+    [userInput]
+  );
+  <span class="c-fn">console</span>.<span class="c-fn">log</span>(<span class="c-str">'safe  rows:'</span>, safeRes.rows);
+
+  <span class="c-key">await</span> client.<span class="c-fn">end</span>();
+}</code></pre>
+
+<p>In Node.js <code>pg</code>, positional parameters (<code>$1</code>, <code>$2</code>) transmit parameters separately from SQL text. The database engine treats parameters strictly as data values, preventing injection.</p>
+
+<h2>Step 7 · Connect Express to PostgreSQL with pg.Pool</h2>
+
+<p>Use a connection pool (<code>pg.Pool</code>) in Express to handle concurrent database connections efficiently. Wrap write operations in transactions (<code>BEGIN</code>, <code>COMMIT</code>, <code>ROLLBACK</code>).</p>
+
+<p class="filename">server.js</p>
+<pre class="wide"><code><span class="c-key">const</span> express = <span class="c-fn">require</span>(<span class="c-str">'express'</span>);
+<span class="c-key">const</span> { Pool } = <span class="c-fn">require</span>(<span class="c-str">'pg'</span>);
+
+<span class="c-key">const</span> DSN = process.env.DATABASE_URL;
+<span class="c-key">const</span> pool = <span class="c-key">new</span> <span class="c-fn">Pool</span>({ connectionString: DSN });
+<span class="c-key">const</span> app = <span class="c-fn">express</span>();
+app.<span class="c-fn">use</span>(express.<span class="c-fn">json</span>());
+
+app.<span class="c-fn">post</span>(<span class="c-str">'/bookmarks'</span>, <span class="c-key">async</span> (req, res, next) => {
+  <span class="c-key">const</span> { url, title = null, tags = [] } = req.body || {};
+  <span class="c-key">if</span> (!url) {
+    <span class="c-key">return</span> res.<span class="c-fn">status</span>(<span class="c-num">400</span>).<span class="c-fn">json</span>({ detail: <span class="c-str">'URL is required'</span> });
+  }
+
+  <span class="c-key">const</span> client = <span class="c-key">await</span> pool.<span class="c-fn">connect</span>();
+  <span class="c-key">try</span> {
+    <span class="c-key">await</span> client.<span class="c-fn">query</span>(<span class="c-str">'BEGIN'</span>);
+    <span class="c-key">const</span> bRes = <span class="c-key">await</span> client.<span class="c-fn">query</span>(
+      <span class="c-str">'INSERT INTO bookmarks (url, title) VALUES ($1, $2) RETURNING id, url, title, created_at'</span>,
+      [url, title]
+    );
+    <span class="c-key">const</span> bookmark = bRes.rows[<span class="c-num">0</span>];
+
+    <span class="c-key">for</span> (<span class="c-key">const</span> name <span class="c-key">of</span> tags) {
+      <span class="c-key">const</span> tRes = <span class="c-key">await</span> client.<span class="c-fn">query</span>(
+        <span class="c-str">'INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id'</span>,
+        [name]
+      );
+      <span class="c-key">const</span> tagId = tRes.rows[<span class="c-num">0</span>].id;
+      <span class="c-key">await</span> client.<span class="c-fn">query</span>(
+        <span class="c-str">'INSERT INTO bookmark_tags (bookmark_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING'</span>,
+        [bookmark.id, tagId]
+      );
+    }
+    <span class="c-key">await</span> client.<span class="c-fn">query</span>(<span class="c-str">'COMMIT'</span>);
+    res.<span class="c-fn">status</span>(<span class="c-num">201</span>).<span class="c-fn">json</span>({ ...bookmark, tags });
+  } <span class="c-key">catch</span> (err) {
+    <span class="c-key">await</span> client.<span class="c-fn">query</span>(<span class="c-str">'ROLLBACK'</span>);
+    <span class="c-key">if</span> (err.code === <span class="c-str">'23505'</span>) {
+      <span class="c-key">return</span> res.<span class="c-fn">status</span>(<span class="c-num">409</span>).<span class="c-fn">json</span>({ detail: <span class="c-str">'URL already bookmarked'</span> });
+    }
+    <span class="c-fn">next</span>(err);
+  } <span class="c-key">finally</span> {
+    client.<span class="c-fn">release</span>();
+  }
+});
+
+app.<span class="c-fn">listen</span>(<span class="c-num">8000</span>, () => {
+  <span class="c-fn">console</span>.<span class="c-fn">log</span>(<span class="c-str">'Bookmark API listening on http://127.0.0.1:8000'</span>);
+});</code></pre>
+
+<p>The handler opens a transaction with <code>BEGIN</code>. If any operation fails, the handler catches the exception, rolls back changes with <code>ROLLBACK</code>, and returns status code 409 when the database reports duplicate key violation code <code>23505</code>.</p>
+
+<section class="quiz">
+  <h3>Check your understanding</h3>
+
+  <div class="quiz-question" data-answer="2">
+    <p class="question">1. Why must tag associations be stored in a junction table like <code>bookmark_tags</code> rather than a comma-separated text column?</p>
+    <div class="options">
+      <label><input type="radio" name="q1" value="0"> Comma-separated strings require more storage space than relational keys.</label>
+      <label><input type="radio" name="q1" value="1"> PostgreSQL does not allow text columns in SELECT queries.</label>
+      <label><input type="radio" name="q1" value="2"> Junction tables enforce foreign key integrity and enable fast relational joins and indexes.</label>
+      <label><input type="radio" name="q1" value="3"> Node.js cannot parse comma-separated strings from database rows.</label>
+    </div>
+    <div class="explanation">
+      <p>Correct! Relational schemas separate entities to enforce foreign keys, prevent text parsing errors, and optimize query indexes.</p>
+    </div>
+  </div>
+
+  <div class="quiz-question" data-answer="1">
+    <p class="question">2. How do parameterised queries in Node.js <code>pg</code> prevent SQL injection?</p>
+    <div class="options">
+      <label><input type="radio" name="q1_2" value="0"> They strip HTML tags from input parameters before executing queries.</label>
+      <label><input type="radio" name="q1_2" value="1"> Parameters pass separately from SQL commands, treating input values strictly as data.</label>
+      <label><input type="radio" name="q1_2" value="2"> They encode all input strings into Base64 format.</label>
+      <label><input type="radio" name="q1_2" value="3"> Express sanitizes query strings automatically before calling database drivers.</label>
+    </div>
+    <div class="explanation">
+      <p>Correct! Positional placeholders (<code>$1</code>) send user data separately from the SQL statement, preventing parameter string contents from altering SQL syntax.</p>
+    </div>
+  </div>
+
+  <div class="quiz-score"></div>
+</section>
+
+<h2>Read this next</h2>
+<div class="source">
+  <h4>Primary sources</h4>
+  <p><a href="https://node-postgres.com/">node-postgres (pg) Documentation</a></p>
+  <p>Official documentation for the Node.js PostgreSQL client module.</p>
+  <p><a href="https://www.postgresql.org/docs/current/tutorial-sql.html">PostgreSQL Tutorial — SQL Language</a></p>
+  <p>The PostgreSQL manual guide covering SQL commands, constraints, joins, and transactions.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0003-express.html">← JS Lesson 03: Express</a>
+  <a href="0005-why-is-this-slow.html">JS Lesson 05: Why is this slow? →</a>
+</nav>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "lesson-6-code-js",
+  "version": "1.0.0",
+  "description": "JS Lesson 6: Concurrency and the ORM",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "lost-update": "node lost_update.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.3"
+  }
+}

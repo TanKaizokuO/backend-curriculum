@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JS Lesson 7 · Deployment</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../../assets/course.css">
+<link rel="stylesheet" href="../../assets/quiz.css">
+<script src="../../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · JS Lesson 07 ·
+    <a href="../../MISSION.md">Mission</a> ·
+    <a href="../../RESOURCES.md">Resources</a> ·
+    <a href="0006-concurrency-and-the-orm.html">← JS Lesson 06</a>
+  </p>
+  <h1>Deployment (JS)
+    <span class="sub">A deploy is one container image plus one set of environment variables.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">In JS Lesson 6, you handled concurrent database writes and evaluated ORM abstractions. Today you deploy your Node.js Express API to cloud infrastructure. You containerise the application using Docker, isolate runtime configuration, implement automated database release steps, verify health check endpoints, and deploy a production service using Render Blueprints.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>A production deployment packages code into an immutable container image, passes configuration through environment variables, and executes database migrations during a separate release step.</p>
+</div>
+
+<h2>Step 1 · Observe naive deployment defects</h2>
+<p>Inspect four common deployment defects in <code class="filename">naive/Dockerfile</code> and <code class="filename">naive/server.js</code>:</p>
+
+<ul class="steps">
+  <li><strong>Hardcoded local database DSN</strong> — Connecting to <code>localhost</code> inside a container fails because <code>localhost</code> points to the container itself.</li>
+  <li><strong>Binding to 127.0.0.1</strong> — Calling <code>app.listen(8000, '127.0.0.1')</code> limits incoming socket connections to loopback inside the container, blocking external requests. You must bind to <code>0.0.0.0</code>.</li>
+  <li><strong>Development reloader in production image</strong> — Running <code>npx nodemon</code> in production wastes RAM and spawns extra watcher processes.</li>
+  <li><strong>Hardcoded credentials in image layers</strong> — Storing database passwords in <code>ENV</code> instructions exposes secrets in image history.</li>
+</ul>
+
+<h2>Step 2 · Implement twelve-factor configuration</h2>
+<p>Isolate runtime configuration into environment variables using <code class="filename">config.js</code>. Read <code>DATABASE_URL</code> and <code>PORT</code> from <code>process.env</code> on startup and exit immediately if required values are missing.</p>
+
+<p class="filename">config.js</p>
+<pre class="wide"><code><span class="c-key">function</span> <span class="c-fn">loadConfig</span>() {
+  <span class="c-key">const</span> databaseUrl = process.env.DATABASE_URL;
+  <span class="c-key">if</span> (!databaseUrl) {
+    console.<span class="c-fn">error</span>(<span class="c-str">'FATAL: DATABASE_URL environment variable is required.'</span>);
+    process.<span class="c-fn">exit</span>(<span class="c-num">1</span>);
+  }
+  <span class="c-key">return</span> {
+    databaseUrl,
+    port: parseInt(process.env.PORT || <span class="c-str">'8000'</span>, <span class="c-num">10</span>),
+    nodeEnv: process.env.NODE_ENV || <span class="c-str">'development'</span>
+  };
+}</code></pre>
+
+<h2>Step 3 · Write a production Dockerfile</h2>
+<p>Build a minimal production container image using official Node.js Alpine base images and non-root execution users:</p>
+
+<p class="filename">Dockerfile</p>
+<pre class="wide"><code><span class="c-key">FROM</span> node:22-alpine
+<span class="c-key">WORKDIR</span> /app
+<span class="c-key">USER</span> node
+<span class="c-key">COPY</span> --chown=node:node package*.json ./
+<span class="c-key">RUN</span> npm ci --only=production
+<span class="c-key">COPY</span> --chown=node:node . .
+<span class="c-key">ENV</span> PORT=8000 NODE_ENV=production
+<span class="c-key">EXPOSE</span> 8000
+<span class="c-key">CMD</span> [<span class="c-str">"node"</span>, <span class="c-str">"server.js"</span>]</code></pre>
+
+<h2>Step 4 · Separate build, release, and run steps</h2>
+<p>Do not execute SQL database migrations inside application startup handlers or container build steps. Execute migrations during a dedicated release step using <code class="filename">migrate.js</code> before starting application containers.</p>
+
+<pre class="wide"><code>$ node migrate.js
+Applying migration: 0001_create_bookmarks.sql...
+Successfully applied: 0001_create_bookmarks.sql
+All migrations are up to date.</code></pre>
+
+<h2>Step 5 · Implement a database health check</h2>
+<p>Add a <code>/healthz</code> endpoint in Express to verify database connectivity before routing user traffic:</p>
+
+<pre class="wide"><code>app.<span class="c-fn">get</span>(<span class="c-str">'/healthz'</span>, <span class="c-key">async</span> (req, res) => {
+  <span class="c-key">try</span> {
+    <span class="c-key">await</span> pool.<span class="c-fn">query</span>(<span class="c-str">'SELECT 1'</span>);
+    res.<span class="c-fn">status</span>(<span class="c-num">200</span>).<span class="c-fn">json</span>({ status: <span class="c-str">'ok'</span>, env: config.nodeEnv });
+  } <span class="c-key">catch</span> (err) {
+    res.<span class="c-fn">status</span>(<span class="c-num">503</span>).<span class="c-fn">json</span>({ status: <span class="c-str">'unhealthy'</span>, detail: err.message });
+  }
+});</code></pre>
+
+<h2>Step 6 · Rehearse local deployment with Docker Compose</h2>
+<p>Orchestrate local database, release, and application containers using <code class="filename">compose.yaml</code> with explicit health checks and persistent volume storage:</p>
+
+<pre class="wide"><code>$ docker compose up --build -d
+[+] Running 4/4
+ ✔ Network lesson_7_code_default  Created
+ ✔ Container lesson_7_code-db-1       Healthy
+ ✔ Container lesson_7_code-migrate-1  Exited
+ ✔ Container lesson_7_code-api-1      Started</code></pre>
+
+<h2>Step 7 · Declare infrastructure with Render Blueprints</h2>
+<p>Define declarative cloud deployment specifications in <code class="filename">render.yaml</code>:</p>
+
+<pre class="wide"><code>services:
+  - type: web
+    name: bookmarks-api-js
+    runtime: node
+    buildCommand: npm ci
+    startCommand: npm start
+    preDeployCommand: npm run migrate
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bookmarks-db-js
+          property: connectionString
+
+databases:
+  - name: bookmarks-db-js
+    databaseName: bookmarks
+    user: learner
+    plan: free</code></pre>
+
+<section class="quiz">
+  <h3>Check your understanding</h3>
+
+  <div class="quiz-question" data-answer="2">
+    <p class="question">1. Why must a server process bind to host address 0.0.0.0 inside a Docker container?</p>
+    <div class="options">
+      <label><input type="radio" name="q1" value="0"> Because 0.0.0.0 enables TLS encryption automatically.</label>
+      <label><input type="radio" name="q1" value="1"> Because Node.js rejects connections on 127.0.0.1 when running as non-root user.</label>
+      <label><input type="radio" name="q1" value="2"> Because 127.0.0.1 binds strictly to container loopback, blocking requests routed from the container network interface.</label>
+      <label><input type="radio" name="q1" value="3"> Because Render requires 0.0.0.0 for static file caching.</label>
+    </div>
+    <div class="explanation">
+      <p>Correct! Binding to 127.0.0.1 limits socket access to inside the container. 0.0.0.0 binds to all network interfaces, allowing external proxy traffic.</p>
+    </div>
+  </div>
+
+  <div class="quiz-question" data-answer="1">
+    <p class="question">2. When should database migrations run during deployment?</p>
+    <div class="options">
+      <label><input type="radio" name="q2" value="0"> During Docker image build time (docker build).</label>
+      <label><input type="radio" name="q2" value="1"> During a dedicated release step before starting new application server processes.</label>
+      <label><input type="radio" name="q2" value="2"> Inside every HTTP request handler before querying tables.</label>
+      <label><input type="radio" name="q2" value="3"> After stopping all database instances.</label>
+    </div>
+    <div class="explanation">
+      <p>Correct! Running migrations during a separate release step ensures transactional schema updates complete before new web instances accept live traffic.</p>
+    </div>
+  </div>
+
+  <div class="quiz-score"></div>
+</section>
+
+<h2>Read this next</h2>
+<div class="source">
+  <h4>Primary sources</h4>
+  <p><a href="https://12factor.net/">The Twelve-Factor App</a></p>
+  <p>Methodology for building cloud-native SaaS applications, focusing on config, stateless processes, and dev/prod parity.</p>
+  <p><a href="https://docs.docker.com/engine/reference/builder/">Docker Engine User Guide — Dockerfile Reference</a></p>
+  <p>Official manual covering container instructions, multi-stage builds, and signal execution modes.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0006-concurrency-and-the-orm.html">← JS Lesson 06: Concurrency + the ORM</a>
+  <a href="../../MISSION.md">Mission Complete →</a>
+</nav>
+
+</main>
+</body>
+</html>

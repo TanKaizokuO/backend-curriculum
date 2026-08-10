@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Node
+node_modules/
+
+# Secrets. The example files are committed; the real ones never are.
+.env
+.env.*
+!.env.example
+
+# Machine-local agent settings. Holds absolute paths from this workstation.
+.claude/settings.local.json
+
+# Editor and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

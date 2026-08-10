@@ -1,0 +1,12 @@
+{
+  "name": "lesson_3_js",
+  "version": "1.0.0",
+  "description": "Express Bookmarks API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.0"
+  }
+}

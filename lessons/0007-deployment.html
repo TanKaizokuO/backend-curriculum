@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 7 · Deployment</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 07 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../GLOSSARY.md">Glossary</a> ·
+    <a href="0006-concurrency-and-the-orm.html">← Lesson 06</a>
+  </p>
+  <h1>Deployment
+    <span class="sub">The API works on your laptop. No reviewer can reach your laptop.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">Lessons 3 to 6 built one project. It has a JSON API, a
+normalised schema, migrations, an index that you measured, and a counter that
+survives 300 concurrent requests. It runs on <code>localhost</code>. A
+recruiter cannot open <code>localhost</code>. Today you move the same code to a
+public URL, and you keep every property that you proved. You also deploy it
+badly first, because each bad deploy fails in a different way, and each failure
+names one rule.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>A deploy is <strong>one image plus one set of environment variables</strong>
+  — so the image must hold no secret and no data, and the process must read
+  every value that changes from the environment.</p>
+</div>
+
+<p>You already know the vocabulary for this. A container is a process with its
+own filesystem. A managed database is somebody else's PostgreSQL server with a
+connection string. A release step is your <code>migrate.py</code> from Lesson 4,
+run at the right moment. The new part is the order of the steps, and the
+failures that a wrong order produces.</p>
+
+<h2>Step 0 · Three stages, not one</h2>
+
+<p>The Twelve-Factor App splits a deploy into three stages. Learn the three
+words. Interviewers use them, and platforms name their settings after them.</p>
+
+<table>
+  <thead>
+    <tr><th>Stage</th><th>Input</th><th>Output</th><th>Yours</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Build</strong></td>
+      <td>A commit</td>
+      <td>An image</td>
+      <td><code>docker build</code> from the <code>Dockerfile</code></td>
+    </tr>
+    <tr>
+      <td><strong>Release</strong></td>
+      <td>An image plus the config</td>
+      <td>A release with an id</td>
+      <td>The environment variables, plus <code>python migrate.py</code></td>
+    </tr>
+    <tr>
+      <td><strong>Run</strong></td>
+      <td>A release</td>
+      <td>A running process</td>
+      <td><code>uvicorn main:app</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<blockquote>
+  <p>"The twelve-factor app uses strict separation between the build, release,
+  and run stages. For example, it is impossible to make changes to the code at
+  runtime, since there is no way to propagate those changes back to the build
+  stage."</p>
+  <p class="sidenote">— <a href="#src-12f-brr">The Twelve-Factor App, factor V</a></p>
+</blockquote>
+
+<p>Two rules follow from the table.</p>
+
+<ol class="steps">
+  <li><strong>The image holds no config.</strong> One image runs in staging and
+  in production. Only the environment differs. If you bake a value into the
+  image, you need a new build for every deploy, and you leak the value to
+  everyone who can pull the image.</li>
+
+  <li><strong>The release step runs between the build and the run.</strong> The
+  schema change must land before the new code starts. It must not run inside
+  the web process, because a platform starts many web processes.</li>
+</ol>
+
+<h2>Step 1 · Deploy it badly, and watch it fail</h2>
+
+<p>Read this <code>Dockerfile</code>. It is the file that a beginner writes.
+Every line of it looks reasonable.</p>
+
+<p class="filename">Code/Lesson_7_code/naive/Dockerfile</p>
+<pre class="wide"><code><span class="c-key">FROM</span> python:3.12-slim
+<span class="c-key">WORKDIR</span> /app
+<span class="c-key">COPY</span> . .
+<span class="c-key">RUN</span> pip install --no-cache-dir -r requirements.txt
+
+<span class="c-key">ENV</span> DATABASE_URL=postgresql://learner:lesson4@localhost:55432/bookmarks
+
+<span class="c-key">CMD</span> [<span class="c-str">"uvicorn"</span>, <span class="c-str">"main:app"</span>, <span class="c-str">"--reload"</span>, <span class="c-str">"--port"</span>, <span class="c-str">"8000"</span>]</code></pre>
+
+<p>Build it and run it. A PostgreSQL container runs on the same Docker network,
+and it accepts connections.</p>
+
+<pre class="wide"><code>$ docker build -t bookmarks-naive .
+$ docker run --rm -p 8080:8000 bookmarks-naive
+INFO:     Will watch for changes in these directories: ['/app']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [1] using WatchFiles
+INFO:     Started server process [8]
+INFO:     Waiting for application startup.
+error connecting in 'pool-1': connection failed: connection to server at "127.0.0.1", port 55432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+Multiple connection attempts failed. All failures were:
+- host: 'localhost', port: '55432', hostaddr: '::1': connection failed: connection to server at "::1", port 55432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?
+- host: 'localhost', port: '55432', hostaddr: '127.0.0.1': connection failed: connection to server at "127.0.0.1", port 55432 failed: Connection refused
+	Is the server running on that host and accepting TCP/IP connections?</code></pre>
+
+<p>After 30 seconds the pool gives up and the process exits:</p>
+
+<pre class="wide"><code>psycopg_pool.PoolTimeout: pool initialization incomplete after 30.0 sec
+
+ERROR:    Application startup failed. Exiting.</code></pre>
+
+<p>Four defects hide in seven lines. Find each one in the output above.</p>
+
+<h3>Defect 1 · <code>localhost</code> means this container</h3>
+
+<p>The database runs. It runs in another container. Inside a container,
+<code>localhost</code> is that container's own network stack, and nothing
+listens on port 55432 there. A container reaches another container by service
+name, not by <code>localhost</code>.</p>
+
+<p>Set the variable at run time instead, and the same image starts:</p>
+
+<pre class="wide"><code>$ docker run -d --name naive-2 -p 8080:8000 \
+    -e DATABASE_URL=postgresql://learner:...@naive-db:5432/bookmarks bookmarks-naive
+$ docker logs naive-2
+INFO:     Will watch for changes in these directories: ['/app']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [1] using WatchFiles
+INFO:     Started server process [8]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.</code></pre>
+
+<h3>Defect 2 · You publish the port, and it reaches nothing</h3>
+
+<p>The log says <code>Application startup complete</code>. Now request the
+endpoint from the host:</p>
+
+<pre class="wide"><code>$ curl -sS --max-time 5 http://localhost:8080/bookmarks
+curl: (56) Recv failure: Connection reset by peer</code></pre>
+
+<p>The same request from inside the container succeeds:</p>
+
+<pre class="wide"><code>$ docker exec naive-2 python -c \
+    "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8000/bookmarks').read().decode())"
+[[1,"https://example.com"]]</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">Read the second line of the log again</span>
+  <p><code>Uvicorn running on http://127.0.0.1:8000</code>. The default host is
+  <code>127.0.0.1</code>. That address belongs to the container. Docker forwards
+  the published port to the container's external address, and no socket listens
+  there. Pass <code>--host 0.0.0.0</code> and the same command works.</p>
+</div>
+
+<p>This failure has a signature: the container looks healthy, the log looks
+clean, and every request from outside dies. Learn the signature. It costs
+people a full afternoon.</p>
+
+<h3>Defect 3 · <code>--reload</code> costs you two processes and buys nothing</h3>
+
+<p>Count the processes inside the container:</p>
+
+<pre class="wide"><code>$ docker exec naive-2 python -c "..."   <span class="c-com"># print /proc/&lt;pid&gt;/cmdline for each pid</span>
+1 /usr/local/bin/python3.12 /usr/local/bin/uvicorn main:app --reload --port 8000
+7 /usr/local/bin/python3.12 -c from multiprocessing.resource_tracker import main;main(4)
+8 /usr/local/bin/python3.12 -c from multiprocessing.spawn import spawn_main; ... --multiprocessing-fork
+
+$ docker stats --no-stream --format '{{.Name}}  {{.MemUsage}}' naive-2
+naive-2  66.45MiB / 30.84GiB</code></pre>
+
+<p>Three processes serve one application. PID 1 is the reloader, not the
+server. The reloader watches <code>/app</code> for source edits. The files in
+an image never change, so the watcher finds nothing for the whole life of the
+container. It also puts an extra process between the platform and your server.
+Use <code>--reload</code> on your laptop. Never use it in an image.</p>
+
+<h3>Defect 4 · The password is in the image</h3>
+
+<p>The <code>ENV</code> line put the credential inside the build. Anybody who
+can pull the image can read it. You do not need a running container:</p>
+
+<pre class="wide"><code>$ docker image history --no-trunc bookmarks-naive | grep DATABASE_URL
+&lt;missing&gt;   5 minutes ago   ENV DATABASE_URL=postgresql://learner:lesson4@localhost:55432/bookmarks
+
+$ docker image inspect bookmarks-naive --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -i database
+DATABASE_URL=postgresql://learner:lesson4@localhost:55432/bookmarks</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">A layer is permanent</span>
+  <p>Do not fix this with a second <code>ENV</code> line, and do not fix it
+  with <code>RUN rm</code>. An image is a stack of layers. A later layer hides
+  a file, and the earlier layer still holds it. The only fix is to never put
+  the secret in the build.</p>
+</div>
+
+<p>The rest of the lesson removes these four defects one at a time. The code
+that you deploy is the Lesson 6 API, with three changes and nothing else.</p>
+
+<h2>Step 2 · Every setting in one typed object</h2>
+
+<p>The Twelve-Factor App states the rule and gives you a test for it:</p>
+
+<blockquote>
+  <p>"A litmus test for whether an app has all config correctly factored out of
+  the code is whether the codebase could be made open source at any moment,
+  without compromising any credentials."</p>
+  <p class="sidenote">— <a href="#src-12f-config">The Twelve-Factor App, factor III</a></p>
+</blockquote>
+
+<p>Lesson 6 read <code>os.environ["DATABASE_URL"]</code> at import. That works,
+and it fails badly. A typo in the variable name raises <code>KeyError</code>
+with no advice. A malformed URL raises inside the pool, 30 seconds later. Put
+every setting in one place, and validate it:</p>
+
+<p class="filename">Code/Lesson_7_code/config.py</p>
+<pre class="wide"><code><span class="c-key">from</span> pydantic <span class="c-key">import</span> Field, PostgresDsn, ValidationError
+<span class="c-key">from</span> pydantic_settings <span class="c-key">import</span> BaseSettings, SettingsConfigDict
+
+
+<span class="c-key">class</span> <span class="c-fn">Settings</span>(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=<span class="c-str">".env"</span>,            <span class="c-com"># local development only; never committed</span>
+        env_file_encoding=<span class="c-str">"utf-8"</span>,
+        extra=<span class="c-str">"ignore"</span>,
+    )
+
+    database_url: PostgresDsn
+    app_env: str = <span class="c-str">"development"</span>
+    log_level: str = <span class="c-str">"info"</span>
+    pool_min_size: int = Field(default=<span class="c-num">1</span>, ge=<span class="c-num">1</span>)
+    pool_max_size: int = Field(default=<span class="c-num">10</span>, ge=<span class="c-num">1</span>)
+
+    <span class="c-key">@property</span>
+    <span class="c-key">def</span> <span class="c-fn">dsn</span>(self) -&gt; str:
+        <span class="c-str">"""psycopg wants a string, not a PostgresDsn object."""</span>
+        <span class="c-key">return</span> str(self.database_url)
+
+
+<span class="c-key">try</span>:
+    settings = Settings()
+<span class="c-key">except</span> ValidationError <span class="c-key">as</span> exc:
+    <span class="c-key">raise</span> SystemExit(<span class="c-str">f"Bad configuration.\n{exc}"</span>) <span class="c-key">from</span> exc</code></pre>
+
+<p>Four properties come from those 25 lines.</p>
+
+<ol class="steps">
+  <li><strong>The names are a contract.</strong> The field
+  <code>database_url</code> reads the variable <code>DATABASE_URL</code>. The
+  class is the list of everything the deploy needs.</li>
+
+  <li><strong>A bad value stops the process at once.</strong>
+  <code>PostgresDsn</code> rejects a URL with the wrong scheme. The message
+  names the field. A container that refuses to start is better than a container
+  that starts and writes to the wrong database.</li>
+
+  <li><strong>Types are real.</strong> <code>POOL_MAX_SIZE=ten</code> fails at
+  import, not at the first request.</li>
+
+  <li><strong>The repository stays public-safe.</strong> The file names
+  variables. It holds no value.</li>
+</ol>
+
+<p>Commit an example file. It documents the contract, and it holds no
+secret.</p>
+
+<p class="filename">Code/Lesson_7_code/.env.example</p>
+<pre class="wide"><code><span class="c-com"># Copy this file to .env and fill in a real value.</span>
+<span class="c-com">#</span>
+<span class="c-com">#     cp .env.example .env</span>
+<span class="c-com">#</span>
+<span class="c-com"># Commit this file. Never commit .env.</span>
+
+POSTGRES_PASSWORD=change-me
+
+APP_ENV=development
+LOG_LEVEL=info
+POOL_MIN_SIZE=1
+POOL_MAX_SIZE=10</code></pre>
+
+<p class="sidenote">Put <code>.env</code> in <code>.gitignore</code> and in
+<code>.dockerignore</code>. The first keeps it out of the repository. The second
+keeps it out of the build context, so <code>COPY . .</code> cannot copy it into
+a layer.</p>
+
+<h2>Step 3 · The image</h2>
+
+<p>Here is the whole <code>Dockerfile</code>. Compare each line against the
+naive version.</p>
+
+<p class="filename">Code/Lesson_7_code/Dockerfile</p>
+<pre class="wide"><code><span class="c-key">FROM</span> python:3.12-slim
+
+<span class="c-key">ENV</span> PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+<span class="c-key">WORKDIR</span> /app
+
+<span class="c-com"># Copy the dependency list alone, so Docker reuses the install layer while</span>
+<span class="c-com"># only the code changes.</span>
+<span class="c-key">COPY</span> requirements.txt .
+<span class="c-key">RUN</span> pip install --no-cache-dir -r requirements.txt
+
+<span class="c-key">COPY</span> . .
+
+<span class="c-key">RUN</span> useradd --create-home --uid 10001 appuser &amp;&amp; chown -R appuser /app
+<span class="c-key">USER</span> appuser
+
+<span class="c-key">EXPOSE</span> 8000
+
+<span class="c-key">CMD</span> [<span class="c-str">"sh"</span>, <span class="c-str">"-c"</span>, <span class="c-str">"exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --forwarded-allow-ips '*'"</span>]</code></pre>
+
+<p>Six decisions live in that file.</p>
+
+<h3><code>PYTHONUNBUFFERED=1</code></h3>
+
+<p>A platform collects your log from standard output. Python buffers standard
+output when it is not a terminal. A crash then loses the last lines, which are
+the lines that explain the crash. Turn the buffer off.</p>
+
+<h3>Two <code>COPY</code> statements, not one</h3>
+
+<p>Docker caches each layer. The naive file copies the source first, so any
+edit to <code>main.py</code> invalidates the <code>pip install</code> layer and
+the install runs again. Copy <code>requirements.txt</code> first. Then an edit
+to the code reuses the install layer, and the build takes seconds.</p>
+
+<h3>Pinned versions</h3>
+
+<p class="filename">Code/Lesson_7_code/requirements.txt</p>
+<pre class="wide"><code>fastapi==0.141.1
+uvicorn[standard]==0.52.1
+psycopg[binary,pool]==3.3.4
+pydantic-settings==2.14.2</code></pre>
+
+<p>An unpinned dependency makes the build a lottery. The image that you test
+today must equal the image that runs next month. The
+<code>[standard]</code> extra brings <code>uvloop</code> and
+<code>httptools</code>, which are the fast event loop and the fast HTTP
+parser.</p>
+
+<h3><code>USER appuser</code></h3>
+
+<p>The default user in a container is root. A defect in your code then runs as
+root inside the container, which is a much better position for an attacker.
+Create a normal user and switch to it. Prove it:</p>
+
+<pre class="wide"><code>$ docker compose exec api id
+uid=10001(appuser) gid=10001(appuser) groups=10001(appuser)</code></pre>
+
+<h3><code>--host 0.0.0.0</code> and <code>${PORT:-8000}</code></h3>
+
+<p>Render states the requirement in one line:</p>
+
+<blockquote>
+  <p>"Every Render web service must bind to a port on host <code>0.0.0.0</code>
+  to serve HTTP requests. […] The default value of <code>PORT</code> is
+  <code>10000</code> for all Render web services."</p>
+  <p class="sidenote">— <a href="#src-render-web">Render — Web Services</a></p>
+</blockquote>
+
+<p>So the port is not yours to choose. Read it from the environment, and keep a
+default for a local run. <code>${PORT:-8000}</code> does both.</p>
+
+<h3><code>sh -c</code> and <code>exec</code></h3>
+
+<p>Two rules fight here. The exec form of <code>CMD</code> does not expand a
+variable, so <code>${PORT:-8000}</code> needs a shell. A shell then becomes PID
+1, and the platform sends <code>SIGTERM</code> to PID 1 at every redeploy. A
+shell that waits on a child may not pass the signal on. The keyword
+<code>exec</code> settles it: the shell replaces itself with uvicorn, so uvicorn
+is PID 1 and receives the signal.</p>
+
+<pre class="wide"><code>$ docker compose exec api python -c "..."   <span class="c-com"># print /proc/&lt;pid&gt;/cmdline for each pid</span>
+1 /usr/local/bin/python3.12 /usr/local/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --forwarded-allow-ips *</code></pre>
+
+<p>One process. PID 1. Compare that with the three processes of Step 1.</p>
+
+<div class="note note--warn">
+  <span class="note-label">Read this before you copy the flag</span>
+  <p><code>--forwarded-allow-ips '*'</code> tells uvicorn to trust the
+  <code>X-Forwarded-For</code> and <code>X-Forwarded-Proto</code> headers on
+  every request. Use it only when a proxy that you control sits in front of the
+  container and overwrites those headers. A platform that terminates TLS for
+  you meets that condition. A container that the internet reaches directly does
+  not: a client can then claim any address it likes.</p>
+  <p>Uvicorn 0.52.1 enables <code>--proxy-headers</code> by default, so that
+  switch changes nothing. The switch that decides the question is
+  <code>--forwarded-allow-ips</code>, and its default is
+  <code>127.0.0.1</code>.</p>
+</div>
+
+<h3>The build context</h3>
+
+<p class="filename">Code/Lesson_7_code/.dockerignore</p>
+<pre class="wide"><code>.env
+.env.*
+!.env.example
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+.git/
+.gitignore
+
+*.md
+!README.md</code></pre>
+
+<p>Now audit the finished image the same way that you audited the naive
+one:</p>
+
+<pre class="wide"><code>$ docker image history --no-trunc lesson_7_code-api | grep -ci 'password\|DATABASE_URL'
+0
+$ docker image inspect lesson_7_code-api --format '{{range .Config.Env}}{{println .}}{{end}}'
+PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+LANG=C.UTF-8
+GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305
+PYTHON_VERSION=3.12.13
+PYTHON_SHA256=c08bc65a81971c1dd5783182826503369466c7e67374d1646519adf05207b684
+PYTHONDONTWRITEBYTECODE=1
+PYTHONUNBUFFERED=1
+
+$ docker compose exec api sh -c 'ls -a | grep -c "^\.env$"'
+0</code></pre>
+
+<p>No credential in the history. No credential in the environment of the image.
+No <code>.env</code> file inside the container. The image is 260 MB on disk, and
+it is safe to push to a public registry.</p>
+
+<h2>Step 4 · The release step</h2>
+
+<p>Your schema lives in four SQL files, and <code>migrate.py</code> applies the
+ones that a database has not seen. Lesson 4 wrote it. Lesson 7 changes one
+thing: the runner now travels inside the image, and the platform calls it
+between the build and the run.</p>
+
+<p class="filename">Code/Lesson_7_code/migrate.py</p>
+<pre class="wide"><code><span class="c-key">import</span> pathlib
+
+<span class="c-key">import</span> psycopg
+
+<span class="c-key">from</span> config <span class="c-key">import</span> settings
+
+MIGRATIONS = pathlib.Path(__file__).parent / <span class="c-str">"migrations"</span>
+
+<span class="c-key">with</span> psycopg.connect(settings.dsn) <span class="c-key">as</span> conn:
+    conn.execute(<span class="c-str">"""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version     TEXT PRIMARY KEY,
+            applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """</span>)
+    conn.commit()
+
+    rows = conn.execute(<span class="c-str">"SELECT version FROM schema_migrations"</span>)
+    applied = {v <span class="c-key">for</span> (v,) <span class="c-key">in</span> rows}
+
+    <span class="c-key">for</span> path <span class="c-key">in</span> sorted(MIGRATIONS.glob(<span class="c-str">"*.sql"</span>)):
+        version = path.stem
+        <span class="c-key">if</span> version <span class="c-key">in</span> applied:
+            print(<span class="c-str">f"skip    {version}"</span>)
+            <span class="c-key">continue</span>
+        <span class="c-key">with</span> conn.transaction():                     <span class="c-com"># all-or-nothing</span>
+            conn.execute(path.read_text())
+            conn.execute(<span class="c-str">"INSERT INTO schema_migrations (version) VALUES (%s)"</span>,
+                         (version,))
+        print(<span class="c-str">f"applied {version}"</span>)</code></pre>
+
+<p>Two properties make this safe on a platform.</p>
+
+<ol class="steps">
+  <li><strong>It is idempotent.</strong> A second run applies nothing. That
+  matters, because a platform may run the step twice, and because two instances
+  may start at the same moment.</li>
+
+  <li><strong>Each migration runs in one transaction.</strong> A failure in the
+  middle of a file leaves the database unchanged, and
+  <code>schema_migrations</code> gets no row.</li>
+</ol>
+
+<p>The first run applies all four files. The second run applies none:</p>
+
+<pre class="wide"><code>$ docker compose logs migrate --no-log-prefix
+applied 0001_create_bookmarks
+applied 0002_create_tags
+applied 0003_add_title_search_index
+applied 0004_add_visit_count
+
+$ docker compose run --rm migrate
+skip    0001_create_bookmarks
+skip    0002_create_tags
+skip    0003_add_title_search_index
+skip    0004_add_visit_count</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">Never migrate from the web process</span>
+  <p>Do not call <code>migrate.py</code> from the FastAPI lifespan, and do not
+  call <code>create_all()</code> there. A platform runs several instances of a
+  web service. Each instance would then run the schema change at the same
+  instant, against the same database. Keep the schema change in its own step,
+  and let it finish before the API starts.</p>
+</div>
+
+<h2>Step 5 · A health check that checks something</h2>
+
+<p>A platform sends a request to your service every few seconds. It uses the
+answer for two decisions: whether a new deploy may take traffic, and whether a
+running instance needs a restart.</p>
+
+<blockquote>
+  <p>"Whenever all of the new instances are passing their health checks at the
+  same time, Render considers the deploy successful and starts routing traffic
+  to the new instances."</p>
+  <p class="sidenote">— <a href="#src-render-health">Render — Health Checks</a></p>
+</blockquote>
+
+<p>A route that returns <code>{"status": "ok"}</code> and touches nothing tells
+you that Python runs. You already knew that. Query the database instead:</p>
+
+<p class="filename">Code/Lesson_7_code/main.py</p>
+<pre class="wide"><code><span class="c-key">@app.get</span>(<span class="c-str">"/healthz"</span>)
+<span class="c-key">async def</span> <span class="c-fn">healthz</span>():
+    <span class="c-key">try</span>:
+        <span class="c-key">async with</span> app.state.pool.connection() <span class="c-key">as</span> conn:
+            <span class="c-key">await</span> conn.execute(<span class="c-str">"SELECT 1"</span>)
+    <span class="c-key">except</span> Exception <span class="c-key">as</span> exc:
+        <span class="c-key">raise</span> HTTPException(status_code=<span class="c-num">503</span>, detail=<span class="c-str">f"database: {exc}"</span>) <span class="c-key">from</span> exc
+    <span class="c-key">return</span> {<span class="c-str">"status"</span>: <span class="c-str">"ok"</span>, <span class="c-str">"env"</span>: settings.app_env}</code></pre>
+
+<p>Test both answers. Stop the database, ask again, then start the database and
+ask a third time:</p>
+
+<pre class="wide"><code>$ curl -s -w '\nHTTP %{http_code}\n' localhost:8007/healthz
+{"status":"ok","env":"production"}
+HTTP 200
+
+$ docker compose stop db
+$ curl -s -w '\nHTTP %{http_code}\n' localhost:8007/healthz
+{"detail":"database: couldn't get a connection after 30.00 sec"}
+HTTP 503
+
+$ docker compose start db
+$ curl -s -w '\nHTTP %{http_code}\n' localhost:8007/healthz
+{"status":"ok","env":"production"}
+HTTP 200</code></pre>
+
+<p class="sidenote">The 503 took 30 seconds, because the pool waits for a
+connection for 30 seconds. Render treats a health check as failed after five
+seconds, so a slow 503 and a fast 503 both work for the platform. If you want a
+fast answer for a human, pass a short <code>timeout</code> to
+<code>pool.connection()</code>.</p>
+
+<p>Keep the endpoint cheap. It runs every few seconds, forever. One
+<code>SELECT 1</code> is the right size. A health check that counts rows in a
+large table is a scheduled load test against your own database.</p>
+
+<h2>Step 6 · The data must outlive the container</h2>
+
+<p>A container's filesystem dies with the container. That is a feature, and it
+is also the most expensive lesson in this file if you learn it in production.
+The database needs storage that survives.</p>
+
+<p>On one machine, a named volume gives you that:</p>
+
+<pre class="wide"><code>  db:
+    image: postgres:17
+    volumes:
+      <span class="c-com"># Warning: remove this line and a `docker compose down` destroys the</span>
+      <span class="c-com"># database. The named volume outlives the container.</span>
+      - bookmarks-data:/var/lib/postgresql/data
+
+volumes:
+  bookmarks-data:</code></pre>
+
+<p>Prove that it works. Write a row. Destroy the containers. Read the row
+again.</p>
+
+<pre class="wide"><code>$ curl -s 'localhost:8007/bookmarks?limit=5' | python3 -c 'import sys,json;print(len(json.load(sys.stdin)),"row(s)")'
+1 row(s)
+
+$ docker compose down
+ Container lesson_7_code-db-1 Removed
+ Network lesson_7_code_default Removed
+$ docker volume ls --filter name=lesson_7_code_bookmarks-data --format '{{.Name}}'
+lesson_7_code_bookmarks-data
+
+$ docker compose up -d
+$ curl -s 'localhost:8007/bookmarks?limit=5'
+[{"id":1,"url":"https://12factor.net/config","title":"Twelve-Factor: Config","created_at":"2026-08-09T20:39:05.166119+00:00","visit_count":0,"tags":["deploy","reference"]}]
+$ docker compose logs migrate --no-log-prefix | tail -4
+skip    0001_create_bookmarks
+skip    0002_create_tags
+skip    0003_add_title_search_index
+skip    0004_add_visit_count</code></pre>
+
+<p>The containers are new. The row is old. The release step found the schema
+already in place and applied nothing.</p>
+
+<div class="note note--warn">
+  <span class="note-label">One flag deletes the database</span>
+  <p>Run <code>docker compose down -v</code> only when you want an empty
+  database. The flag removes the named volume with the containers.</p>
+</div>
+
+<pre class="wide"><code>$ docker compose down -v
+ Volume lesson_7_code_bookmarks-data Removed
+$ docker compose up -d
+$ curl -s 'localhost:8007/bookmarks?limit=5'
+[]</code></pre>
+
+<p>The same rule holds on a platform, in a harsher form. Render says it
+plainly:</p>
+
+<blockquote>
+  <p>"Like all Render services, Free web services have an ephemeral filesystem.
+  This means that any changes to your web service's filesystem (uploaded
+  images, local SQLite databases, etc.) are lost every time the service
+  redeploys, restarts, or spins down."</p>
+  <p class="sidenote">— <a href="#src-render-free">Render — Deploy for Free</a></p>
+</blockquote>
+
+<p>So a SQLite file next to your code is not a database on a platform. It is a
+cache that disappears at the next deploy. Relational data goes in a managed
+database.</p>
+
+<h2>Step 7 · The whole stack on one machine</h2>
+
+<p>Rehearse the deploy locally. One file starts the database, runs the release
+step, then starts the API in that order.</p>
+
+<p class="filename">Code/Lesson_7_code/compose.yaml</p>
+<pre class="wide"><code>services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: learner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: bookmarks
+    volumes:
+      - bookmarks-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [<span class="c-str">"CMD-SHELL"</span>, <span class="c-str">"pg_isready -U learner -d bookmarks"</span>]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  <span class="c-com"># The release step. It runs to completion, then the API starts.</span>
+  migrate:
+    build: .
+    command: [<span class="c-str">"python"</span>, <span class="c-str">"migrate.py"</span>]
+    environment:
+      DATABASE_URL: postgresql://learner:${POSTGRES_PASSWORD}@db:5432/bookmarks
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: .
+    ports:
+      - <span class="c-str">"8007:8000"</span>
+    environment:
+      <span class="c-com"># `db` is the service name. Inside the network, `localhost` is this</span>
+      <span class="c-com"># container, so `localhost` here finds no database.</span>
+      DATABASE_URL: postgresql://learner:${POSTGRES_PASSWORD}@db:5432/bookmarks
+      APP_ENV: production
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  bookmarks-data:</code></pre>
+
+<p>Three details carry the order.</p>
+
+<ol class="steps">
+  <li><code>condition: service_healthy</code> holds the release step until
+  <code>pg_isready</code> succeeds. A started container is not a ready
+  database.</li>
+
+  <li><code>condition: service_completed_successfully</code> holds the API
+  until the release step exits with status 0. A failed migration stops the
+  API.</li>
+
+  <li><code>${POSTGRES_PASSWORD:?...}</code> stops Compose with a message when
+  the variable is missing. Compose reads <code>.env</code> for it.</li>
+</ol>
+
+<p>Start it:</p>
+
+<pre class="wide"><code>$ cp .env.example .env      <span class="c-com"># then edit POSTGRES_PASSWORD</span>
+$ docker compose up --build -d
+ Container lesson_7_code-db-1 Waiting
+ Container lesson_7_code-db-1 Healthy
+ Container lesson_7_code-migrate-1 Started
+ Container lesson_7_code-migrate-1 Waiting
+ Container lesson_7_code-migrate-1 Exited
+ Container lesson_7_code-api-1 Started
+
+$ docker compose logs migrate api | grep -E 'applied|Uvicorn running'
+migrate-1  | applied 0001_create_bookmarks
+migrate-1  | applied 0002_create_tags
+migrate-1  | applied 0003_add_title_search_index
+migrate-1  | applied 0004_add_visit_count
+api-1      | INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)</code></pre>
+
+<p>Check the state, then use the API:</p>
+
+<pre class="wide"><code>$ docker compose ps
+NAME                  IMAGE               SERVICE   STATUS
+lesson_7_code-api-1   lesson_7_code-api   api       Up About a minute (healthy)
+lesson_7_code-db-1    postgres:17         db        Up About a minute (healthy)
+
+$ curl -s localhost:8007/healthz
+{"status":"ok","env":"production"}
+
+$ curl -s -X POST localhost:8007/bookmarks -H 'content-type: application/json' \
+    -d '{"url":"https://12factor.net/config","title":"Twelve-Factor: Config","tags":["deploy","reference"]}'
+{"id":1,"url":"https://12factor.net/config","title":"Twelve-Factor: Config","created_at":"2026-08-09T20:43:18.218226+00:00","visit_count":0,"tags":["deploy","reference"]}
+
+$ curl -s -X POST localhost:8007/bookmarks/1/visit
+{"id":1,"visit_count":1}</code></pre>
+
+<p>The stack that a platform runs has the same three parts, in the same order.
+Two differences remain: somebody else runs the database, and the platform
+reads the order from a file that you commit.</p>
+
+<h2>Step 8 · Somebody else's PostgreSQL</h2>
+
+<p>You ran PostgreSQL in a container for four lessons. On a platform you buy
+the database instead. You get a connection string. You do not get a server.</p>
+
+<table>
+  <thead>
+    <tr><th>Job</th><th>Your container</th><th>Managed database</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Minor version upgrades</td><td>You</td><td>The platform</td></tr>
+    <tr><td>Backups</td><td>You</td><td>The platform, on a paid plan</td></tr>
+    <tr><td>Point-in-time recovery</td><td>You write it</td><td>A setting</td></tr>
+    <tr><td>Disk growth</td><td>You watch it</td><td>A setting</td></tr>
+    <tr><td>Failover</td><td>You build it</td><td>A paid plan</td></tr>
+    <tr><td>Connection limit</td><td>Yours to raise</td><td>Fixed by the plan</td></tr>
+    <tr><td>Cost</td><td>Your time</td><td>Money each month</td></tr>
+  </tbody>
+</table>
+
+<p>Read the free plan before you rely on it. Render publishes three limits that
+change how you use it:</p>
+
+<ul>
+  <li>A free database <strong>expires 30 days after you create it</strong>. A
+  grace period of 14 days follows. Then Render deletes it and its data.</li>
+  <li>A free database has <strong>no backup</strong> and no managed connection
+  pooling.</li>
+  <li>A free web service <strong>spins down after 15 minutes</strong> without
+  traffic. The next request waits about one minute for the spin-up.</li>
+</ul>
+
+<div class="note note--key">
+  <span class="note-label">Say this in the interview</span>
+  <p>"The demo runs on a free plan, so the first request after an idle period
+  takes about a minute, and the database expires after 30 days. For production
+  I would take the cheapest paid plan, because it adds backups and a release
+  step." That sentence shows that you read the limits. Most candidates do
+  not.</p>
+</div>
+
+<p>Your connection pool needs a second look here. A free plan gives you a small
+connection limit, and each instance of your API opens
+<code>pool_max_size</code> connections. Two instances with
+<code>POOL_MAX_SIZE=10</code> ask for 20 connections. That is why
+<code>pool_max_size</code> is a setting in <code>config.py</code> and not a
+constant in the code.</p>
+
+<h2>Step 9 · The deploy, as a file</h2>
+
+<p>You can create a service by hand in a dashboard. Do not. A dashboard leaves
+no record of what you did, and it invites you to paste a password into a form.
+Render reads a Blueprint from your repository instead.</p>
+
+<p class="filename">Code/Lesson_7_code/render.yaml</p>
+<pre class="wide"><code>databases:
+  - name: bookmarks-db
+    databaseName: bookmarks
+    plan: free
+    region: oregon
+
+services:
+  - type: web
+    name: bookmarks-api
+    runtime: docker
+    plan: starter
+    region: oregon          <span class="c-com"># the same region as the database</span>
+    rootDir: Code/Lesson_7_code
+    dockerfilePath: ./Dockerfile
+
+    preDeployCommand: python migrate.py
+    healthCheckPath: /healthz
+
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bookmarks-db
+          property: connectionString
+
+      - key: APP_ENV
+        value: production
+
+      - key: LOG_LEVEL
+        value: info</code></pre>
+
+<p>Read the <code>fromDatabase</code> block again. It is the best line in the
+file. The database writes its own connection string into the service. The
+password never appears in the repository, in the image, in your terminal, or in
+your clipboard. Nobody types it, so nobody can leak it.</p>
+
+<p><code>preDeployCommand</code> is the release step from Step 4. Render runs it
+after the build and before the new version takes traffic. If it fails, the
+deploy fails, and the previous version keeps the traffic.</p>
+
+<div class="note note--warn">
+  <span class="note-label">The release step needs a paid plan</span>
+  <p>Render offers <code>preDeployCommand</code> for paid instance types only.
+  On a free instance you have no separate release step, so chain the migration
+  into the start command:</p>
+  <pre class="wide"><code>dockerCommand: sh -c "python migrate.py &amp;&amp; exec uvicorn main:app --host 0.0.0.0 --port $PORT"</code></pre>
+  <p>Two instances can then run the migration at the same time. The runner is
+  idempotent, so a repeat prints <code>skip</code> and changes nothing. State
+  the compromise in your README. An interviewer who knows the platform asks
+  about it.</p>
+</div>
+
+<p>Validate the file before you push it. Render serves the schema from
+SchemaStore, so an editor with the YAML extension checks it as you type. The
+CLI checks it in one command:</p>
+
+<pre class="wide"><code>$ render blueprints validate render.yaml</code></pre>
+
+<p class="sidenote">The schema also lives at
+<code>https://render.com/schema/render.yaml.json</code>. The
+<code>render.yaml</code> in this lesson validates against that schema with zero
+errors.</p>
+
+<p>The steps for the first deploy are short.</p>
+
+<ol class="steps">
+  <li>Push the repository, with <code>render.yaml</code> in it, to GitHub.</li>
+  <li>In the Render dashboard, create a Blueprint and point it at the
+  repository.</li>
+  <li>Read the plan that Render shows you. It lists one database and one web
+  service. Apply it.</li>
+  <li>Watch the events. The build runs, the pre-deploy command runs, then the
+  health check runs.</li>
+  <li>Request <code>https://&lt;name&gt;.onrender.com/healthz</code>. A 200
+  answer means that the process runs and the database answers.</li>
+</ol>
+
+<p>Warning: check the first deploy log for a failed health check before you
+change anything else. A failed health check after a successful build almost
+always means one of two things: the process does not bind
+<code>0.0.0.0</code>, or it does not read <code>PORT</code>. Those are defect 2
+of Step 1, on a platform.</p>
+
+<h2>Step 10 · The README is the artifact</h2>
+
+<p>A URL alone proves little. A reviewer opens your repository first, and reads
+for 90 seconds. Those 90 seconds decide whether they read the code. So the
+README carries the evidence that you collected in Lessons 5 and 6.</p>
+
+<p>The full file is in <code>Code/Lesson_7_code/README.md</code>. Its structure
+is the point:</p>
+
+<ol class="steps">
+  <li><strong>One paragraph.</strong> What the service does, and what it stores.
+  No adjectives.</li>
+  <li><strong>The live URL, with the health endpoint next to it.</strong></li>
+  <li><strong>The stack, with versions.</strong> A table of eight rows.</li>
+  <li><strong>A diagram of the request path.</strong> Client, load balancer,
+  container, database, plus the release step.</li>
+  <li><strong>The endpoints.</strong> One table.</li>
+  <li><strong>The measurements.</strong> This is the part that other candidates
+  do not have.</li>
+  <li><strong>The deployment properties, as repeatable checks.</strong> Seven
+  lines, each one a command that a reader can run.</li>
+  <li><strong>How to run it on one machine.</strong> Three commands, and the
+  output that they print.</li>
+</ol>
+
+<p>Section 6 reuses your own numbers. Every figure below came from a run that
+you did:</p>
+
+<table>
+  <thead>
+    <tr><th>Claim</th><th>Evidence</th><th>Lesson</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>The right index turns a scan into a lookup</td>
+      <td>11.810 ms → 0.128 ms, from <code>EXPLAIN (ANALYZE, BUFFERS)</code>
+      over 200 000 rows</td>
+      <td>5</td>
+    </tr>
+    <tr>
+      <td>N+1 costs little on loopback and a lot on a network</td>
+      <td>7× on loopback, 51× through a proxy that adds 1 ms each way</td>
+      <td>5</td>
+    </tr>
+    <tr>
+      <td>A read-modify-write loses writes and reports nothing</td>
+      <td>12 of 200 concurrent increments survived, exit status 0</td>
+      <td>6</td>
+    </tr>
+    <tr>
+      <td>The cheapest correct fix is one statement</td>
+      <td>178.3 ms for one <code>UPDATE</code>, against 247.9 ms for
+      <code>FOR UPDATE</code> and 772.3 ms with 1411 retries at
+      <code>REPEATABLE READ</code></td>
+      <td>6</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note note--ok">
+  <span class="note-label">Why this works</span>
+  <p>A junior CV says "built a REST API with FastAPI and PostgreSQL". Yours
+  says "measured a 92× query improvement and proved a concurrency fix under
+  300 concurrent requests, then deployed the result with a release step and a
+  health check". The second one gives an interviewer a question to ask, and you
+  have the answer, because you ran it.</p>
+</div>
+
+<h2>Practice</h2>
+
+<ol class="steps">
+  <li><strong>Break the bind.</strong> Remove <code>--host 0.0.0.0</code> from
+  the <code>CMD</code> line, rebuild, and request the endpoint from the host.
+  Read the second line of the log. Put it back.</li>
+
+  <li><strong>Break the config.</strong> Set
+  <code>DATABASE_URL=postgres-ql://x</code> and start the container. Read the
+  message from pydantic. Compare it with what
+  <code>os.environ["DATABASE_URL"]</code> would have given you.</li>
+
+  <li><strong>Break the release step.</strong> Write
+  <code>migrations/0005_broken.sql</code> with one invalid statement. Run
+  <code>docker compose up</code>. Confirm two facts: the API never starts, and
+  <code>schema_migrations</code> has no row for 0005. Delete the file.</li>
+
+  <li><strong>Prove the layer.</strong> Add
+  <code>ENV SECRET=hunter2</code> to a copy of the Dockerfile, then add
+  <code>ENV SECRET=</code> on the next line. Build it, and run
+  <code>docker image history --no-trunc</code>. Find <code>hunter2</code>.</li>
+
+  <li><strong>Deploy it.</strong> Push to GitHub, apply the Blueprint, and get
+  a 200 from <code>/healthz</code> on a public host. Then request
+  <code>/bookmarks</code> and <code>/docs</code>.</li>
+
+  <li><strong>Measure the spin-up.</strong> Leave a free service idle for 20
+  minutes. Then run <code>curl -w '%{time_total}'</code> against
+  <code>/healthz</code> twice in a row. Write both numbers in your README, and
+  name the cause.</li>
+
+  <li><strong>Finish the README.</strong> Fill in the live URL. Then read the
+  whole file as a stranger, out loud. Cut every sentence that does not carry a
+  fact.</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<p>Answer before you scroll back. A wrong answer now is worth more than a right
+answer that came from a re-read.</p>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Your container starts, logs 'Application startup complete', and every request from outside times out or resets. What is the first thing you check?",
+    "options": [
+      "The host that the server bound, in the startup log",
+      "The CPU and memory limits of the container",
+      "The firewall rules on the machine that runs Docker",
+      "The version of the HTTP client that sends the request"
+    ],
+    "answer": 0,
+    "why": "The log prints the bound address. A default of 127.0.0.1 belongs to the container, so a published port reaches no socket. Pass --host 0.0.0.0. This failure looks like a network problem and is not one." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "Which factor of the Twelve-Factor App says that config lives in the environment, and what is its litmus test?",
+    "answer": "factor III, config; the test is whether you could open source the codebase today without leaking a credential",
+    "accept": ["factor 3", "iii", "config in the environment", "store config in the environment"],
+    "why": "Factor III. The test is one question with a yes or no answer, and you can apply it to any repository in a minute." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "You put ENV DATABASE_URL=... in a Dockerfile, notice the mistake, and add ENV DATABASE_URL= on the next line. Is the secret gone?",
+    "options": [
+      "No. The earlier layer still holds the value",
+      "Yes. The later ENV overwrites the earlier one",
+      "Yes, after you run docker image prune once",
+      "No, but only if somebody starts the container"
+    ],
+    "answer": 0,
+    "why": "An image is a stack of layers, and each layer is permanent. docker image history --no-trunc prints the original line. The only fix is a rebuild that never contains the value." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why does the Dockerfile use CMD [\"sh\", \"-c\", \"exec uvicorn ...\"] instead of CMD [\"uvicorn\", ...]?",
+    "options": [
+      "$PORT needs a shell, and exec keeps uvicorn as PID 1",
+      "The exec form cannot pass more than four arguments",
+      "A shell restarts uvicorn automatically after a crash",
+      "uvicorn refuses to run when it is process number one"
+    ],
+    "answer": 0,
+    "why": "The exec form does not expand variables, so the platform's $PORT would arrive literally. exec then replaces the shell with uvicorn, so uvicorn receives SIGTERM directly at a redeploy." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why must schema migrations run as a release step and not in the FastAPI lifespan?",
+    "options": [
+      "A platform starts several instances, which would all migrate at once",
+      "The lifespan function cannot open a database connection",
+      "Migrations need a superuser, which the web process lacks",
+      "A migration inside the lifespan cannot run in a transaction"
+    ],
+    "answer": 0,
+    "why": "A web service scales to many instances, and each one would run the schema change against the same database at the same moment. A release step runs once, finishes, and only then does the new version take traffic." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "Name the property that lets a release step run twice with no harm, and the table that gives migrate.py that property.",
+    "answer": "idempotence, from the schema_migrations table",
+    "accept": ["idempotent", "idempotence", "schema_migrations"],
+    "why": "The runner reads schema_migrations, skips every version it finds, and applies the rest. A second run prints skip four times and changes nothing." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "What makes /healthz a useful health check rather than a decoration?",
+    "options": [
+      "It runs SELECT 1, so a 200 means the database answers too",
+      "It returns the name of the environment in the response body",
+      "It responds faster than any other route in the application",
+      "It is excluded from the OpenAPI schema that FastAPI generates"
+    ],
+    "answer": 0,
+    "why": "The platform uses the status code to decide whether an instance may take traffic. A route that touches nothing reports only that Python runs. One cheap query covers the dependency that actually breaks." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "A reviewer runs `docker compose down -v` on your project. What happens?",
+    "options": [
+      "The named volume goes, so the database is empty afterwards",
+      "The containers stop and the data stays in the volume",
+      "Compose refuses, because a volume is still referenced",
+      "The images are deleted and the next build starts fresh"
+    ],
+    "answer": 0,
+    "why": "-v removes named volumes together with the containers. Without -v the volume survives and the rows come back on the next up. This was proved in Step 6 with the same row read before and after." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "You deploy the API to a platform. The build succeeds, the pre-deploy command succeeds, and the deploy then fails on the health check. Describe your diagnosis, in order.",
+    "answer": "1. Read the runtime log, not the build log, and find the line that names the bound address. If it says 127.0.0.1, the process ignores --host 0.0.0.0; fix the CMD. 2. Compare the bound port against the PORT variable that the platform sets. If the process listens on 8000 and the platform probes 10000, the port is wrong; read PORT with ${PORT:-8000}. 3. Request the health path yourself once the instance is up, and read the status code and the body. A 503 from my own handler means the database is unreachable, not that the server is down. 4. If the body reports a database error, check the connection string, the region of the database against the region of the service, and the connection limit of the plan. 5. Only then look at the health check path itself: the platform needs a path that starts with a slash and answers 2xx or 3xx within five seconds.",
+    "why": "The order goes from cheapest to most expensive, and each step reads real output. A build that succeeds tells you the image is fine, so the fault is in the run stage or the config: bind address, port, then the database." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<div class="source">
+  <h4>Primary sources</h4>
+
+  <p id="src-12f-config"><a href="https://12factor.net/config">The Twelve-Factor
+  App — III. Config</a></p>
+  <p><strong>Read this one page, then apply its litmus test to your own
+  repository.</strong> It is 400 words. It is also the source of the rule that
+  the rest of this lesson obeys. Read <a href="https://12factor.net/processes">VI.
+  Processes</a> next, for the reason a container keeps no state. Verified
+  2026-08-10.</p>
+
+  <p id="src-12f-brr"><a href="https://12factor.net/build-release-run">The
+  Twelve-Factor App — V. Build, release, run</a></p>
+  <p>The source of the table in Step 0. It gives you the three words that a
+  platform names its settings after. Verified 2026-08-10.</p>
+
+  <p id="src-render-web"><a href="https://render.com/docs/web-services">Render —
+  Web Services</a></p>
+  <p>Read the section "Port binding". It states the two rules that defect 2 of
+  Step 1 breaks. The page also lists what a web service gives you: managed TLS,
+  zero-downtime deploys, and rollbacks. Verified 2026-08-10.</p>
+
+  <p id="src-render-blueprint"><a href="https://render.com/docs/blueprint-spec">Render
+  — Blueprint YAML Reference</a></p>
+  <p>The authority for Step 9. Read the example file once from top to bottom,
+  then read the field list for <code>envVars</code>. The four ways to set a
+  variable — a literal value, <code>generateValue</code>, <code>sync: false</code>,
+  and <code>fromDatabase</code> — cover almost every real case. Verified
+  2026-08-10.</p>
+
+  <p id="src-render-deploys"><a href="https://render.com/docs/deploys">Render —
+  Deploying on Render</a></p>
+  <p>Read "Deploy steps" and "Zero-downtime deploys". The section "Pre-deploy
+  command" states the paid-plan limit and the 30-minute timeout. Verified
+  2026-08-10.</p>
+
+  <p id="src-render-health"><a href="https://render.com/docs/health-checks">Render
+  — Health Checks</a></p>
+  <p>Short, and worth all of it. It gives the five-second success window, the
+  15-minute deploy window, and the 60-second rule that restarts an unhealthy
+  instance. Verified 2026-08-10.</p>
+
+  <p id="src-render-free"><a href="https://render.com/docs/free">Render — Deploy
+  for Free</a></p>
+  <p>Read this before you promise anyone a permanent demo. The 15-minute
+  spin-down, the 750 instance hours, and the 30-day expiry of a free database
+  are all on this page. Verified 2026-08-10.</p>
+
+  <p><a href="https://github.com/Kludex/uvicorn/blob/master/docs/settings.md">Uvicorn
+  — Settings</a></p>
+  <p>The authority for the two flags in Step 3. It states both defaults in one
+  place: <code>--proxy-headers</code> is enabled by default, and
+  <code>--forwarded-allow-ips</code> defaults to <code>127.0.0.1</code>, where
+  the literal <code>'*'</code> trusts everything. v0.52.1, verified
+  2026-08-10.</p>
+
+  <p><a href="https://docs.docker.com/reference/dockerfile/">Docker — Dockerfile
+  reference</a></p>
+  <p>Use it as a lookup, not as reading. Two entries repay a slow read now:
+  <code>CMD</code> (the exec form against the shell form) and
+  <code>ENTRYPOINT</code>. Verified 2026-08-10.</p>
+</div>
+
+<h2>Where this goes</h2>
+
+<p>Finish practice step 5 and you have three things: a public URL, a repository
+that a stranger can follow, and measurements that support every claim in it.
+That completes the project half of this curriculum. Lessons 1 to 7 take you
+from a socket to a deploy.</p>
+
+<p><strong>The next question is the language.</strong> We agreed on a trigger
+for it in Lesson 1, and this deploy is the trigger. You are fluent in Python,
+and your JavaScript is rusty. Almost every concept in Lessons 1 to 7 transfers.
+A socket is a socket. HTTP framing does not change. An index is an index. A
+lost update happens in every language. What changes is the vocabulary and the
+type system.</p>
+
+<p>Two more lessons wait after that decision: authentication (sessions against
+tokens, and password hashing), then testing with CI. Both are stronger with a
+deployed service to point at, which is why they come after today.</p>
+
+<div class="ask">
+  <p><strong>Ask me things.</strong> Paste the first deploy log, whether it
+  succeeded or failed. A failed first deploy is normal, and the log names the
+  cause in one line most of the time. Three questions are worth asking now.
+  Do you pay for the cheapest plan and get a release step? How do you add a
+  GitHub Action that builds the image before Render does? Where do you put the
+  log calls, so that a platform log stays readable?</p>
+  <p>Two things I want to know. Did you deploy it, and what is the URL? And do
+  you want the TypeScript conversation next, or authentication first? Both are
+  reasonable. The answer depends on what you want the next month to
+  produce.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0006-concurrency-and-the-orm.html">← Lesson 06: Concurrency and the ORM</a>
+  <span>Lesson 08: to be decided →</span>
+</nav>
+
+</main>
+</body>
+</html>

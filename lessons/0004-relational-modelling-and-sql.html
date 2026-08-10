@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 4 · Relational modelling + SQL</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 04 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../reference/http-message-anatomy.html">Reference: HTTP anatomy</a> ·
+    <a href="0003-fastapi.html">← Lesson 03</a>
+  </p>
+  <h1>Relational modelling + SQL
+    <span class="sub">Your data lives longer than your process.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">Your bookmarks API works. But every bookmark dies when you press
+Ctrl-C. Today you give the API permanent storage. You will do these tasks: design
+a normalised schema; write the SQL by hand on a real PostgreSQL server; make the
+database reject bad data before your Python sees it; write a migration runner
+yourself, to learn what a migration is; and connect the whole thing to
+<code>main.py</code>. At the end you restart the server. The data is still there.
+At that moment the project stops being an exercise and becomes a service.</p>
+
+<div class="note">
+  <span class="note-label">Before you start — reading to do first</span>
+  <p>Open <a href="../reference-pdfs/HTTP_Messages_Reference.pdf">
+  <code>reference-pdfs/HTTP_Messages_Reference.pdf</code></a>. This is the MDN HTTP
+  Messages guide, printed for offline reading. You have now written HTTP by hand.
+  You have parsed HTTP by hand. You have also let a framework do it. This is the
+  correct time to read the systematic version. Read it for twenty minutes, before
+  or after this lesson. But read it this week.</p>
+</div>
+
+<h2>The one idea</h2>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson, in short</span>
+  <p>A relational schema is a set of <strong>rules that your data must not
+  break</strong>. You store each fact exactly once. Keys and constraints make the
+  illegal states impossible to represent. SQL does two things: it declares these
+  rules, and it asks questions about the data that remains.</p>
+</div>
+
+<p>Everything else is machinery that supports this idea — normal forms, foreign
+keys, joins, and transactions. Keep the main idea in view. The database is not a
+place to dump Python dictionaries. It is the last defence for correctness. It is
+also the only component in your stack that still holds correct data after your
+process crashes.</p>
+
+<h2>Step 0 · Get a real PostgreSQL</h2>
+
+<p>Do not use SQLite for this lesson. You are training for jobs that run Postgres.
+The important differences are types, constraints, and concurrency behaviour.
+SQLite hides these differences. The fastest correct setup uses Docker:</p>
+
+<pre class="wide"><code>$ docker run -d --name pg-bookmarks \
+    -e POSTGRES_USER=learner \
+    -e POSTGRES_PASSWORD=lesson4 \
+    -e POSTGRES_DB=bookmarks \
+    -p 55432:5432 \
+    postgres:17
+
+$ docker exec -it pg-bookmarks psql -U learner -d bookmarks
+psql (17.10 (Debian 17.10-1.pgdg13+1))
+Type "help" for help.
+
+bookmarks=#</code></pre>
+
+<p class="sidenote">Use port <code>55432</code> on the host, not <code>5432</code>.
+This prevents a collision with a Postgres server that you install later. You can
+also do a native install (<code>apt install postgresql</code>, Postgres.app, or
+Homebrew). That is also correct. All the SQL below is standard SQL for PostgreSQL
+17.</p>
+
+<p>Set the connection string once, in your shell. Do not put it in your code:</p>
+
+<pre class="wide"><code>$ export DATABASE_URL="postgresql://learner:lesson4@localhost:55432/bookmarks"</code></pre>
+
+<div class="note">
+  <span class="note-label">psql commands to learn now</span>
+  <p><code>\dt</code> lists the tables. <code>\d bookmarks</code> describes one
+  table: the columns, indexes, constraints, and the tables that reference it.
+  <code>\x</code> turns on expanded output for wide rows. <code>\q</code> quits.
+  <code>\i file.sql</code> runs a file. You will use <code>\d</code> every day. It
+  is the fastest way to understand a schema that a different person wrote.</p>
+</div>
+
+<h2>Step 1 · Do it the wrong way first</h2>
+
+<p>The obvious method is to translate your in-memory dict into one table.
+Bookmarks have tags, so you give the table a tags column:</p>
+
+<p class="filename">the wrong table</p>
+<pre class="wide"><code><span class="c-key">CREATE TABLE</span> bookmarks_bad (
+    id     <span class="c-key">SERIAL PRIMARY KEY</span>,
+    url    <span class="c-key">TEXT</span>,
+    title  <span class="c-key">TEXT</span>,
+    tags   <span class="c-key">TEXT</span>
+);
+
+<span class="c-key">INSERT INTO</span> bookmarks_bad (url, title, tags) <span class="c-key">VALUES</span>
+  (<span class="c-str">'https://fastapi.tiangolo.com/'</span>,      <span class="c-str">'FastAPI'</span>,       <span class="c-str">'python, web, api'</span>),
+  (<span class="c-str">'https://www.postgresql.org/docs/'</span>,   <span class="c-str">'Postgres docs'</span>, <span class="c-str">'sql, database'</span>),
+  (<span class="c-str">'https://peps.python.org/pep-3333/'</span>,  <span class="c-str">'PEP 3333'</span>,      <span class="c-str">'python, wsgi'</span>),
+  (<span class="c-str">'https://webassembly.org/'</span>,           <span class="c-str">'WebAssembly'</span>,   <span class="c-str">'webassembly, spec'</span>);</code></pre>
+
+<p>Now answer the first question that a bookmarks app must answer — <em>show me
+everything with the tag <code>web</code></em>:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">SELECT</span> title, tags <span class="c-key">FROM</span> bookmarks_bad <span class="c-key">WHERE</span> tags <span class="c-key">LIKE</span> <span class="c-str">'%web%'</span>;
+    title    |       tags
+-------------+-------------------
+ FastAPI     | python, web, api
+ WebAssembly | webassembly, spec
+(2 rows)</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">This is a wrong answer, and the database cannot help you</span>
+  <p><em>WebAssembly</em> does not have the tag <code>web</code>. It has the tag
+  <code>webassembly</code>. <code>LIKE '%web%'</code> finds a substring in a
+  string, and the string contains commas. You could correct it with
+  <code>LIKE '%, web,%' OR tags LIKE 'web,%'</code>. But then you write a parser,
+  not a query. The problem is not the <code>WHERE</code> clause. The problem is
+  that the column holds a <em>list</em>, and SQL does not know it.</p>
+</div>
+
+<p>This table cannot do three more things. Each thing is a real feature request
+that will happen:</p>
+
+<ul>
+  <li><strong>Rename a tag.</strong> To change <code>python</code> to
+  <code>python3</code>, you must change every row that contains it. You must do it
+  with string edits, correctly, in one transaction. One mistake makes your data
+  inconsistent, with no warning.</li>
+  <li><strong>List all tags.</strong> There is no query for this. You must read
+  every row into Python, split the string on commas, remove the spaces, and
+  remove the duplicates. This moves work into Python. But the database is built to
+  do this work.</li>
+  <li><strong>Count the bookmarks for each tag.</strong> This has the same
+  problem, and you must also write the aggregation yourself.</li>
+</ul>
+
+<div class="note note--key">
+  <span class="note-label">First normal form, in practical terms</span>
+  <p><strong>One cell holds one value.</strong> A column must not contain a list —
+  a comma-separated list, a JSON array, or a pipe-delimited list. A list is a
+  structure that the database understands. But you hide the structure in a text
+  type, and the database sees that type as opaque. Then every query becomes
+  string manipulation. You also lose every guarantee that you wanted: uniqueness,
+  referential integrity, and indexes.</p>
+</div>
+
+<h2>Step 2 · Model it properly</h2>
+
+<p>Ask the modelling question: <em>what are the things, and how do they
+relate?</em> There are two things — a bookmark and a tag. The relationship
+between them is <strong>many-to-many</strong>: a bookmark has many tags, and a tag
+labels many bookmarks. A many-to-many relationship is also a thing, and so it gets
+its own table.</p>
+
+<pre class="wide"><code>  bookmarks                bookmark_tags                 tags
+  ─────────                ─────────────                 ────
+  id        ◀──────────────  bookmark_id
+  url                        tag_id       ──────────────▶  id
+  title                                                    name
+  created_at                 PK (bookmark_id, tag_id)</code></pre>
+
+<p class="filename">the right schema</p>
+<pre class="wide"><code><span class="c-key">CREATE TABLE</span> bookmarks (
+    id          <span class="c-key">BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY</span>,
+    url         <span class="c-key">TEXT</span>        <span class="c-key">NOT NULL UNIQUE</span>,
+    title       <span class="c-key">TEXT</span>,
+    created_at  <span class="c-key">TIMESTAMPTZ</span> <span class="c-key">NOT NULL DEFAULT</span> now()
+);
+
+<span class="c-key">CREATE TABLE</span> tags (
+    id    <span class="c-key">BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY</span>,
+    name  <span class="c-key">TEXT NOT NULL UNIQUE</span>
+);
+
+<span class="c-key">CREATE TABLE</span> bookmark_tags (
+    bookmark_id  <span class="c-key">BIGINT NOT NULL REFERENCES</span> bookmarks(id) <span class="c-key">ON DELETE CASCADE</span>,
+    tag_id       <span class="c-key">BIGINT NOT NULL REFERENCES</span> tags(id)      <span class="c-key">ON DELETE CASCADE</span>,
+    <span class="c-key">PRIMARY KEY</span> (bookmark_id, tag_id)
+);</code></pre>
+
+<p>Every clause in the schema has a purpose. Read them one at a time:</p>
+
+<ul class="steps">
+  <li><strong><code>BIGINT GENERATED ALWAYS AS IDENTITY</code></strong> — this is
+  the modern, SQL-standard replacement for <code>SERIAL</code>. It does the same
+  job: it makes an auto-increment surrogate key. <code>ALWAYS</code> gives more
+  safety: the application cannot supply its own <code>id</code> by mistake and
+  desynchronise the sequence. Use it for new tables. Also recognise
+  <code>SERIAL</code> in old ones.</li>
+
+  <li><strong><code>PRIMARY KEY</code></strong> — this is the identity of the row.
+  It is unique, it is never null, and other tables point at it. <code>id</code> is
+  a <em>surrogate</em> key: it has no meaning by design, so it never has to change
+  when the real-world data changes.</li>
+
+  <li><strong><code>url TEXT NOT NULL UNIQUE</code></strong> — this is the
+  <em>natural</em> key. A bookmark without a URL is not a bookmark, and the same
+  URL twice is a duplicate. This one line is your complete method to prevent
+  duplicates. It works even when two requests arrive in the same millisecond. A
+  Python check, <code>if url in BOOKMARKS</code>, does not work then.</li>
+
+  <li><strong><code>REFERENCES bookmarks(id)</code></strong> — this is a foreign
+  key. Now the database refuses to store a link to a bookmark that does not exist.
+  This is <em>referential integrity</em>, and this guarantee lets you trust a
+  join.</li>
+
+  <li><strong><code>ON DELETE CASCADE</code></strong> — when the bookmark is
+  deleted, its links are deleted also. Without this clause, a delete of a bookmark
+  fails with a foreign key error, because rows in <code>bookmark_tags</code> still
+  point at it. You choose a policy here. The other policies are
+  <code>RESTRICT</code> (refuse) and <code>SET NULL</code>.</li>
+
+  <li><strong><code>PRIMARY KEY (bookmark_id, tag_id)</code></strong> — this is a
+  <em>composite</em> key. The identity of a link is the pair itself, so you cannot
+  attach the same tag to the same bookmark twice. Note that there is no
+  <code>id</code> column: this table has no independent identity to name.</li>
+</ul>
+
+<div class="note">
+  <span class="note-label">Normal forms, in short</span>
+  <p><strong>1NF:</strong> one value in each cell (the failure in Step 1).
+  <strong>2NF:</strong> every non-key column depends on the <em>whole</em> key,
+  not part of it. <strong>3NF:</strong> non-key columns depend on the key and
+  <em>nothing else</em> — no column comes from a different non-key column. One
+  practical rule gives you all three forms: <strong>store every fact exactly
+  once.</strong> If you must write to more than one place to change one real-world
+  fact, the model is wrong. The fact "the tag has the name python" is now in
+  exactly one row of <code>tags</code>.</p>
+</div>
+
+<p class="sidenote">Denormalisation is a real technique. But it is an
+optimisation that you apply <em>later</em>, with a measurement, and you accept the
+update problems on purpose. To start with a denormalised model is not a shortcut.
+It is a bug that you have not found yet.</p>
+
+<h2>Step 3 · Let the database say no</h2>
+
+<p>Constraints are not documentation. The database enforces them, on every write.
+The database is the only component that sees all of them. Try to break each one:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">INSERT INTO</span> bookmarks (url, title)
+            <span class="c-key">VALUES</span> (<span class="c-str">'https://fastapi.tiangolo.com/'</span>, <span class="c-str">'FastAPI again'</span>);
+ERROR:  duplicate key value violates unique constraint "bookmarks_url_key"
+DETAIL:  Key (url)=(https://fastapi.tiangolo.com/) already exists.
+
+bookmarks=# <span class="c-key">INSERT INTO</span> bookmarks (title) <span class="c-key">VALUES</span> (<span class="c-str">'no url'</span>);
+ERROR:  null value in column "url" of relation "bookmarks"
+        violates not-null constraint
+DETAIL:  Failing row contains (6, null, no url, 2026-08-02 22:09:37.253002+00).
+
+bookmarks=# <span class="c-key">INSERT INTO</span> bookmark_tags (bookmark_id, tag_id) <span class="c-key">VALUES</span> (<span class="c-num">999</span>, <span class="c-num">1</span>);
+ERROR:  insert or update on table "bookmark_tags" violates foreign key
+        constraint "bookmark_tags_bookmark_id_fkey"
+DETAIL:  Key (bookmark_id)=(999) is not present in table "bookmarks".</code></pre>
+
+<p>These are three classes of bug that your Python no longer has to prevent. More
+importantly, a <em>second</em> client also cannot introduce them — a cron job, a
+script from a colleague, or you in psql at night. Validation in your API is a
+courtesy to the caller. Constraints in the database are the real guarantee.</p>
+
+<div class="note">
+  <span class="note-label">Look at the second error again</span>
+  <p><code>Failing row contains (6, null, ...)</code> — the id is
+  <strong>6</strong>, but only four rows were inserted with success. Identity
+  sequences are not transactional: a failed insert still uses a number. Gaps in
+  your IDs are normal and permanent. You may one day need gapless numbers (invoice
+  numbers, for example). That is a separate design problem, not a sequence.</p>
+</div>
+
+<h2>Step 4 · Ask questions — the join</h2>
+
+<p>The data is now in three tables. To answer "everything with the tag
+<code>web</code>", you must combine them again. A join does this: it matches rows
+from two tables on a condition, and it makes the combined rows.</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">SELECT</span> b.id, b.title
+            <span class="c-key">FROM</span> bookmarks b
+            <span class="c-key">JOIN</span> bookmark_tags bt <span class="c-key">ON</span> bt.bookmark_id = b.id
+            <span class="c-key">JOIN</span> tags t           <span class="c-key">ON</span> t.id = bt.tag_id
+            <span class="c-key">WHERE</span> t.name = <span class="c-str">'web'</span>;
+ id |  title
+----+---------
+  1 | FastAPI
+(1 row)</code></pre>
+
+<p>One row. This is correct. <code>WebAssembly</code> is gone. The query is not
+more clever than <code>LIKE</code>. The reason is that <code>web</code> and
+<code>webassembly</code> are now different <em>rows</em>, not different substrings.
+The model did the work.</p>
+
+<p>To go the other way, you get every bookmark with its tags in one row. For this
+you need <code>LEFT JOIN</code> and an aggregate:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">SELECT</span> b.id, b.title,
+                   string_agg(t.name, <span class="c-str">', '</span> <span class="c-key">ORDER BY</span> t.name) <span class="c-key">AS</span> tags
+            <span class="c-key">FROM</span> bookmarks b
+            <span class="c-key">LEFT JOIN</span> bookmark_tags bt <span class="c-key">ON</span> bt.bookmark_id = b.id
+            <span class="c-key">LEFT JOIN</span> tags t           <span class="c-key">ON</span> t.id = bt.tag_id
+            <span class="c-key">GROUP BY</span> b.id, b.title
+            <span class="c-key">ORDER BY</span> b.id;
+ id |     title     |       tags
+----+---------------+------------------
+  1 | FastAPI       | api, python, web
+  2 | Postgres docs | sql
+  3 | PEP 3333      | python, wsgi
+  4 | WebAssembly   | webassembly
+(4 rows)</code></pre>
+
+<div class="note">
+  <span class="note-label">JOIN and LEFT JOIN — an important difference</span>
+  <p>A plain <code>JOIN</code> (an inner join) keeps only the rows that matched. A
+  <code>LEFT JOIN</code> keeps every row from the left table, and it fills
+  <code>NULL</code> where nothing matched. Use the first query's <code>JOIN</code>
+  here instead, and any bookmark with no tags <strong>disappears from your API
+  response, with no warning</strong>. This is one of the most common real bugs in
+  list endpoints: the join, not the filter, dropped the row.</p>
+</div>
+
+<p>Aggregation the other way: how many bookmarks have each tag, including the
+unused ones:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">SELECT</span> t.name, count(bt.bookmark_id) <span class="c-key">AS</span> n
+            <span class="c-key">FROM</span> tags t
+            <span class="c-key">LEFT JOIN</span> bookmark_tags bt <span class="c-key">ON</span> bt.tag_id = t.id
+            <span class="c-key">GROUP BY</span> t.name
+            <span class="c-key">ORDER BY</span> n <span class="c-key">DESC</span>, t.name;
+    name     | n
+-------------+---
+ python      | 2
+ api         | 1
+ sql         | 1
+ web         | 1
+ webassembly | 1
+ wsgi        | 1
+(6 rows)</code></pre>
+
+<p class="sidenote">Why <code>count(bt.bookmark_id)</code> and not
+<code>count(*)</code>? <code>count(*)</code> counts rows, and a
+<code>LEFT JOIN</code> with no match still makes one row — so an unused tag would
+report 1. <code>count(column)</code> does not count NULLs, so it correctly reports
+0. Try both.</p>
+
+<p>And the operation that was string editing in Step 1:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">UPDATE</span> tags <span class="c-key">SET</span> name = <span class="c-str">'python3'</span> <span class="c-key">WHERE</span> name = <span class="c-str">'python'</span>;
+UPDATE 1</code></pre>
+
+<p>One row changed. Now both bookmarks have the tag <code>python3</code>. This is
+the benefit of "store every fact exactly once".</p>
+
+<p>Deletion is now the database's task also:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">SELECT</span> count(*) <span class="c-key">FROM</span> bookmark_tags <span class="c-key">WHERE</span> bookmark_id = <span class="c-num">1</span>;
+ count
+-------
+     3
+
+bookmarks=# <span class="c-key">DELETE FROM</span> bookmarks <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;
+DELETE 1
+
+bookmarks=# <span class="c-key">SELECT</span> count(*) <span class="c-key">FROM</span> bookmark_tags <span class="c-key">WHERE</span> bookmark_id = <span class="c-num">1</span>;
+ count
+-------
+     0
+
+bookmarks=# <span class="c-key">SELECT</span> count(*) <span class="c-key">FROM</span> tags;
+ count
+-------
+     6</code></pre>
+
+<p>The three link rows cascaded away. The tags themselves stayed. A delete of a
+bookmark must not delete the concept "python". Read the cascade rules again with
+this in mind: they hold a domain decision, not a technicality.</p>
+
+<h2>Step 5 · Transactions — the A in ACID</h2>
+
+<p>An API request that writes to two tables can fail in the middle. See what
+Postgres does about it:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">BEGIN</span>;
+BEGIN
+bookmarks=# <span class="c-key">INSERT INTO</span> bookmarks (url, title)
+            <span class="c-key">VALUES</span> (<span class="c-str">'https://example.com/'</span>, <span class="c-str">'Example'</span>) <span class="c-key">RETURNING</span> id;
+ id
+----
+  7
+INSERT 0 1
+bookmarks=# <span class="c-key">INSERT INTO</span> bookmark_tags (bookmark_id, tag_id) <span class="c-key">VALUES</span> (<span class="c-num">7</span>, <span class="c-num">999</span>);
+ERROR:  insert or update on table "bookmark_tags" violates foreign key
+        constraint "bookmark_tags_tag_id_fkey"
+DETAIL:  Key (tag_id)=(999) is not present in table "tags".
+bookmarks=# <span class="c-key">COMMIT</span>;
+ROLLBACK
+bookmarks=# <span class="c-key">SELECT</span> count(*) <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> url = <span class="c-str">'https://example.com/'</span>;
+ count
+-------
+     0</code></pre>
+
+<div class="note note--key">
+  <span class="note-label">Read the output again — psql answered COMMIT with ROLLBACK</span>
+  <p>The first insert <em>succeeded</em>. Then the second insert failed, which put
+  the transaction in a failed state, so the <code>COMMIT</code> became a rollback
+  and the bookmark never existed. <strong>Atomicity:</strong> a transaction is all
+  or nothing. Without it you could have a bookmark with half its tags, and no way
+  to know. Every multi-statement write in your API belongs in one transaction.
+  Note the evidence that stays: <code>id 7</code> was used and is gone forever.</p>
+</div>
+
+<p>Here are the other three letters, in short, so the interview question is not
+new to you. <strong>C</strong>onsistency: a transaction moves the database from
+one valid state to another valid state, and your constraints define "valid".
+<strong>I</strong>solation: concurrent transactions do not see each other's
+unfinished work. <strong>D</strong>urability: after <code>COMMIT</code> returns,
+the data survives a power failure. You have now seen A and C enforced with your
+own eyes.</p>
+
+<h2>Step 6 · Migrations — write the runner, then use the tool</h2>
+
+<p>Your schema is now a thing that you typed into psql. This is not shippable:
+your laptop and production must reach the same schema, by the same repeatable
+path, and so must the next person who clones the repo. A
+<strong>migration</strong> is a change to the schema. It is versioned, ordered,
+and applied once. You check it into git, beside the code that depends on it.</p>
+
+<p>Convention #2 of this curriculum says: build the mechanism before the tool. The
+mechanism is about forty lines. Start with the schema as numbered files:</p>
+
+<p class="filename">migrations/0001_create_bookmarks.sql</p>
+<pre class="wide"><code><span class="c-key">CREATE TABLE</span> bookmarks (
+    id          <span class="c-key">BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY</span>,
+    url         <span class="c-key">TEXT</span>        <span class="c-key">NOT NULL UNIQUE</span>,
+    title       <span class="c-key">TEXT</span>,
+    created_at  <span class="c-key">TIMESTAMPTZ</span> <span class="c-key">NOT NULL DEFAULT</span> now()
+);</code></pre>
+
+<p class="filename">migrations/0002_create_tags.sql</p>
+<pre class="wide"><code><span class="c-key">CREATE TABLE</span> tags (
+    id    <span class="c-key">BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY</span>,
+    name  <span class="c-key">TEXT NOT NULL UNIQUE</span>
+);
+
+<span class="c-key">CREATE TABLE</span> bookmark_tags (
+    bookmark_id  <span class="c-key">BIGINT NOT NULL REFERENCES</span> bookmarks(id) <span class="c-key">ON DELETE CASCADE</span>,
+    tag_id       <span class="c-key">BIGINT NOT NULL REFERENCES</span> tags(id)      <span class="c-key">ON DELETE CASCADE</span>,
+    <span class="c-key">PRIMARY KEY</span> (bookmark_id, tag_id)
+);
+
+<span class="c-key">CREATE INDEX</span> bookmark_tags_tag_id_idx <span class="c-key">ON</span> bookmark_tags (tag_id);</code></pre>
+
+<p class="sidenote">Why the extra index? The composite primary key already indexes
+<code>(bookmark_id, tag_id)</code>. But you can search a B-tree on two columns
+efficiently only from the <em>left</em>. The question "which bookmarks have tag
+42?" searches by the second column, so it needs its own index. Indexes are the
+subject of Lesson 5. <a href="https://use-the-index-luke.com/sql/table-of-contents">Use
+The Index, Luke!</a> is the reference for that lesson.</p>
+
+<p>Now write the runner. The main trick is a table that records which files are
+already applied:</p>
+
+<p class="filename">migrate.py</p>
+<pre class="wide"><code><span class="c-str">"""Apply every .sql file in migrations/ that has not been applied yet."""</span>
+<span class="c-key">import</span> os
+<span class="c-key">import</span> pathlib
+<span class="c-key">import</span> psycopg
+
+DSN = os.environ[<span class="c-str">"DATABASE_URL"</span>]
+MIGRATIONS = pathlib.Path(__file__).parent / <span class="c-str">"migrations"</span>
+
+<span class="c-key">with</span> psycopg.connect(DSN) <span class="c-key">as</span> conn:
+    conn.execute(<span class="c-str">"""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version     TEXT PRIMARY KEY,
+            applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """</span>)
+    conn.commit()
+
+    rows = conn.execute(<span class="c-str">"SELECT version FROM schema_migrations"</span>)
+    applied = {v <span class="c-key">for</span> (v,) <span class="c-key">in</span> rows}
+
+    <span class="c-key">for</span> path <span class="c-key">in</span> sorted(MIGRATIONS.glob(<span class="c-str">"*.sql"</span>)):
+        version = path.stem
+        <span class="c-key">if</span> version <span class="c-key">in</span> applied:
+            print(<span class="c-str">f"skip    {version}"</span>)
+            <span class="c-key">continue</span>
+        <span class="c-key">with</span> conn.transaction():                     <span class="c-com"># all-or-nothing</span>
+            conn.execute(path.read_text())
+            conn.execute(<span class="c-str">"INSERT INTO schema_migrations (version) VALUES (%s)"</span>,
+                         (version,))
+        print(<span class="c-str">f"applied {version}"</span>)</code></pre>
+
+<pre class="wide"><code>$ pip install "psycopg[binary,pool]"
+$ python migrate.py
+applied 0001_create_bookmarks
+applied 0002_create_tags
+
+$ python migrate.py
+skip    0001_create_bookmarks
+skip    0002_create_tags</code></pre>
+
+<p>Run it twice. The second run does nothing. This property is
+<strong>idempotence</strong>, the same word you learned for HTTP methods in
+Lesson 1, and it is the whole point. Deployment can run the runner on every boot,
+without a condition.</p>
+
+<div class="note">
+  <span class="note-label">Why the DDL is inside a transaction</span>
+  <p>PostgreSQL has <em>transactional DDL</em>: you can roll back
+  <code>CREATE TABLE</code>. MySQL and Oracle cannot do this. So a migration that
+  fails on its third statement leaves the database exactly as it was, and
+  <code>schema_migrations</code> is not updated — you fix the file and run it
+  again. This is one of the strongest practical reasons to use Postgres, and it is
+  worth saying out loud in an interview.</p>
+</div>
+
+<div class="note note--warn">
+  <span class="note-label">The rule to keep in production</span>
+  <p><strong>Never edit an applied migration.</strong> Once a file has run
+  somewhere that is not your laptop, it is history. Every change is a new numbered
+  file. If you edit <code>0002</code>, your machine and the server now disagree
+  about the meaning of <code>0002</code>, and nothing will tell you.</p>
+</div>
+
+<p>In a real project you would use <a
+href="https://alembic.sqlalchemy.org/en/latest/tutorial.html">Alembic</a>
+(SQLAlchemy's migration tool, and the default in the Python ecosystem). It adds
+more features: autogeneration from model definitions, downgrade scripts, and
+branched histories for teams. But it runs the same loop that you wrote — a version
+table, ordered scripts, applied once — and now you can debug it when it fails.</p>
+
+<h2>Step 7 · Wire it into the API</h2>
+
+<p>Now replace the dictionary in <code>main.py</code>. There are three new
+pieces: a connection <strong>pool</strong> that opens at startup,
+<strong>parameterised</strong> queries, and a map from database errors to HTTP
+status codes.</p>
+
+<p class="filename">main.py — connection pool via lifespan</p>
+<pre class="wide"><code><span class="c-key">import</span> os
+<span class="c-key">from</span> contextlib <span class="c-key">import</span> asynccontextmanager
+
+<span class="c-key">from</span> fastapi <span class="c-key">import</span> FastAPI, HTTPException
+<span class="c-key">from</span> psycopg <span class="c-key">import</span> errors
+<span class="c-key">from</span> psycopg.rows <span class="c-key">import</span> dict_row
+<span class="c-key">from</span> psycopg_pool <span class="c-key">import</span> AsyncConnectionPool
+<span class="c-key">from</span> pydantic <span class="c-key">import</span> BaseModel
+
+DSN = os.environ[<span class="c-str">"DATABASE_URL"</span>]
+
+<span class="c-fn">@asynccontextmanager</span>
+<span class="c-key">async def</span> <span class="c-fn">lifespan</span>(app: FastAPI):
+    <span class="c-key">async with</span> AsyncConnectionPool(DSN, open=<span class="c-key">False</span>) <span class="c-key">as</span> pool:
+        <span class="c-key">await</span> pool.wait()
+        app.state.pool = pool
+        <span class="c-key">yield</span>
+
+app = FastAPI(lifespan=lifespan)</code></pre>
+
+<div class="note">
+  <span class="note-label">Why a pool, and why lifespan</span>
+  <p>To open a PostgreSQL connection costs a TCP handshake, authentication, and a
+  new backend process on the server — a few milliseconds, on every request,
+  forever. A pool opens a few connections at startup and hands them out.
+  <code>lifespan</code> is FastAPI's startup and shutdown hook: the code before
+  <code>yield</code> runs once when Uvicorn boots, and the code after
+  <code>yield</code> runs on shutdown. Some objects have a connection lifetime —
+  pools, HTTP clients, and caches. They belong here. They do not belong at import
+  time, and they never belong in each request.</p>
+</div>
+
+<p class="filename">main.py — the list endpoint</p>
+<pre class="wide"><code>LIST_SQL = <span class="c-str">"""
+    SELECT b.id, b.url, b.title, b.created_at,
+           coalesce(array_agg(t.name ORDER BY t.name)
+                    FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
+    FROM bookmarks b
+    LEFT JOIN bookmark_tags bt ON bt.bookmark_id = b.id
+    LEFT JOIN tags t           ON t.id = bt.tag_id
+    GROUP BY b.id
+    ORDER BY b.id
+    LIMIT %(limit)s OFFSET %(skip)s
+"""</span>
+
+<span class="c-fn">@app.get</span>(<span class="c-str">"/bookmarks"</span>)
+<span class="c-key">async def</span> <span class="c-fn">list_bookmarks</span>(skip: int = <span class="c-num">0</span>, limit: int = <span class="c-num">10</span>):
+    <span class="c-key">async with</span> app.state.pool.connection() <span class="c-key">as</span> conn:
+        cur = <span class="c-key">await</span> conn.cursor(row_factory=dict_row).execute(
+            LIST_SQL, {<span class="c-str">"limit"</span>: limit, <span class="c-str">"skip"</span>: skip}
+        )
+        <span class="c-key">return await</span> cur.fetchall()</code></pre>
+
+<p>Your Lesson 3 <code>skip</code>/<code>limit</code> loaded everything, then
+sliced a Python list. <code>LIMIT</code>/<code>OFFSET</code> pushes that work into
+the database, which is the only version that still works at a million rows.
+<code>FILTER (WHERE t.name IS NOT NULL)</code> is the array version of the
+<code>count()</code> point above: without it, an untagged bookmark comes back as
+<code>[null]</code>, not <code>[]</code>.</p>
+
+<p class="filename">main.py — create, with the duplicate-URL case</p>
+<pre class="wide"><code><span class="c-key">class</span> <span class="c-fn">BookmarkCreate</span>(BaseModel):
+    url: str
+    title: str | <span class="c-key">None</span> = <span class="c-key">None</span>
+    tags: list[str] = []
+
+<span class="c-fn">@app.post</span>(<span class="c-str">"/bookmarks"</span>, status_code=<span class="c-num">201</span>)
+<span class="c-key">async def</span> <span class="c-fn">create_bookmark</span>(bookmark: BookmarkCreate):
+    <span class="c-key">async with</span> app.state.pool.connection() <span class="c-key">as</span> conn:  <span class="c-com"># one transaction</span>
+        cur = conn.cursor(row_factory=dict_row)
+        <span class="c-key">try</span>:
+            <span class="c-key">await</span> cur.execute(
+                <span class="c-str">"INSERT INTO bookmarks (url, title) VALUES (%s, %s)"</span>
+                <span class="c-str">" RETURNING id, url, title, created_at"</span>,
+                (bookmark.url, bookmark.title),
+            )
+        <span class="c-key">except</span> errors.UniqueViolation:
+            <span class="c-key">raise</span> HTTPException(status_code=<span class="c-num">409</span>,
+                                detail=<span class="c-str">"URL already bookmarked"</span>)
+        row = <span class="c-key">await</span> cur.fetchone()
+
+        <span class="c-key">for</span> name <span class="c-key">in</span> bookmark.tags:
+            <span class="c-key">await</span> cur.execute(
+                <span class="c-str">"INSERT INTO tags (name) VALUES (%s)"</span>
+                <span class="c-str">" ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name"</span>
+                <span class="c-str">" RETURNING id"</span>,
+                (name,),
+            )
+            tag = <span class="c-key">await</span> cur.fetchone()
+            <span class="c-key">await</span> cur.execute(
+                <span class="c-str">"INSERT INTO bookmark_tags (bookmark_id, tag_id)"</span>
+                <span class="c-str">" VALUES (%s, %s)"</span>,
+                (row[<span class="c-str">"id"</span>], tag[<span class="c-str">"id"</span>]),
+            )
+    <span class="c-key">return</span> row | {<span class="c-str">"tags"</span>: bookmark.tags}</code></pre>
+
+<p>Notice three things. <code>RETURNING</code> gets the generated <code>id</code>
+and <code>created_at</code> back in the same round trip — there is no second
+<code>SELECT</code>. <code>ON CONFLICT (name) DO UPDATE ... RETURNING id</code> is
+an <em>upsert</em>: it reuses the tag if it exists, it creates the tag if it does
+not, and it returns the id in both cases (a bare <code>DO NOTHING</code> returns
+no row — a trap worth knowing). And <code>psycopg</code>'s
+<code>async with conn</code> commits when the block exits without an error, and it
+rolls back on any exception, so a failure in the middle of the tag loop leaves no
+half-tagged bookmark.</p>
+
+<div class="note note--warn">
+  <span class="note-label">The one mistake to always prevent — try it yourself</span>
+  <p>Those <code>%s</code> placeholders are <strong>not</strong> string
+  formatting. Prove the difference:</p>
+  <pre><code>user_input = <span class="c-str">"' OR '1'='1"</span>
+
+<span class="c-com"># NEVER do this</span>
+naive = <span class="c-str">f"SELECT id, title FROM bookmarks WHERE title = '{user_input}'"</span>
+print(conn.execute(naive).fetchall())
+
+<span class="c-com"># do this</span>
+print(conn.execute(<span class="c-str">"SELECT id, title FROM bookmarks WHERE title = %s"</span>,
+                   (user_input,)).fetchall())</code></pre>
+  <pre><code>naive SQL : SELECT id, title FROM bookmarks WHERE title = '' OR '1'='1'
+naive rows: [(2, 'Postgres docs')]
+safe  rows: []</code></pre>
+  <p>The f-string leaked the quote, and the <code>WHERE</code> clause became
+  always-true — you get the whole table, from a search box. The parameterised
+  version sends the SQL and the values to the server <em>separately</em>, so the
+  input is data and can never become syntax. Never build SQL with f-strings,
+  <code>%</code>, or <code>+</code>. Do not "sanitise it first" — parameterise,
+  always.</p>
+</div>
+
+<p class="filename">main.py — get and delete</p>
+<pre class="wide"><code><span class="c-fn">@app.get</span>(<span class="c-str">"/bookmarks/{bookmark_id}"</span>)
+<span class="c-key">async def</span> <span class="c-fn">get_bookmark</span>(bookmark_id: int):
+    <span class="c-key">async with</span> app.state.pool.connection() <span class="c-key">as</span> conn:
+        cur = <span class="c-key">await</span> conn.cursor(row_factory=dict_row).execute(
+            <span class="c-str">"SELECT id, url, title, created_at FROM bookmarks WHERE id = %s"</span>,
+            (bookmark_id,),
+        )
+        row = <span class="c-key">await</span> cur.fetchone()
+    <span class="c-key">if</span> row <span class="c-key">is None</span>:
+        <span class="c-key">raise</span> HTTPException(status_code=<span class="c-num">404</span>, detail=<span class="c-str">"Bookmark not found"</span>)
+    <span class="c-key">return</span> row
+
+<span class="c-fn">@app.delete</span>(<span class="c-str">"/bookmarks/{bookmark_id}"</span>, status_code=<span class="c-num">204</span>)
+<span class="c-key">async def</span> <span class="c-fn">delete_bookmark</span>(bookmark_id: int):
+    <span class="c-key">async with</span> app.state.pool.connection() <span class="c-key">as</span> conn:
+        cur = <span class="c-key">await</span> conn.execute(<span class="c-str">"DELETE FROM bookmarks WHERE id = %s"</span>,
+                                 (bookmark_id,))
+    <span class="c-key">if</span> cur.rowcount == <span class="c-num">0</span>:
+        <span class="c-key">raise</span> HTTPException(status_code=<span class="c-num">404</span>, detail=<span class="c-str">"Bookmark not found"</span>)</code></pre>
+
+<p><code>cur.rowcount</code> is how you tell "deleted it" from "it was never
+there" — a <code>DELETE</code> against a missing id is not an error, and it affects
+zero rows. That difference is the difference between <code>204</code> and
+<code>404</code>.</p>
+
+<h2>Practice</h2>
+
+<p>Run the server. Work through these tasks in order. Do not skip the restart.</p>
+
+<pre class="wide"><code>$ export DATABASE_URL="postgresql://learner:lesson4@localhost:55432/bookmarks"
+$ uvicorn main:app --reload</code></pre>
+
+<ol class="steps">
+  <li><strong>Create with tags.</strong>
+  <pre><code>$ curl -i -X POST localhost:8000/bookmarks \
+    -H 'content-type: application/json' \
+    -d '{"url":"https://fastapi.tiangolo.com/","title":"FastAPI",
+         "tags":["python","web","api"]}'
+
+HTTP/1.1 201 Created
+{"id":1,"url":"https://fastapi.tiangolo.com/","title":"FastAPI",
+ "created_at":"2026-08-02T22:11:12.718600+00:00","tags":["python","web","api"]}</code></pre>
+  Note <code>created_at</code> — you never sent it. The <code>DEFAULT now()</code>
+  in the schema made it, which is why the timestamp is the database's clock and
+  not your web server's clock.</li>
+
+  <li><strong>Post the same URL again.</strong> You should get
+  <code>409 Conflict</code> with <code>{"detail":"URL already bookmarked"}</code>.
+  Then find the line in <code>psql</code>'s error output that your Python turned
+  into that 409 — trace the whole path, from constraint to status code.</li>
+
+  <li><strong>List them.</strong> <code>curl localhost:8000/bookmarks</code>. The
+  tags come back as a real JSON array, sorted, because <code>array_agg(... ORDER
+  BY t.name)</code> said so.</li>
+
+  <li><strong>Add an untagged bookmark</strong> and list again. Confirm that its
+  <code>tags</code> is <code>[]</code> and not <code>[null]</code>, and that it
+  appears at all. Then change both <code>LEFT JOIN</code>s in
+  <code>LIST_SQL</code> to plain <code>JOIN</code> for a short time, reload, and
+  watch it disappear. Change it back. <strong>This is the bug from Step 4, in your
+  own API.</strong></li>
+
+  <li><strong>Delete it.</strong> <code>curl -i -X DELETE
+  localhost:8000/bookmarks/1</code> → <code>204 No Content</code>. Delete it
+  again → <code>404</code>. Then check in psql that <code>bookmark_tags</code>
+  lost its rows and <code>tags</code> did not.</li>
+
+  <li><strong>Kill the server. Start it again. List the bookmarks.</strong>
+  <pre><code>$ curl -s localhost:8000/bookmarks
+[{"id":2,"url":"https://www.postgresql.org/docs/","title":"Postgres docs",
+  "created_at":"2026-08-02T22:11:12.753074+00:00","tags":["database","sql"]}]</code></pre>
+  This is the whole lesson in one command. Lessons 1 to 3 could not do this.</li>
+
+  <li><strong>Write migration 0003.</strong> Add a <code>notes TEXT</code> column
+  to <code>bookmarks</code> (<code>ALTER TABLE bookmarks ADD COLUMN notes
+  TEXT;</code>), run <code>migrate.py</code>, and confirm with <code>\d
+  bookmarks</code> that the column landed and your existing rows survived. To add
+  a nullable column is the safe kind of migration; think about why
+  <code>NOT NULL</code> without a default would not be.</li>
+
+  <li><strong>Run the injection demo</strong> from Step 7 against your own
+  database. To see <code>'' OR '1'='1'</code> in the printed SQL is worth more
+  than to read about it ten times.</li>
+</ol>
+
+<div class="note note--ok">
+  <span class="note-label">What you can now claim</span>
+  <p>You now have a JSON API with a normalised PostgreSQL schema, foreign keys,
+  cascading deletes, transactional writes, parameterised queries, versioned
+  migrations, and a connection pool. This is a portfolio project. Every noun in
+  that sentence is a question that you can now answer in an interview, from
+  something you built and not something you read.</p>
+</div>
+
+<h2>Where each layer now sits</h2>
+
+<pre class="wide"><code>  client (curl / browser)
+       │  HTTP over TCP                       ← Lesson 1
+       ▼
+  Uvicorn — ASGI server                       ← Lesson 2
+       │  scope / receive / send
+       ▼
+  FastAPI — routing, Pydantic validation      ← Lesson 3
+       │  handler function
+       ▼
+  psycopg pool — parameterised SQL            ← Lesson 4
+       │  PostgreSQL wire protocol over TCP
+       ▼
+  PostgreSQL — constraints, transactions, storage
+       │
+       ▼
+  disk (survives everything above it)</code></pre>
+
+<p>Note the shape of that stack: the bottom layer is the only one that keeps
+anything. Every layer above it is disposable, which is exactly why deploys,
+crashes, and restarts are survivable — and why a bug that corrupts the bottom
+layer is in a different category from one that crashes the top.</p>
+
+<h2>Check yourself</h2>
+
+<p>Close the lesson. Answer from memory.</p>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "You store tags as a comma-separated string, then query <code>WHERE tags LIKE '%web%'</code>. What is the fundamental problem?",
+    "options": [
+      "The column holds a list, so the database cannot tell one value from another — 'webassembly' matches a search for 'web'",
+      "LIKE is too slow on large tables",
+      "You should use ILIKE for case-insensitive matching",
+      "You must escape commas in PostgreSQL string literals"
+    ],
+    "answer": 0,
+    "why": "Performance is a symptom; correctness is the disease. Substring matching cannot tell a value from part of a value, so 'web' matches 'webassembly'. First normal form — one value in each cell — exists to prevent this. When tags are rows, an equality join gives the exact answer." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "What kind of table do you need to model a many-to-many relationship between bookmarks and tags?",
+    "answer": "junction table",
+    "accept": ["join table", "junction", "link table", "bridge table", "associative table", "association table", "cross-reference table"],
+    "placeholder": "name for the table",
+    "why": "A junction (or join or link) table — here bookmark_tags — holds one row for each (bookmark, tag) pair, with a foreign key to each side and a composite primary key over both. It is the only way to represent many-to-many in a relational model." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Your list endpoint uses <code>JOIN bookmark_tags</code> instead of <code>LEFT JOIN</code>. What breaks?",
+    "options": [
+      "Bookmarks with no tags disappear from the response completely",
+      "The tags come back in the wrong order",
+      "The query returns duplicate bookmarks",
+      "Nothing — the two are the same when there is a foreign key"
+    ],
+    "answer": 0,
+    "why": "An inner join keeps only the rows that matched on both sides. A bookmark with no rows in bookmark_tags matches nothing and is dropped. A LEFT JOIN keeps every left-hand row and fills NULL. This is one of the most common bugs in real list endpoints — the join, not the WHERE clause, ate the row." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Inside a transaction, an INSERT succeeds and the next statement raises a foreign key error. You then send COMMIT. What does PostgreSQL do?",
+    "options": [
+      "It rolls the whole transaction back — the successful INSERT is discarded",
+      "It commits the successful INSERT and discards only the failed statement",
+      "It blocks until you send an explicit ROLLBACK",
+      "It commits both, and the foreign key is violated for a short time"
+    ],
+    "answer": 0,
+    "why": "Atomicity: all or nothing. After an error the transaction is in a failed state, and COMMIT is answered with ROLLBACK — psql prints 'ROLLBACK' in response to your COMMIT. The bookmark row never existed, but its generated id was used and will never be reused." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "What table does a migration runner need in order to be safe to run repeatedly?",
+    "answer": "schema_migrations",
+    "accept": ["a table recording applied versions", "schema migrations", "migrations table", "version table", "a table of applied migrations"],
+    "placeholder": "table and its purpose",
+    "why": "A table (conventionally schema_migrations) with one row for each applied migration version. The runner reads it, skips what is already applied, and inserts the version in the same transaction as the DDL. That makes the runner idempotent — the same property you met with HTTP methods in Lesson 1 — so deployment can run it on every boot without a condition." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why is <code>cur.execute(\"... WHERE title = %s\", (value,))</code> safe when an f-string is not?",
+    "options": [
+      "The SQL text and the values travel to the server separately, so a value can never be parsed as syntax",
+      "psycopg escapes quote characters in the value before it substitutes it",
+      "PostgreSQL rejects any query with suspicious keywords",
+      "%s accepts only strings, so injection is impossible"
+    ],
+    "answer": 0,
+    "why": "The parameters travel apart from the statement, so the server parses the SQL once and then binds the values as data. At no point can the input become syntax. Escaping is a weaker, error-prone method — parameterisation removes the class of bug completely." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why open the psycopg connection pool in FastAPI's <code>lifespan</code> rather than creating a connection inside each handler?",
+    "options": [
+      "Each new connection costs a TCP handshake, authentication, and a backend process on the server — the pool pays that once at startup",
+      "FastAPI does not let you open sockets inside a handler",
+      "The pool makes queries run in parallel across CPU cores",
+      "Connections created in handlers are not thread-safe"
+    ],
+    "answer": 0,
+    "why": "Connection setup is milliseconds of TCP, TLS, authentication, and a forked backend process for each connection in PostgreSQL. A pool shares that cost across all requests. lifespan is the startup and shutdown hook: code before yield runs when Uvicorn boots, code after runs on shutdown." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "You declared <code>ON DELETE CASCADE</code> on both foreign keys in <code>bookmark_tags</code>. You delete a bookmark that had three tags. What is left?",
+    "options": [
+      "The three link rows are gone; all three tags still exist",
+      "The three link rows and the three tags are gone",
+      "The delete fails because the link rows still reference the bookmark",
+      "The link rows remain with bookmark_id set to NULL"
+    ],
+    "answer": 0,
+    "why": "Cascade follows the direction of the reference: rows in bookmark_tags point at the bookmark, so they go with it. Rows in tags are pointed at, not pointing, so they are untouched — deleting one bookmark must not delete the concept 'python'. Without the cascade the DELETE would fail with a foreign key violation." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "A colleague proposes adding a <code>tag_count</code> column to <code>bookmarks</code> so the list endpoint does not have to aggregate. Argue both sides, then decide.",
+    "answer": "Against: tag_count comes from bookmark_tags, so it is a second copy of a fact that already exists — a 3NF violation. Every write path that touches bookmark_tags must now also update tag_count, in the same transaction, or the number silently lies. Any client that writes to the database without going through the API (a script, a migration, or psql) will desynchronise it. To debug 'the count is wrong' is hard, because there is no single source of truth. For: aggregation costs a join and a GROUP BY on every read, and if that read is frequent and the table is large, a maintained counter is much cheaper. Decision: do not add it now. Measure first — with a few thousand bookmarks the join is very fast. If it later proves to be a real bottleneck, add it deliberately as a denormalisation, and maintain it with a trigger or in the same transaction as every write, and document that it is derived data.",
+    "why": "The interview question behind this is 'when do you denormalise?' The answer that lands: denormalisation is an optimisation with a correctness cost, applied after measurement, never as a starting point. To name the specific failure mode — a second write path that skips the counter — is what separates a memorised answer from an understood one." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<h2>Read this next</h2>
+
+<div class="source">
+  <h4>Primary sources</h4>
+  <p><a href="https://www.postgresql.org/docs/current/tutorial.html">PostgreSQL
+  Tutorial (Part I)</a></p>
+  <p>Chapters 2 (The SQL Language) and 3 (Advanced Features). Chapter 3 covers
+  views, foreign keys, transactions, and window functions — you have now met three
+  of the four in practice, so it will read fast.</p>
+
+  <p><a href="https://www.postgresql.org/docs/current/ddl-constraints.html">
+  PostgreSQL — Constraints</a></p>
+  <p>The full set: <code>CHECK</code>, <code>NOT NULL</code>,
+  <code>UNIQUE</code>, primary keys, foreign keys, exclusion constraints, and
+  every <code>ON DELETE</code> action. Read it once properly. <code>CHECK</code>
+  constraints in particular are underused, and one would let you reject a
+  <code>url</code> that does not start with <code>http</code> at the database
+  level.</p>
+
+  <p><a href="https://www.psycopg.org/psycopg3/docs/">psycopg 3 documentation</a></p>
+  <p>"Basic module usage" and "Passing parameters to SQL queries". The parameters
+  page is the authoritative statement of why <code>%s</code> is not string
+  formatting — read it before you write another query.</p>
+
+  <p><a href="https://pgexercises.com/">PostgreSQL Exercises</a></p>
+  <p>Do the "Simple SQL Queries" and "Joins and Subqueries" sets this week —
+  about 20 graded problems with explanations. This is the deliberate-practice half
+  of the lesson; to read SQL is not the same skill as to write it.</p>
+
+  <p><a href="https://alembic.sqlalchemy.org/en/latest/tutorial.html">Alembic —
+  Tutorial</a></p>
+  <p>The tool that replaces your <code>migrate.py</code> in a real project. Read
+  it now that you know what it does, so its concepts (revision, head, upgrade,
+  downgrade) map onto something you have already built.</p>
+</div>
+
+<h2>Where this goes</h2>
+
+<p>You now have a persistent API, and with persistence come the questions that
+matter only once data is real. <strong>Lesson 5 is persistence under
+pressure</strong> — indexes and <code>EXPLAIN</code> (why is this query slow?),
+the N+1 problem (why is this <em>endpoint</em> slow when every query is fast?),
+isolation levels and concurrent writes, and the ORM question — SQLAlchemy, what
+it gives you, and what it hides. You wrote the SQL first, so you will see exactly
+what the ORM generates for you.</p>
+
+<p class="sidenote"><strong>This is the deployable one.</strong> Lessons 3 and 4
+are a complete portfolio project that you can defend: a JSON API with a real
+schema. Put <code>main.py</code>, <code>migrations/</code>, <code>migrate.py</code>,
+and a README with the <code>docker run</code> line into a git repository now —
+that repo is the CV line, and to get it onto a public URL is what starts the
+TypeScript conversation.</p>
+
+<div class="ask">
+  <p><strong>Ask me things.</strong> Ask if a join returns more rows than you
+  expected, if you are not sure whether something should be its own table, if a
+  constraint fires when you think it should not, or if you want to model something
+  harder (folders? a bookmark that belongs to a user?). Paste the exact schema and
+  the exact error; both are short and both are precise.</p>
+  <p>Schema-design questions specifically:
+  <a href="https://old.reddit.com/r/PostgreSQL/">r/PostgreSQL</a> answers "is my
+  schema sane?" well. The full list is in <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0003-fastapi.html">← Lesson 03: FastAPI</a>
+  <a href="0005-why-is-this-slow.html">Lesson 05: Why is this slow? →</a>
+</nav>
+
+</main>
+</body>
+</html>

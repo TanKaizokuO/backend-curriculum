@@ -1,0 +1,14 @@
+{
+  "name": "bookmarks-deploy-js",
+  "version": "1.0.0",
+  "description": "Deployable Bookmarks API in Node.js",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "migrate": "node migrate.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.3"
+  }
+}

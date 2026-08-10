@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en" style="background-color: #14141a; color: #e6e3da;">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Summary · Lessons 1–3</title>
+<style>
+  html, body {
+    background-color: #14141a;
+    color: #e6e3da;
+    color-scheme: dark;
+  }
+</style>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Summary ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../lessons/0001-a-server-is-bytes-on-a-socket.html">Lesson 01</a> ·
+    <a href="../lessons/0002-a-server-without-a-framework.html">Lesson 02</a> ·
+    <a href="../lessons/0003-fastapi.html">Lesson 03</a>
+  </p>
+  <h1>Lessons 1–3 Comprehensive Summary</h1>
+</header>
+
+<main>
+
+<h2>Lesson 1 — A Server Is Bytes On A Socket</h2>
+
+<h3>Core Mental Model</h3>
+<p>An HTTP server is a socket program that accepts a TCP connection, reads structured text off the socket, and writes back structured text according to an agreed specification. Frameworks and abstractions (routing, ORMs, JSON parsing) add developer convenience on top of this basic socket loop.</p>
+
+<h3>HTTP/1.1 Byte Anatomy</h3>
+<ol>
+  <li>
+    <strong>Request Message</strong>:
+    <ul>
+      <li><strong>Start-line (Request-line)</strong>: <code>METHOD target HTTP/version</code> (e.g., <code>GET /hello?name=world HTTP/1.1</code>)</li>
+      <li><strong>Headers</strong>: <code>Name: Value</code> lines (e.g., <code>Host: 127.0.0.1:8080</code>, <code>User-Agent: curl/8.5.0</code>)</li>
+      <li><strong>Separator</strong>: A mandatory blank line (<code>\r\n\r\n</code>) separating headers from the body.</li>
+      <li><strong>Body</strong>: Optional payload bytes.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Response Message</strong>:
+    <ul>
+      <li><strong>Start-line (Status-line)</strong>: <code>HTTP/version status-code reason-phrase</code> (e.g., <code>HTTP/1.1 200 OK</code>)</li>
+      <li><strong>Headers</strong>: Metadata (e.g., <code>Content-Type: text/plain; charset=utf-8</code>, <code>Content-Length: 21</code>)</li>
+      <li><strong>Separator</strong>: A mandatory blank line (<code>\r\n\r\n</code>).</li>
+      <li><strong>Body</strong>: Response payload.</li>
+    </ul>
+  </li>
+  <li><strong>CRLF Requirement</strong>: Every line ending must be <code>\r\n</code> (carriage return + line feed), encoded as ASCII.</li>
+</ol>
+
+<h3>Framing &amp; Body Termination Strategies</h3>
+<p>Because TCP is an unstructured byte stream without native message boundaries, an HTTP client requires a framing strategy to determine where a response body ends. There are three legal strategies:</p>
+<ol>
+  <li><strong><code>Content-Length</code> Header</strong>: Explicit integer specifying exact body byte count.</li>
+  <li><strong>Chunked Transfer Encoding</strong>: <code>Transfer-Encoding: chunked</code> sends length-prefixed hex byte chunks.</li>
+  <li><strong>Closing the Connection</strong>: The server sends <code>Connection: close</code> and closes the TCP socket when done.</li>
+</ol>
+
+<p><em>Framing Bug</em>: Omitting all three framing mechanisms over a persistent TCP connection causes the client socket read (<code>recv</code>) to hang indefinitely.</p>
+
+<h3>Protocol Rules &amp; Socket Server Plumbing</h3>
+<ul>
+  <li><strong><code>Host:</code> Header</strong>: Mandatory in HTTP/1.1 for virtual hosting (mapping one IP address to multiple domains). Omission triggers a <code>400 Bad Request</code>.</li>
+  <li>
+    <strong>Low-Level Socket Setup</strong>:
+    <ul>
+      <li>Client: <code>socket.create_connection(("example.com", 80))</code>, send bytes, loop <code>sock.recv(4096)</code>.</li>
+      <li>Server: <code>socket.socket()</code>, <code>setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)</code>, <code>bind()</code>, <code>listen()</code>, <code>accept()</code>.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Purposeful Failure Experiments</strong>:
+    <ul>
+      <li><em>Deleting the blank line (<code>\r\n</code> separator)</em>: <code>curl</code> parses response body text as a header name and fails with <code>curl: (8) Header without colon</code>.</li>
+      <li><em>Deleting <code>Content-Length</code> with persistent connection</em>: <code>curl</code> blocks indefinitely waiting for bytes.</li>
+    </ul>
+  </li>
+</ul>
+
+<hr style="border: none; border-top: 1px solid var(--rule); margin: 3rem 0;">
+
+<h2>Lesson 2 — A Server Without A Framework</h2>
+
+<h3>Core Mental Model</h3>
+<p>A web framework is a standard calling convention between an HTTP server (which handles socket connections and byte parsing) and application code (which handles business logic).</p>
+
+<h3>Manual HTTP Parsing &amp; Routing Engine</h3>
+<ol>
+  <li>
+    <strong>Request Line Parsing</strong>:
+    <ul>
+      <li>Decode ASCII, split by CRLF (<code>\r\n</code>) to extract the start-line.</li>
+      <li>Split start-line by spaces into exactly 3 parts (<code>method</code>, <code>target</code>, <code>version</code>). Anything else is malformed and must return <code>400 Bad Request</code>.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Header Parsing</strong>:
+    <ul>
+      <li>Parse <code>Name: Value</code> lines into a lower-cased dictionary. RFC 9110 specifies header names are case-insensitive; lower-casing on arrival normalises lookups.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Query Parameter Extraction</strong>:
+    <ul>
+      <li>Use <code>urllib.parse.urlparse</code> and <code>parse_qs</code> to extract URL path and convert query string <code>?key=val</code> into a dict of key-to-list mappings.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Routing Table</strong>:
+    <ul>
+      <li>Map <code>(method, path)</code> tuples to specific handler functions.</li>
+      <li>Separate route matching enables distinguishing between missing resources (<code>404 Not Found</code>) and unsupported HTTP methods for an existing route (<code>405 Method Not Allowed</code>).</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Status Codes &amp; RFC Compliance</strong>:
+    <ul>
+      <li><code>200 OK</code>: Successful execution.</li>
+      <li><code>400 Bad Request</code>: Malformed HTTP request line syntax.</li>
+      <li><code>404 Not Found</code>: Target path does not exist in routing table.</li>
+      <li><code>405 Method Not Allowed</code>: Target path exists, but not for the requested method. Must include an <code>Allow</code> header listing permitted methods (RFC 9110 §10.2.1).</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Python Web Calling Conventions (WSGI vs ASGI)</h3>
+<ul>
+  <li>
+    <strong>WSGI (PEP 3333)</strong>:
+    <ul>
+      <li>Synchronous calling contract: <code>application(environ, start_response)</code>.</li>
+      <li><code>environ</code>: Dictionary containing request data (<code>REQUEST_METHOD</code>, <code>PATH_INFO</code>, <code>QUERY_STRING</code>, <code>HTTP_*</code> headers).</li>
+      <li><code>start_response(status, headers)</code>: Callback to set response line and headers. Returns iterable of body byte chunks.</li>
+      <li>Powering: Flask, Django, Gunicorn, <code>wsgiref</code>.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>ASGI (v3.0 Spec)</strong>:
+    <ul>
+      <li>Asynchronous calling contract: <code>async application(scope, receive, send)</code>.</li>
+      <li>Handles async I/O, WebSockets, and HTTP/2.</li>
+      <li>Powering: FastAPI, Starlette, Uvicorn.</li>
+    </ul>
+  </li>
+</ul>
+
+<h3>Architecture Stack Layers</h3>
+<pre class="wide"><code>[Client] -&gt; [OS/Kernel: TCP] -&gt; [Server: Uvicorn/Sockets] -&gt; [ASGI/WSGI Interface] -&gt; [Framework] -&gt; [Handler Code]</code></pre>
+
+<hr style="border: none; border-top: 1px solid var(--rule); margin: 3rem 0;">
+
+<h2>Lesson 3 — FastAPI</h2>
+
+<h3>Core Mental Model</h3>
+<p>FastAPI is an ASGI application framework built on Starlette and Pydantic. It leverages standard Python type annotations to replace manual plumbing with automated routing, parameter extraction/validation, JSON request body parsing, response serialisation, error handling, and OpenAPI documentation.</p>
+
+<h3>Core Features &amp; Automated Mechanics</h3>
+<ol>
+  <li>
+    <strong>Decorator-Based Routing</strong>:
+    <ul>
+      <li><code>@app.get()</code>, <code>@app.post()</code>, <code>@app.delete()</code>, <code>@app.put()</code> register path operations into Starlette's route table.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Path Parameter Conversion &amp; Validation</strong>:
+    <ul>
+      <li>URL template segments like <code>/bookmarks/{bookmark_id}</code> with function annotations (<code>bookmark_id: int</code>) automatically extract, type-coerce string path components to <code>int</code>, and validate inputs.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Query Parameter Handling</strong>:
+    <ul>
+      <li>Function parameters not matching path placeholders default to query parameters (e.g., <code>skip: int = 0, limit: int = 10</code>). Type conversion and default values are handled automatically.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Automatic Validation &amp; 422 Errors</strong>:
+    <ul>
+      <li>Invalid path/query parameters or JSON body schemas trigger an automatic <code>422 Unprocessable Entity</code> JSON response detailing the failing field.</li>
+      <li><em>400 vs 422</em>: <code>400 Bad Request</code> indicates syntactically broken HTTP bytes; <code>422 Unprocessable Entity</code> indicates syntactically valid HTTP whose payload fails domain/type validation.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Pydantic Request Body Models</strong>:
+    <ul>
+      <li>Inheriting from <code>pydantic.BaseModel</code> defines expected JSON payloads (<code>url: str</code>, <code>title: str | None = None</code>).</li>
+      <li>Handles JSON parsing, validation, IDE autocompletion, and schema generation.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Error Responses (<code>HTTPException</code>)</strong>:
+    <ul>
+      <li>Raising <code>HTTPException(status_code=404, detail="...")</code> is caught by FastAPI to automatically construct JSON response payloads <code>{"detail": "..."}</code> with correct headers and status line.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Interactive OpenAPI Specs</strong>:
+    <ul>
+      <li>Automatically builds an OpenAPI v3 spec at <code>/openapi.json</code> from decorators, type annotations, and Pydantic schemas, rendered as Swagger UI at <code>/docs</code> and ReDoc at <code>/redoc</code>.</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Framework Abstraction Leaks</h3>
+<ul>
+  <li><strong>Starlette 405 <code>Allow</code> Header Quirk</strong>: Registering the same URL path using separate method decorators (e.g. <code>@app.get</code> and <code>@app.delete</code>) can cause Starlette's router to emit an incomplete <code>Allow</code> header in <code>405 Method Not Allowed</code> responses (reporting only the methods of the first route match). Combining route method declarations via <code>@app.api_route(..., methods=["GET", "DELETE"])</code> resolves the issue.</li>
+</ul>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JS Lesson 3 · Express</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../../assets/course.css">
+<link rel="stylesheet" href="../../assets/quiz.css">
+<script src="../../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · JS Lesson 03 ·
+    <a href="../../MISSION.md">Mission</a> ·
+    <a href="../../RESOURCES.md">Resources</a> ·
+    <a href="../../reference/http-message-anatomy.html">Reference: HTTP anatomy</a> ·
+    <a href="0002-a-server-without-a-framework.html">← JS Lesson 02</a>
+  </p>
+  <h1>Express
+    <span class="sub">The framework does the plumbing. You do the thinking.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">In JS Lesson 2, you wrote a server that parsed raw bytes, routed
+requests through a dictionary, and answered with correct status codes in 80 lines.
+You also met Node's native HTTP callback contract. Today you pass request parsing
+to a framework. Express is the standard framework for Node.js backends. In this lesson,
+you build a JSON API with routing, path parameters, query parameters, body parsing,
+validation, and status responses.</p>
+
+<p class="sidenote">In this lesson, you build a <code>server.js</code> file
+with Express. You can send curl requests to manage bookmarks. Every feature
+matches the manual work from JS Lessons 1–2.</p>
+
+<h2>The one idea</h2>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>Express is a <strong>routing and middleware framework</strong> that wraps Node's
+  native <code>http</code> module, replacing manual parsing and response formatting with
+  declarative handlers and a pipeline of request processors.</p>
+</div>
+
+<h2>Step 0 · Install and run</h2>
+
+<p>Set up a Node.js project and install Express:</p>
+<pre class="wide"><code>$ mkdir bookmarks-api-js && cd bookmarks-api-js
+$ npm init -y
+$ npm install express</code></pre>
+
+<p>Create <code>server.js</code> with a minimal hello world:</p>
+
+<p class="filename">server.js — hello world</p>
+<pre class="wide"><code><span class="c-key">const</span> express = <span class="c-fn">require</span>(<span class="c-str">'express'</span>);
+<span class="c-key">const</span> app = <span class="c-fn">express</span>();
+
+app.<span class="c-fn">get</span>(<span class="c-str">'/'</span>, (req, res) => {
+    res.<span class="c-fn">json</span>({ message: <span class="c-str">'Hello, JS world'</span> });
+});
+
+app.<span class="c-fn">listen</span>(<span class="c-num">8000</span>, () => {
+    <span class="c-fn">console</span>.<span class="c-fn">log</span>(<span class="c-str">'Express server listening on http://127.0.0.1:8000'</span>);
+});</code></pre>
+
+<p>Run it:</p>
+<pre class="wide"><code>$ node server.js</code></pre>
+
+<div class="note">
+  <span class="note-label">What just happened</span>
+  <p><code>express()</code> returns an application object. When you call
+  <code>app.listen()</code>, Express internally calls Node's native
+  <code>http.createServer(app)</code> and starts the TCP listening loop.
+  The Express app is the request listener callback. Every incoming connection triggers it,
+  and it pipes the request and response objects through its router.</p>
+</div>
+
+<h2>Step 1 · Routing — decorators vs method calls</h2>
+
+<p>In JS Lesson 2 your routing table was an object with method-path keys:</p>
+<pre class="wide"><code>const ROUTES = {
+    'GET /': handle_index,
+    'GET /hello': handle_hello,
+};</code></pre>
+
+<p>Express provides helper methods for each HTTP verb: <code>app.get()</code>,
+<code>app.post()</code>, <code>app.put()</code>, <code>app.delete()</code>. You register
+a route by passing a path string and a callback handler function.</p>
+
+<div class="note">
+  <span class="note-label">Compare to Lesson 2</span>
+  <p>Express matches the request method and path against internal routes.
+  If the path matches with a different verb (such as <code>POST /</code>), Express
+  returns <code>405 Method Not Allowed</code> with an
+  <code>Allow</code> header when configured. By default, it returns <code>404</code>
+  unless a matching path with another method has a handler.
+  The framework handles method matching and routing table lookup so you do not
+  parse <code>req.method</code> and <code>req.path</code> manually.</p>
+
+<h2>Step 2 · Path parameters — route patterns</h2>
+
+<p>Instead of exact string matching, Express supports route patterns. You define a variable
+segment in a path using a colon (<code>:name</code>). Express parses this segment and places the
+extracted value in <code>req.params</code>.</p>
+
+<p class="filename">server.js — path params</p>
+<pre class="wide"><code><span class="c-key">const</span> BOOKMARKS = {};
+
+app.<span class="c-fn">get</span>(<span class="c-str">'/bookmarks/:bookmark_id'</span>, (req, res) => {
+    <span class="c-com">// req.params contains route parameter matches</span>
+    <span class="c-key">const</span> id = <span class="c-fn">parseInt</span>(req.params.bookmark_id, <span class="c-num">10</span>);
+    
+    <span class="c-key">if</span> (<span class="c-fn">isNaN</span>(id)) {
+        <span class="c-key">return</span> res.<span class="c-fn">status</span>(<span class="c-num">400</span>).<span class="c-fn">json</span>({ detail: <span class="c-str">'ID must be an integer'</span> });
+    }
+    
+    <span class="c-key">if</span> (!BOOKMARKS[id]) {
+        <span class="c-key">return</span> res.<span class="c-fn">status</span>(<span class="c-num">404</span>).<span class="c-fn">json</span>({ detail: <span class="c-str">'Bookmark not found'</span> });
+    }
+    
+    res.<span class="c-fn">json</span>(BOOKMARKS[id]);
+});</code></pre>
+
+<ul>
+  <li><strong>Extraction:</strong> Express parses <code>:bookmark_id</code> from the path and attaches it as <code>req.params.bookmark_id</code>.</li>
+  <li><strong>No auto-conversion:</strong> Unlike FastAPI (which uses Python type hints to convert strings to integers), Express provides path params as **strings**. You must call <code>parseInt()</code> by hand.</li>
+  <li><strong>Manual validation:</strong> If a client sends <code>/bookmarks/abc</code>, <code>parseInt()</code> returns <code>NaN</code>. You must manually check <code>isNaN(id)</code> and return a <code>400 Bad Request</code> response.</li>
+</ul>
+
+<h2>Step 3 · Query parameters — parsed on request</h2>
+
+<p>Express parses query parameters automatically and exposes them on <code>req.query</code>.
+You do not need to import <code>url</code> or call <code>new URL()</code> manually.</p>
+
+<p class="filename">server.js — query params</p>
+<pre class="wide"><code>app.<span class="c-fn">get</span>(<span class="c-str">'/bookmarks'</span>, (req, res) => {
+    <span class="c-com">// req.query contains parsed query string parameters</span>
+    <span class="c-key">const</span> skip = <span class="c-fn">parseInt</span>(req.query.skip || <span class="c-str">'0'</span>, <span class="c-num">10</span>);
+    <span class="c-key">const</span> limit = <span class="c-fn">parseInt</span>(req.query.limit || <span class="c-str">'10'</span>, <span class="c-num">10</span>);
+
+    <span class="c-key">const</span> list = Object.<span class="c-fn">values</span>(BOOKMARKS);
+    res.<span class="c-fn">json</span>(list.<span class="c-fn">slice</span>(skip, skip + limit));
+});</code></pre>
+
+<p>Every query parameter arrives as a string. You must handle default fallbacks (e.g. <code>req.query.skip || '0'</code>) and type conversions yourself.</p>
+
+<h2>Step 4 · Request bodies and middleware</h2>
+
+<p>In JS Lesson 2 you read request bodies from TCP stream buffers. In Express, you use **middleware** to parse bodies. A middleware function intercepts the request before it reaches your handler.</p>
+
+<p>To accept JSON bodies, you must register the built-in JSON-parsing middleware: <code>app.use(express.json())</code>. Without it, <code>req.body</code> is undefined.</p>
+
+<p class="filename">server.js — POST endpoint + body validation</p>
+<pre class="wide"><code>app.<span class="c-fn">use</span>(express.<span class="c-fn">json</span>()); <span class="c-com">// Enables JSON body parsing</span>
+
+<span class="c-key">let</span> nextId = <span class="c-num">1</span>;
+
+app.<span class="c-fn">post</span>(<span class="c-str">'/bookmarks'</span>, (req, res) => {
+    <span class="c-key">const</span> { url, title } = req.body;
+
+    <span class="c-com">// Manual validation (Python/FastAPI does this automatically via Pydantic)</span>
+    <span class="c-key">if</span> (!url || <span class="c-key">typeof</span> url !== <span class="c-str">'string'</span>) {
+        <span class="c-key">return</span> res.<span class="c-fn">status</span>(<span class="c-num">400</span>).<span class="c-fn">json</span>({ detail: <span class="c-str">'Field "url" is required and must be a string'</span> });
+    }
+
+    <span class="c-key">const</span> entry = { id: nextId++, url, title: title || <span class="c-key">null</span> };
+    BOOKMARKS[entry.id] = entry;
+
+    res.<span class="c-fn">status</span>(<span class="c-num">201</span>).<span class="c-fn">json</span>(entry);
+});</code></pre>
+
+<div class="note note-warn">
+  <span class="note-label">Express lacks automatic schema validation</span>
+  <p>In FastAPI, declaring a Pydantic model validates the request body, formats the error response, and updates the OpenAPI docs automatically. In Express, you write validation checks by hand, or install a validation library like <strong>Zod</strong>. Without validation middleware, Express will blindly accept any JSON structure a client sends, leading to runtime crashes.</p>
+</div>
+
+<h2>Step 5 · The documentation gap</h2>
+
+<p>FastAPI parses code structure and generates live interactive documentation at <code>/docs</code>.
+In Express, automatic documentation is not built in. Because JavaScript is a dynamic language without compile-time types, the framework does not know the shape of path parameters, query parameters, or request bodies without manual documentation.</p>
+
+<p class="sidenote">To build interactive documentation in JavaScript, write Swagger comments with JSDoc or write your API with TypeScript and schema libraries such as Zod. You learn this transition when you layer TypeScript into the curriculum.</p>
+<h2>Step 6 · The complete Express app</h2>
+
+<p>Here is the complete bookmarks API. It handles listing, getting, creating, and deleting bookmarks using Express.</p>
+
+<p class="filename">server.js</p>
+<pre class="wide"><code><span class="c-key">const</span> express = <span class="c-fn">require</span>(<span class="c-str">'express'</span>);
+<span class="c-key">const</span> app = <span class="c-fn">express</span>();
+
+app.<span class="c-fn">use</span>(express.<span class="c-fn">json</span>());
+
+<span class="c-com">// In-memory data store</span>
+<span class="c-key">const</span> BOOKMARKS = {};
+<span class="c-key">let</span> nextId = <span class="c-num">1</span>;
+
+<span class="c-com">// Get bookmarks (paginated)</span>
+app.<span class="c-fn">get</span>(<span class="c-str">'/bookmarks'</span>, (req, res) => {
+    <span class="c-key">const</span> skip = <span class="c-fn">parseInt</span>(req.query.skip || <span class="c-str">'0'</span>, <span class="c-num">10</span>);
+    <span class="c-key">const</span> limit = <span class="c-fn">parseInt</span>(req.query.limit || <span class="c-str">'10'</span>, <span class="c-num">10</span>);
+    
+    <span class="c-key">const</span> list = Object.<span class="c-fn">values</span>(BOOKMARKS);
+    res.<span class="c-fn">json</span>(list.<span class="c-fn">slice</span>(skip, skip + limit));
+});
+
+<span class="c-com">// Get bookmark by ID</span>
+app.<span class="c-fn">get</span>(<span class="c-str">'/bookmarks/:bookmark_id'</span>, (req, res) => {
+    <span class="c-key">const</span> id = <span class="c-fn">parseInt</span>(req.params.bookmark_id, <span class="c-num">10</span>);
+    <span class="c-key">if</span> (<span class="c-fn">isNaN</span>(id)) {
+        <span class="c-key">return</span> res.<span class="c-fn">status</span>(<span class="c-num">400</span>).<span class="c-fn">json</span>({ detail: <span class="c-str">'ID must be an integer'</span> });
+    }
+    <span class="c-key">if</span> (!BOOKMARKS[id]) {
+        <span class="c-key">return</span> res.<span class="c-fn">status</span>(<span class="c-num">404</span>).<span class="c-fn">json</span>({ detail: <span class="c-str">'Bookmark not found'</span> });
+    }
+    res.<span class="c-fn">json</span>(BOOKMARKS[id]);
+});
+
+<span class="c-com">// Create bookmark</span>
+app.<span class="c-fn">post</span>(<span class="c-str">'/bookmarks'</span>, (req, res) => {
+    <span class="c-key">const</span> { url, title } = req.body;
+    <span class="c-key">if</span> (!url || <span class="c-key">typeof</span> url !== <span class="c-str">'string'</span>) {
+        <span class="c-key">return</span> res.<span class="c-fn">status</span>(<span class="c-num">400</span>).<span class="c-fn">json</span>({ detail: <span class="c-str">'Field "url" is required and must be a string'</span> });
+    }
+    
+    <span class="c-key">const</span> entry = { id: nextId++, url, title: title || <span class="c-key">null</span> };
+    BOOKMARKS[entry.id] = entry;
+    res.<span class="c-fn">status</span>(<span class="c-num">201</span>).<span class="c-fn">json</span>(entry);
+});
+
+<span class="c-com">// Delete bookmark</span>
+app.<span class="c-fn">delete</span>(<span class="c-str">'/bookmarks/:bookmark_id'</span>, (req, res) => {
+    <span class="c-key">const</span> id = <span class="c-fn">parseInt</span>(req.params.bookmark_id, <span class="c-num">10</span>);
+    <span class="c-key">if</span> (<span class="c-fn">isNaN</span>(id)) {
+        <span class="c-key">return</span> res.<span class="c-fn">status</span>(<span class="c-num">400</span>).<span class="c-fn">json</span>({ detail: <span class="c-str">'ID must be an integer'</span> });
+    }
+    <span class="c-key">if</span> (!BOOKMARKS[id]) {
+        <span class="c-key">return</span> res.<span class="c-fn">status</span>(<span class="c-num">404</span>).<span class="c-fn">json</span>({ detail: <span class="c-str">'Bookmark not found'</span> });
+    }
+    <span class="c-key">delete</span> BOOKMARKS[id];
+    res.<span class="c-fn">status</span>(<span class="c-num">204</span>).<span class="c-fn">send</span>();
+});
+
+app.<span class="c-fn">listen</span>(<span class="c-num">8000</span>, () => <span class="c-fn">console</span>.<span class="c-fn">log</span>(<span class="c-str">'Server running on http://127.0.0.1:8000'</span>));</code></pre>
+
+<h2>Practice · Run and test</h2>
+<ol class="steps">
+  <li>Start the server: <code>node server.js</code></li>
+  <li>Create a bookmark:
+    <br><code>curl -i -X POST http://127.0.0.1:8000/bookmarks -H "Content-Type: application/json" -d '{"url":"https://expressjs.com", "title":"Express docs"}'</code></li>
+  <li>List bookmarks (verify pagination):
+    <br><code>curl -i http://127.0.0.1:8000/bookmarks?limit=1</code></li>
+  <li>Try bad input validation:
+    <br><code>curl -i -X POST http://127.0.0.1:8000/bookmarks -H "Content-Type: application/json" -d '{"title":"no url"}'</code> (Verify status 400).</li>
+  <li>Delete bookmark:
+    <br><code>curl -i -X DELETE http://127.0.0.1:8000/bookmarks/1</code> (Verify status 204).</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why is <code>req.body</code> undefined by default in Express routes?",
+    "options": [
+      "Express does not support POST requests",
+      "Express is a routing framework and requires middleware to parse body streams",
+      "JavaScript cannot parse JSON without external npm packages",
+      "Request bodies must be parsed inside the TCP socket event handler directly"
+    ],
+    "answer": 1,
+    "why": "Express is minimalist. To read and parse body streams, you must register middleware like express.json(). Otherwise, Express leaves req.body unpopulated." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "What object holds path parameters extracted from Express route patterns (e.g. /bookmarks/:id)?",
+    "answer": "req.params",
+    "accept": ["req.params", "request.params"],
+    "placeholder": "object property",
+    "why": "Express attaches parsed path parameters to the req.params object, using the colon name as the key (e.g. req.params.id)." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Unlike FastAPI, what data type does Express use for values in both path parameters and query parameters?",
+    "options": [
+      "Integers by default",
+      "Strings",
+      "Raw Buffers",
+      "Objects"
+    ],
+    "answer": 1,
+    "why": "Express does not perform automatic type coercion. Because HTTP paths and query params are sent as text, Express parses them all as JavaScript strings. Developers must manually convert types." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<h2>Read this next</h2>
+<div class="source">
+  <h4>Primary sources</h4>
+  <p><a href="https://expressjs.com/en/4x/api.html">Express.js API Reference</a></p>
+  <p>The official API docs. Read about <code>app.use()</code>, <code>req.params</code>, <code>req.query</code>, and <code>res.json()</code>.</p>
+
+  <p><a href="https://expressjs.com/en/guide/using-middleware.html">Express Guide — Using Middleware</a></p>
+  <p>Learn how Express request/response processing pipelines function, and how middleware controls data parsing and error routing.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0002-a-server-without-a-framework.html">← JS Lesson 02: A Server Without A Framework</a>
+  <a href="0004-relational-modelling-and-sql.html">JS Lesson 04: Relational modelling + SQL →</a>
+</nav>
+
+</main>
+</body>
+</html>

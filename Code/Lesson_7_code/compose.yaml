@@ -1,0 +1,54 @@
+# The whole stack on one machine: the database, the release step, the API.
+#
+#   docker compose up --build
+#
+# This file is the local rehearsal of the deploy. The platform runs the same
+# image, with a managed database and a real hostname.
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: learner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: bookmarks
+    volumes:
+      # Warning: remove this line and a `docker compose down` destroys the
+      # database. The named volume outlives the container.
+      - bookmarks-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U learner -d bookmarks"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  # The release step. It runs to completion, then the API starts.
+  migrate:
+    build: .
+    command: ["python", "migrate.py"]
+    environment:
+      DATABASE_URL: postgresql://learner:${POSTGRES_PASSWORD}@db:5432/bookmarks
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: .
+    ports:
+      - "8007:8000"
+    environment:
+      # `db` is the service name. Inside the network, `localhost` is this
+      # container, so `localhost` here finds no database.
+      DATABASE_URL: postgresql://learner:${POSTGRES_PASSWORD}@db:5432/bookmarks
+      APP_ENV: production
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz').status==200 else 1)\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  bookmarks-data:

@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 6 · Concurrency and the ORM</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 06 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../reference/reading-a-query-plan.html">Reference: reading a query plan</a> ·
+    <a href="0005-why-is-this-slow.html">← Lesson 05</a>
+  </p>
+  <h1>Concurrency and the ORM
+    <span class="sub">Two requests arrive at the same moment. One of the two writes disappears.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">Every measurement in Lesson 5 came from one client. Real servers
+answer many clients at the same instant. Today you make two writers fight over
+one row. One write vanishes, and no error message appears. You fix the defect
+three ways, and you measure which fix costs the least. Then you meet an ORM, and
+you find that it writes both of Lesson 5's defects and today's defect for you —
+in code that looks correct.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>A transaction protects you from a crash, but it does not protect you from
+  another transaction — so the rule is <strong>never compute a new value in
+  Python from a value you read a moment ago</strong>. Let the database read and
+  write in one step, or lock the row first.</p>
+</div>
+
+<p>This defect is called the <strong>lost update</strong>. It hides well. Your
+tests pass, because one test client makes one request at a time. The interview
+question is "what are isolation levels, and what is optimistic locking?". By the
+end of this lesson both answers are things you measured.</p>
+
+<h2>Step 0 · Give the row something to fight over</h2>
+
+<p>Your <code>bookmarks</code> table has no counter. Add one. Write migration
+0004 beside the three you already have:</p>
+
+<pre class="wide"><code><span class="c-com">-- migrations/0004_add_visit_count.sql</span>
+<span class="c-key">ALTER TABLE</span> bookmarks
+    <span class="c-key">ADD COLUMN</span> visit_count <span class="c-key">BIGINT NOT NULL DEFAULT</span> <span class="c-num">0</span>;</code></pre>
+
+<pre class="wide"><code>$ python migrate.py
+skip    0001_create_bookmarks
+skip    0002_create_tags
+skip    0003_add_title_search_index
+applied 0004_add_visit_count</code></pre>
+
+<p class="sidenote">This <code>ALTER TABLE</code> is instant on 200&nbsp;000
+rows. PostgreSQL 11 and later store the new default in the catalogue, so the
+server rewrites no row. A default that calls a function, such as
+<code>now()</code>, does rewrite the table — and that statement holds an
+<code>ACCESS EXCLUSIVE</code> lock while it runs.</p>
+
+<h2>Step 1 · Make the failure observable</h2>
+
+<p>Open two terminal windows. Start <code>psql</code> in each one. Call them
+session A and session B. Both sessions count a visit to bookmark 1. Each session
+reads the counter, adds one in its own head, and writes the answer back.</p>
+
+<p><strong>Session A:</strong></p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">BEGIN</span>;
+BEGIN
+bookmarks=*# <span class="c-key">SELECT</span> visit_count <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;
+ visit_count
+-------------
+           0
+(1 row)</code></pre>
+
+<p><strong>Session B</strong> — run this before session A commits:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">BEGIN</span>;
+BEGIN
+bookmarks=*# <span class="c-key">SELECT</span> visit_count <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;
+ visit_count
+-------------
+           0
+(1 row)</code></pre>
+
+<p>Both sessions read <code>0</code>. Both sessions now write <code>1</code>.</p>
+
+<pre class="wide"><code><span class="c-com">-- session A</span>
+bookmarks=*# <span class="c-key">UPDATE</span> bookmarks <span class="c-key">SET</span> visit_count = <span class="c-num">1</span> <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;
+UPDATE 1
+bookmarks=*# <span class="c-key">COMMIT</span>;
+COMMIT
+
+<span class="c-com">-- session B</span>
+bookmarks=*# <span class="c-key">UPDATE</span> bookmarks <span class="c-key">SET</span> visit_count = <span class="c-num">1</span> <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;
+UPDATE 1
+bookmarks=*# <span class="c-key">COMMIT</span>;
+COMMIT
+bookmarks=# <span class="c-key">SELECT</span> visit_count <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;
+ visit_count
+-------------
+           1
+(1 row)</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">Two visits. The counter says one.</span>
+  <p>Read the four outputs again. Both transactions succeeded. Both
+  <code>UPDATE</code> statements report <code>UPDATE 1</code>. Both
+  <code>COMMIT</code> statements report <code>COMMIT</code>. PostgreSQL raised
+  no error, because neither transaction broke a rule. Session B simply wrote a
+  value that it computed from data that was already out of date.</p>
+</div>
+
+<p>Nothing here is a PostgreSQL defect. Both transactions kept every ACID
+promise from Lesson 4. The defect is in the shape of the code: <strong>a read,
+then a decision in Python, then a write</strong>. Between the read and the write
+the world moved.</p>
+
+<h2>Step 2 · Measure the loss</h2>
+
+<p>Two sessions lose one write. Twenty threads lose most of them. Run
+<code class="filename">lost_update.py</code>. Twenty threads each add one to the
+counter, ten times. The correct answer is always 200.</p>
+
+<pre class="wide"><code>$ python lost_update.py
+20 threads, 10 increments each, expected 200
+
+read-modify-write         12 / 200     194.8 ms     0 retries   LOST 188</code></pre>
+
+<p>The code kept 12 of the 200 visits. It threw away 188 of them. Your log file
+shows 200 successful requests and your counter shows 12. This is the reason the
+defect survives so long in real systems: the number is wrong, and it is
+plausible.</p>
+
+<div class="note note--key">
+  <span class="note-label">Your numbers differ from these</span>
+  <p>The lost count and the times change on each run. The threads race, and the
+  operating system picks the order. Run the script three times and you get three
+  different wrong numbers. That is the invariant, and it is the point: the first
+  strategy loses writes, and it never reports an error.</p>
+</div>
+
+<p>The Python that produces it is the shape you must learn to see:</p>
+
+<pre class="wide"><code><span class="c-key">def</span> <span class="c-fn">read_modify_write</span>(conn):
+    <span class="c-key">with</span> conn.transaction():
+        row = conn.execute(
+            <span class="c-str">"SELECT visit_count FROM bookmarks WHERE id = %s"</span>, (BOOKMARK_ID,)
+        ).fetchone()
+        conn.execute(                          <span class="c-com"># row[0] is already stale</span>
+            <span class="c-str">"UPDATE bookmarks SET visit_count = %s WHERE id = %s"</span>,
+            (row[<span class="c-num">0</span>] + <span class="c-num">1</span>, BOOKMARK_ID),
+        )</code></pre>
+
+<h2>Step 3 · Why the database allows it</h2>
+
+<p>PostgreSQL runs your transaction at an <strong>isolation level</strong>. The
+level decides what your transaction sees of other transactions. The default
+level is <code>READ COMMITTED</code>. The manual states the rule in one
+sentence:</p>
+
+<blockquote>
+  <p>"In effect, a <code>SELECT</code> query sees a snapshot of the database as
+  of the instant the query begins to run."</p>
+  <p class="sidenote">— <a href="#src-iso">PostgreSQL, Transaction
+  Isolation</a>, §13.2.1</p>
+</blockquote>
+
+<p>Read that as <em>each query</em>, not <em>each transaction</em>. Two queries
+in one transaction take two snapshots. So a value can change under you inside a
+single transaction. Watch it happen. Session B stays inside one transaction and
+reads twice. Session A commits a change between the two reads:</p>
+
+<pre class="wide"><code><span class="c-com">-- session B</span>
+bookmarks=# <span class="c-key">BEGIN</span>;
+BEGIN
+bookmarks=*# <span class="c-key">SELECT</span> visit_count <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;
+ visit_count
+-------------
+           0
+(1 row)
+
+<span class="c-com">-- session A, in the other window:</span>
+<span class="c-com">--     UPDATE bookmarks SET visit_count = 5 WHERE id = 1;</span>
+
+bookmarks=*# <span class="c-key">SELECT</span> visit_count <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;
+ visit_count
+-------------
+           5
+(1 row)</code></pre>
+
+<p>The same query in the same transaction returned two answers. The standard
+name for this is a <strong>non-repeatable read</strong>. It is permitted at
+<code>READ COMMITTED</code>, and PostgreSQL chooses that level by default
+because it is cheap and it never blocks a reader.</p>
+
+<p>So the database is not going to stop you. Three tools stop you instead. Use
+them in this order.</p>
+
+<h2>Step 4 · Fix 1 · Let the database do the arithmetic</h2>
+
+<p>The best fix removes the read. Write one statement, and put the addition
+inside it:</p>
+
+<pre class="wide"><code><span class="c-key">UPDATE</span> bookmarks <span class="c-key">SET</span> visit_count = visit_count + <span class="c-num">1</span> <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;</code></pre>
+
+<p>One statement is atomic against other statements. PostgreSQL takes a row
+lock, reads the current value, adds one, and writes the result. No other
+transaction can read the old value and win the race, because no window exists
+between the read and the write.</p>
+
+<pre class="wide"><code>one statement            200 / 200     178.3 ms     0 retries   correct</code></pre>
+
+<div class="note note--ok">
+  <span class="note-label">The measurement</span>
+  <p><strong>200 of 200, and it is the fastest of the four.</strong> Correct
+  code is cheaper than the defect here, because the defect makes two round trips
+  and this makes one. Prefer this fix whenever the new value is a function of
+  the old value: a counter, a balance, a stock level, a flag you flip.</p>
+</div>
+
+<h2>Step 5 · Fix 2 · Lock the row first</h2>
+
+<p>Some decisions need Python. You must read the row, apply a rule, and then
+write. In that case, take a lock on the read. Add <code>FOR UPDATE</code>:</p>
+
+<pre class="wide"><code><span class="c-key">SELECT</span> visit_count <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> id = <span class="c-num">1</span> <span class="c-key">FOR UPDATE</span>;</code></pre>
+
+<blockquote>
+  <p>"<code>FOR UPDATE</code> causes the rows retrieved by the
+  <code>SELECT</code> statement to be locked as though for update. This prevents
+  them from being locked, modified or deleted by other transactions until the
+  current transaction ends."</p>
+  <p class="sidenote">— <a href="#src-lock">PostgreSQL, Explicit
+  Locking</a>, §13.3.2</p>
+</blockquote>
+
+<p>Do it in the two windows. Session A takes the lock and holds it:</p>
+
+<pre class="wide"><code><span class="c-com">-- session A</span>
+bookmarks=# <span class="c-key">BEGIN</span>;
+BEGIN
+bookmarks=*# <span class="c-key">SELECT</span> visit_count <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> id = <span class="c-num">1</span> <span class="c-key">FOR UPDATE</span>;
+ visit_count
+-------------
+           0
+(1 row)</code></pre>
+
+<pre class="wide"><code><span class="c-com">-- session B: this prints nothing. It waits.</span>
+bookmarks=# <span class="c-key">BEGIN</span>;
+BEGIN
+bookmarks=*# <span class="c-key">SELECT</span> visit_count <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> id = <span class="c-num">1</span> <span class="c-key">FOR UPDATE</span>;
+<span class="c-com">-- no prompt comes back</span></code></pre>
+
+<p>A blocked session is invisible, so learn where to look. A third window shows
+you who waits and what for:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">SELECT</span> pid, state, wait_event_type, wait_event
+bookmarks-#   <span class="c-key">FROM</span> pg_stat_activity <span class="c-key">WHERE</span> state &lt;&gt; <span class="c-str">'idle'</span>;
+
+ pid |        state        | wait_event_type |  wait_event
+-----+---------------------+-----------------+---------------
+  98 | idle in transaction | Client          | ClientRead
+ 104 | active              | Lock            | transactionid</code></pre>
+
+<p>Session A is <code>idle in transaction</code>: it holds a lock and it waits
+for a human. Session B is <code>active</code> with
+<code>wait_event_type = Lock</code>: it waits for session A. Now session A
+finishes, and session B wakes up:</p>
+
+<pre class="wide"><code><span class="c-com">-- session A</span>
+bookmarks=*# <span class="c-key">UPDATE</span> bookmarks <span class="c-key">SET</span> visit_count = <span class="c-num">1</span> <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;
+bookmarks=*# <span class="c-key">COMMIT</span>;
+COMMIT
+
+<span class="c-com">-- session B, which was blocked, now returns</span>
+ visit_count
+-------------
+           1
+(1 row)
+
+bookmarks=*# <span class="c-key">UPDATE</span> bookmarks <span class="c-key">SET</span> visit_count = <span class="c-num">2</span> <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;
+UPDATE 1
+bookmarks=*# <span class="c-key">COMMIT</span>;
+COMMIT</code></pre>
+
+<p>Session B read <code>1</code>, not <code>0</code>. The lock made the second
+reader wait, and the wait made it read the fresh value. Two visits, and the
+counter says 2.</p>
+
+<pre class="wide"><code>SELECT FOR UPDATE        200 / 200     247.9 ms     0 retries   correct</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">Keep a locked transaction short</span>
+  <p>A lock lasts until the transaction ends. Never hold one across a call to
+  another service, and never hold one while you wait for a user. Two
+  transactions that take two locks in opposite orders produce a
+  <strong>deadlock</strong>. PostgreSQL detects the deadlock and aborts one
+  transaction. Always lock rows in the same order in every code path.</p>
+</div>
+
+<h2>Step 6 · Fix 3 · Let the database refuse, then retry</h2>
+
+<p>The third tool changes the isolation level instead of the code. Ask for
+<code>REPEATABLE READ</code>. At that level your transaction takes one snapshot
+at its first statement and keeps it. Repeat the Step 3 experiment at the new
+level:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ</span>;
+BEGIN
+bookmarks=*# <span class="c-key">SELECT</span> visit_count <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;
+ visit_count
+-------------
+           5
+(1 row)
+
+<span class="c-com">-- session A commits:  UPDATE bookmarks SET visit_count = 9 WHERE id = 1;</span>
+
+bookmarks=*# <span class="c-key">SELECT</span> visit_count <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;
+ visit_count
+-------------
+           5
+(1 row)</code></pre>
+
+<p>The second read returned <code>5</code> again. The non-repeatable read is
+gone. Now try to write:</p>
+
+<pre class="wide"><code>bookmarks=*# <span class="c-key">UPDATE</span> bookmarks <span class="c-key">SET</span> visit_count = <span class="c-num">6</span> <span class="c-key">WHERE</span> id = <span class="c-num">1</span>;
+ERROR:  could not serialize access due to concurrent update
+bookmarks=!# </code></pre>
+
+<div class="note note--key">
+  <span class="note-label">This error is the feature</span>
+  <p>PostgreSQL refused the write. Your transaction read version 5 and another
+  transaction has already replaced it, so the write would be based on a value
+  that no longer exists. The database cannot guess what you meant, so it aborts
+  your transaction. Note the prompt: <code>bookmarks=!#</code> means the
+  transaction failed and accepts only <code>ROLLBACK</code>.</p>
+</div>
+
+<p>The manual is direct about your duty here:</p>
+
+<blockquote>
+  <p>"Applications using this level must be prepared to retry transactions due
+  to serialization failures."</p>
+  <p class="sidenote">— <a href="#src-iso">PostgreSQL, Transaction
+  Isolation</a>, §13.2.2</p>
+</blockquote>
+
+<p>So you catch the error and you run the whole transaction again. This is
+<strong>optimistic locking</strong>: take no lock, assume no conflict, and pay
+for the conflict when it happens.</p>
+
+<pre class="wide"><code><span class="c-key">while True</span>:
+    <span class="c-key">try</span>:
+        <span class="c-key">with</span> conn.transaction():
+            conn.execute(<span class="c-str">"SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"</span>)
+            row = conn.execute(
+                <span class="c-str">"SELECT visit_count FROM bookmarks WHERE id = %s"</span>, (ID,)
+            ).fetchone()
+            conn.execute(
+                <span class="c-str">"UPDATE bookmarks SET visit_count = %s WHERE id = %s"</span>,
+                (row[<span class="c-num">0</span>] + <span class="c-num">1</span>, ID),
+            )
+        <span class="c-key">return</span>
+    <span class="c-key">except</span> errors.SerializationFailure:
+        retries += <span class="c-num">1</span>                 <span class="c-com"># and go round again</span></code></pre>
+
+<p>The retry gives the correct answer. Look at the price:</p>
+
+<pre class="wide"><code>read-modify-write         12 / 200     194.8 ms     0 retries   LOST 188
+SELECT FOR UPDATE        200 / 200     247.9 ms     0 retries   correct
+one statement            200 / 200     178.3 ms     0 retries   correct
+REPEATABLE READ + retry  200 / 200     772.3 ms  1411 retries   correct</code></pre>
+
+<p>1411 retries for 200 increments. Twenty threads all want one row, so almost
+every attempt loses a race and starts again. Optimistic locking suits low
+contention. This row is the opposite of low contention, so the pessimistic lock
+in Step 5 wins, and the single statement in Step 4 wins outright.</p>
+
+<div class="note">
+  <span class="note-label">Choose the fix from the contention, not from taste</span>
+  <p>Ask one question: how often do two requests touch the same row?</p>
+  <ul>
+    <li><strong>The new value comes from the old value.</strong> Use one
+    statement. Step 4.</li>
+    <li><strong>Python must decide, and the row is hot.</strong> Lock the row
+    with <code>FOR UPDATE</code>. Step 5.</li>
+    <li><strong>Python must decide, and conflicts are rare.</strong> Use
+    <code>REPEATABLE READ</code> and a retry. Step 6.</li>
+  </ul>
+</div>
+
+<h2>Step 7 · The four levels, and the two you will use</h2>
+
+<p>The SQL standard names four isolation levels. It defines three of them by the
+problems they forbid. PostgreSQL implements three distinct levels, because
+<code>READ UNCOMMITTED</code> behaves the same as <code>READ
+COMMITTED</code>.<sup><a href="#src-iso">1</a></sup></p>
+
+<table>
+  <thead>
+    <tr><th>Level</th><th>Dirty read</th><th>Non-repeatable read</th><th>Phantom read</th><th>Serialization anomaly</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>READ UNCOMMITTED</code></td><td>no</td><td>possible</td><td>possible</td><td>possible</td></tr>
+    <tr><td><code>READ COMMITTED</code> (default)</td><td>no</td><td>possible</td><td>possible</td><td>possible</td></tr>
+    <tr><td><code>REPEATABLE READ</code></td><td>no</td><td>no</td><td>no</td><td>possible</td></tr>
+    <tr><td><code>SERIALIZABLE</code></td><td>no</td><td>no</td><td>no</td><td>no</td></tr>
+  </tbody>
+</table>
+
+<p>The four problem names are worth ten seconds each:</p>
+
+<ul class="steps">
+  <li><strong>Dirty read</strong> — you read data that another transaction wrote
+  and did not commit. PostgreSQL never permits this at any level.</li>
+  <li><strong>Non-repeatable read</strong> — you read one row twice and get two
+  values. You saw this in Step 3.</li>
+  <li><strong>Phantom read</strong> — you run one query twice and the second run
+  returns extra rows. PostgreSQL forbids it at <code>REPEATABLE READ</code>,
+  although the standard permits it there.</li>
+  <li><strong>Serialization anomaly</strong> — two transactions each read what
+  the other one writes, and the result matches no order of running them one at a
+  time. Only <code>SERIALIZABLE</code> forbids it.</li>
+</ul>
+
+<p class="sidenote">Two transactions read each other's totals and each writes a
+sum. Both commit at <code>REPEATABLE READ</code>, and the two sums disagree with
+every serial order. <code>SERIALIZABLE</code> aborts one of them with
+<code>could not serialize access due to read/write dependencies among
+transactions</code>. You pay for the check, and you must still write the retry.
+Reach for it when a business rule spans several rows.</p>
+
+<h2>Step 8 · Put the fix in the API</h2>
+
+<p>Add one endpoint to <code class="filename">main.py</code>. It counts a visit
+and returns the new total:</p>
+
+<pre class="wide"><code><span class="c-key">@app</span>.post(<span class="c-str">"/bookmarks/{bookmark_id}/visit"</span>)
+<span class="c-key">async def</span> <span class="c-fn">record_visit</span>(bookmark_id: <span class="c-key">int</span>):
+    <span class="c-key">async with</span> app.state.pool.connection() <span class="c-key">as</span> conn:
+        cur = <span class="c-key">await</span> conn.cursor(row_factory=dict_row).execute(
+            <span class="c-str">"UPDATE bookmarks SET visit_count = visit_count + 1"</span>
+            <span class="c-str">" WHERE id = %s RETURNING id, visit_count"</span>,
+            (bookmark_id,),
+        )
+        row = <span class="c-key">await</span> cur.fetchone()
+    <span class="c-key">if</span> row <span class="c-key">is None</span>:
+        <span class="c-key">raise</span> HTTPException(status_code=<span class="c-num">404</span>, detail=<span class="c-str">"Bookmark not found"</span>)
+    <span class="c-key">return</span> row</code></pre>
+
+<p>One statement does four jobs. It locks the row, it adds one, it hands back
+the new value with <code>RETURNING</code>, and it returns no row for an id that
+does not exist — which is your 404. Now prove it under load. Send 300 requests
+with 30 in flight at once:</p>
+
+<pre class="wide"><code>$ seq 1 300 | xargs -P 30 -I{} \
+      curl -s -o /dev/null -X POST localhost:8000/bookmarks/1/visit
+$ curl -s localhost:8000/bookmarks/1
+{"id":1,"url":"https://example.com/article/1","title":"Article number 1",
+ "created_at":"2026-08-09T19:43:53.001140+00:00","visit_count":300}</code></pre>
+
+<div class="note note--ok">
+  <span class="note-label">300 requests, 300 visits</span>
+  <p>This is the demonstrable artifact for today. Run the same 300 requests
+  against a read-modify-write version of the endpoint and record the number you
+  get. Two numbers from the same load, one of them wrong, is a very strong
+  README section.</p>
+</div>
+
+<h2>Step 9 · The ORM, and the SQL it writes for you</h2>
+
+<p>An <strong>ORM</strong> maps table rows onto Python objects. SQLAlchemy is
+the standard choice in Python, and most job adverts that name Python name it or
+name Django's ORM. You now know SQL, so you can do the only thing that makes an
+ORM safe: read the SQL it sends.</p>
+
+<p>Describe the schema the migrations already built. Note what is absent:</p>
+
+<pre class="wide"><code><span class="c-com"># orm_models.py</span>
+<span class="c-key">class</span> <span class="c-fn">Base</span>(DeclarativeBase):
+    <span class="c-key">pass</span>
+
+bookmark_tags = Table(
+    <span class="c-str">"bookmark_tags"</span>, Base.metadata,
+    Column(<span class="c-str">"bookmark_id"</span>, ForeignKey(<span class="c-str">"bookmarks.id"</span>, ondelete=<span class="c-str">"CASCADE"</span>), primary_key=<span class="c-key">True</span>),
+    Column(<span class="c-str">"tag_id"</span>, ForeignKey(<span class="c-str">"tags.id"</span>, ondelete=<span class="c-str">"CASCADE"</span>), primary_key=<span class="c-key">True</span>),
+)
+
+<span class="c-key">class</span> <span class="c-fn">Bookmark</span>(Base):
+    __tablename__ = <span class="c-str">"bookmarks"</span>
+
+    id: Mapped[<span class="c-key">int</span>] = mapped_column(primary_key=<span class="c-key">True</span>)
+    url: Mapped[<span class="c-key">str</span>]
+    title: Mapped[<span class="c-key">str</span> | <span class="c-key">None</span>]
+    created_at: Mapped[datetime.datetime]
+    visit_count: Mapped[<span class="c-key">int</span>]
+
+    <span class="c-com"># This attribute is a query. Read that sentence again.</span>
+    tags: Mapped[<span class="c-key">list</span>[<span class="c-str">"Tag"</span>]] = relationship(
+        secondary=bookmark_tags, order_by=<span class="c-str">"Tag.name"</span>
+    )</code></pre>
+
+<p>There is no <code>Base.metadata.create_all()</code> in that file. The
+migrations own the schema, and these classes only describe it. Keep it that way.
+An ORM that creates your tables gives you no version history, no review, and no
+way to change a live database safely. Alembic is SQLAlchemy's migration tool,
+and it does the job your <code>migrate.py</code> does by hand.</p>
+
+<p>Now turn on <code>echo=True</code> and list ten bookmarks with their tags:</p>
+
+<pre class="wide"><code>rows = session.scalars(select(Bookmark).order_by(Bookmark.id).limit(<span class="c-num">10</span>)).all()
+<span class="c-key">return</span> [(b.title, [t.name <span class="c-key">for</span> t <span class="c-key">in</span> b.tags]) <span class="c-key">for</span> b <span class="c-key">in</span> rows]</code></pre>
+
+<pre class="wide"><code>$ python orm_n_plus_1.py --echo
+INFO sqlalchemy.engine.Engine SELECT bookmarks.id, bookmarks.url, bookmarks.title,
+       bookmarks.created_at, bookmarks.visit_count
+FROM bookmarks ORDER BY bookmarks.id LIMIT %(param_1)s::INTEGER
+[generated in 0.00019s] {'param_1': 10}
+
+INFO sqlalchemy.engine.Engine SELECT tags.id AS tags_id, tags.name AS tags_name
+FROM tags, bookmark_tags
+WHERE %(param_1)s::INTEGER = bookmark_tags.bookmark_id AND tags.id = bookmark_tags.tag_id
+[generated in 0.00017s] {'param_1': 1}
+... {'param_1': 2}
+... {'param_1': 3}
+<span class="c-com">-- and seven more, one for each bookmark</span></code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">You have seen this before</span>
+  <p>This is Lesson 5's N+1 problem, and the ORM wrote it for you. The
+  expression <code>b.tags</code> looks like an attribute access. It is a network
+  round trip. Nothing in the Python says so, and no single
+  <code>EXPLAIN</code> finds it. This is the exact reason Lesson 5 came before
+  this lesson.</p>
+</div>
+
+<p>SQLAlchemy calls this the <em>lazy</em> loader strategy, and it is the
+default for every relationship.<sup><a href="#src-loaders">3</a></sup> You
+change it for one query with <code>.options()</code>. Two options matter:</p>
+
+<ul class="steps">
+  <li><code>selectinload(Bookmark.tags)</code> — one query for the bookmarks,
+  then one more query with <code>WHERE bookmarks_1.id IN (...)</code> for every
+  tag. Two queries, whatever the page size.</li>
+  <li><code>joinedload(Bookmark.tags)</code> — one query with a <code>LEFT OUTER
+  JOIN</code>. Add <code>.unique()</code> to the result, because the join
+  returns one row for each pair.</li>
+</ul>
+
+<pre class="wide"><code>$ python orm_n_plus_1.py
+page of 100 bookmarks
+
+lazy (default)      69.3 ms    101 queries   100 rows   first tags: ['tag-2', 'tag-3', 'tag-4']
+selectinload         5.0 ms      2 queries   100 rows   first tags: ['tag-2', 'tag-3', 'tag-4']
+joinedload           3.1 ms      1 queries   100 rows   first tags: ['tag-2', 'tag-3', 'tag-4']
+
+selectinload is 14x faster than the default</code></pre>
+
+<p class="sidenote">The multiplier moves with the state of the cache, so your run
+shows a different one. The query counts do not move: 101, 2 and 1 are exact.</p>
+
+<p>Look at the SQL that <code>joinedload</code> produced, because you have
+written it before:</p>
+
+<pre class="wide"><code>SELECT anon_1.id, anon_1.url, anon_1.title, anon_1.created_at, anon_1.visit_count,
+       tags_1.id AS id_1, tags_1.name
+FROM (SELECT bookmarks.id AS id, ... FROM bookmarks ORDER BY bookmarks.id
+      LIMIT %(param_1)s::INTEGER) AS anon_1
+LEFT OUTER JOIN (bookmark_tags AS bookmark_tags_1
+                 JOIN tags AS tags_1 ON tags_1.id = bookmark_tags_1.tag_id)
+             ON anon_1.id = bookmark_tags_1.bookmark_id
+ORDER BY anon_1.id, tags_1.name</code></pre>
+
+<p>That is the Lesson 4 query: put the <code>LIMIT</code> in a subquery, then
+<code>LEFT JOIN</code> the tags. The ORM did not invent a technique. It typed
+for you, and only after you told it which technique to use.</p>
+
+<h2>Step 10 · The ORM writes today's defect too</h2>
+
+<p>Count a visit through the ORM. This is the idiomatic line, and every tutorial
+shows it:</p>
+
+<pre class="wide"><code>bookmark = session.get(Bookmark, <span class="c-num">1</span>)
+bookmark.visit_count += <span class="c-num">1</span>
+session.commit()</code></pre>
+
+<p>Read the echo output:</p>
+
+<pre class="wide"><code>BEGIN (implicit)
+SELECT bookmarks.id, ..., bookmarks.visit_count FROM bookmarks
+WHERE bookmarks.id = %(pk_1)s::INTEGER
+{'pk_1': 1}
+UPDATE bookmarks SET visit_count=%(visit_count)s::INTEGER WHERE bookmarks.id = ...
+{'visit_count': 201, 'bookmarks_id': 1}
+COMMIT</code></pre>
+
+<p>A <code>SELECT</code>, then an <code>UPDATE</code> with a number that Python
+computed. That is Step 1, in two lines of Python, with no SQL in sight. Twenty
+threads confirm it:</p>
+
+<pre class="wide"><code>$ python orm_increment.py
+20 threads, 10 increments each, expected 200
+
+attribute assignment      27 / 200     275.9 ms   LOST 173
+with_for_update          200 / 200     400.2 ms   correct
+core update              200 / 200     287.5 ms   correct</code></pre>
+
+<p>The two fixes look like this. Both are Step 5 and Step 4, said in
+SQLAlchemy:</p>
+
+<pre class="wide"><code><span class="c-com"># lock the row: the SELECT carries FOR UPDATE</span>
+bookmark = session.scalars(
+    select(Bookmark).where(Bookmark.id == ID).with_for_update()
+).one()
+bookmark.visit_count += <span class="c-num">1</span>
+
+<span class="c-com"># or remove the read: the addition happens in PostgreSQL</span>
+session.execute(
+    update(Bookmark).where(Bookmark.id == ID)
+                    .values(visit_count=Bookmark.visit_count + <span class="c-num">1</span>)
+)</code></pre>
+
+<pre class="wide"><code><span class="c-com">-- the SQL the second one sends</span>
+UPDATE bookmarks SET visit_count=(bookmarks.visit_count + %(visit_count_1)s::INTEGER)
+WHERE bookmarks.id = %(id_1)s::INTEGER</code></pre>
+
+<div class="note note--key">
+  <span class="note-label">What an ORM buys, and what it hides</span>
+  <p>It buys real things: one place for the schema in Python, an identity map,
+  a unit of work that batches your writes into one transaction, relationship
+  navigation, and Alembic migrations.</p>
+  <p>It hides exactly one thing, and that thing is the cost. An attribute
+  access can be a query. An assignment can be a read-modify-write. The skill is
+  not "avoid the ORM". The skill is <code>echo=True</code>, and the habit of
+  counting the statements.</p>
+</div>
+
+<h2>Practice</h2>
+
+<ol class="steps">
+  <li><strong>Ship migration 0004.</strong> Write
+  <code>0004_add_visit_count.sql</code>, run <code>migrate.py</code>, and
+  confirm the output says <code>applied 0004_add_visit_count</code> and
+  <code>skip</code> for the other three.</li>
+
+  <li><strong>Lose a write by hand.</strong> Open two
+  <code>psql</code> windows and reproduce Step 1. Do not read ahead. Say the
+  final number out loud before you run the last
+  <code>SELECT</code>.</li>
+
+  <li><strong>Measure the loss.</strong> Run <code>lost_update.py</code>. Then
+  change <code>WORKERS</code> from 20 to 2 and predict the four lines before you
+  run it again. Low contention hides this defect, and that is why it reaches
+  production.</li>
+
+  <li><strong>Watch a session block.</strong> Reproduce Step 5. While session B
+  waits, run the <code>pg_stat_activity</code> query in a third window and find
+  <code>wait_event_type = Lock</code>. This query is how you diagnose a stuck
+  production API.</li>
+
+  <li><strong>Earn a serialization failure.</strong> Reproduce Step 6 until you
+  see <code>could not serialize access due to concurrent update</code> and the
+  <code>bookmarks=!#</code> prompt. Then run <code>ROLLBACK</code> and check
+  that the prompt returns to <code>bookmarks=#</code>.</li>
+
+  <li><strong>Ship the endpoint and prove it.</strong> Add
+  <code>POST /bookmarks/{id}/visit</code>. Reset the counter to 0, send the 300
+  requests from Step 8, and check the total. Then write the broken version, run
+  the same load, and write down both numbers.</li>
+
+  <li><strong>Read the ORM's SQL.</strong> Run
+  <code>python orm_n_plus_1.py --echo</code>. Count the
+  <code>SELECT</code> statements in the lazy case. Then add
+  <code>selectinload</code> and count again.</li>
+
+  <li><strong>Find the hidden write.</strong> Run
+  <code>python orm_increment.py --echo</code> and find the line
+  <code>SET visit_count=%(visit_count)s</code>. Explain to yourself, in one
+  sentence, why that statement loses writes and why
+  <code>SET visit_count=(bookmarks.visit_count + 1)</code> does not.</li>
+
+  <li><strong>Add to the README.</strong> Four lines: the 300-request load, the
+  wrong total, the right total, and the one-line reason. Almost no junior
+  candidate can show a measured concurrency defect and its fix.</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<p>Answer before you scroll back. A wrong answer now is worth more than a right
+answer that came from a re-read.</p>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "Two transactions both read a counter as 0 and both write 1. Two visits, one count. What is this defect called?",
+    "answer": "lost update",
+    "accept": ["a lost update", "the lost update", "lost update problem"],
+    "why": "Nothing broke a rule, so no error appears. The second write was computed from a value that another transaction had already replaced." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "What does a snapshot cover at READ COMMITTED, the PostgreSQL default?",
+    "options": [
+      "One query, so two queries in a transaction can differ",
+      "One transaction, so every query returns the same rows",
+      "One connection, until the client disconnects again",
+      "One table, until another session writes to that table"
+    ],
+    "answer": 0,
+    "why": "A SELECT sees a snapshot as of the instant that query begins. Two SELECT statements in one transaction take two snapshots, which is why a value can change under you inside one transaction." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Which fix is both correct and fastest for a counter increment?",
+    "options": [
+      "UPDATE bookmarks SET visit_count = visit_count + 1",
+      "SELECT the row, add one in Python, then UPDATE",
+      "SELECT the row twice and compare the two values",
+      "Add an index on the visit_count column of the table"
+    ],
+    "answer": 0,
+    "why": "One statement leaves no window between the read and the write, and it makes one round trip instead of two. In the lesson it was the fastest of the four strategies as well as correct." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Session A holds SELECT ... FOR UPDATE on a row. Session B runs the same statement. What does B do?",
+    "options": [
+      "It waits until A commits, then reads the new value",
+      "It fails at once with a serialization failure error",
+      "It reads the old value and continues without waiting",
+      "It reads the uncommitted value that A has written"
+    ],
+    "answer": 0,
+    "why": "FOR UPDATE takes a row lock that lasts until the transaction ends. B blocks, and pg_stat_activity shows it with wait_event_type = Lock. When B wakes up it reads the committed value, which is what makes the read-modify-write correct." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "At REPEATABLE READ, you update a row that another transaction changed after yours began. Which error does PostgreSQL raise?",
+    "answer": "could not serialize access due to concurrent update",
+    "accept": ["serialization failure", "could not serialize access", "serialisation failure"],
+    "why": "Your snapshot no longer matches the row, so the database aborts your transaction instead of guessing. Your duty is to roll back and run the whole transaction again." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Twenty threads increment one row. Why did REPEATABLE READ with retries cost 772 ms and 1411 retries?",
+    "options": [
+      "Optimistic locking pays only when conflicts are rare",
+      "REPEATABLE READ takes a table lock for each statement",
+      "The retry loop opens a new connection on each attempt",
+      "PostgreSQL rechecks every index entry on that table"
+    ],
+    "answer": 0,
+    "why": "A retry assumes the conflict is unusual. One hot row means almost every attempt loses a race and starts again. Under high contention a pessimistic lock, or one statement, is cheaper." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "In SQLAlchemy, what does the expression bookmark.tags do the first time you read it?",
+    "options": [
+      "It sends a SELECT to the database for that one row",
+      "It reads a list that the first query already loaded",
+      "It joins the tags table inside the original query",
+      "It raises an error unless you asked for the tags"
+    ],
+    "answer": 0,
+    "why": "Lazy loading is the default for every relationship. One attribute access per row is one query per row, which is Lesson 5's N+1 problem written by the ORM. selectinload makes it two queries; joinedload makes it one." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why does bookmark.visit_count += 1 lose writes?",
+    "options": [
+      "It emits SELECT then UPDATE with a Python-computed value",
+      "It forgets to commit the transaction that holds the row",
+      "It writes to the identity map and never to the database",
+      "It runs at READ UNCOMMITTED, which permits dirty reads"
+    ],
+    "answer": 0,
+    "why": "The echo output shows SET visit_count=%(visit_count)s with a number Python worked out from a stale read. It is the same defect as the two psql windows, spelled as an attribute assignment. Use with_for_update, or an update() that adds in SQL." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "A colleague reports that a counter in production is lower than the number of requests in the log. Describe your diagnosis and your fix, in order.",
+    "answer": "1. Read the code that writes the counter and look for the read-modify-write shape: a SELECT, then arithmetic in Python, then an UPDATE that sets an absolute value. With an ORM, look for an attribute assignment such as obj.count += 1, and turn on echo to see the two statements. 2. Confirm the diagnosis by load, not by reading: send N concurrent requests and compare the total against N. 3. Choose the fix from the contention. If the new value comes from the old value, use one statement: UPDATE ... SET count = count + 1. If Python must decide and the row is hot, SELECT ... FOR UPDATE inside the transaction. If Python must decide and conflicts are rare, use REPEATABLE READ and retry on a serialization failure. 4. Re-run the same load and confirm the total matches. Keep both numbers for the README.",
+    "why": "The diagnosis is a code shape, not a log line, because the database reports no error. The proof is a concurrent load, because one request at a time can never reproduce it." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<div class="source">
+  <h4>Primary sources</h4>
+
+  <p id="src-iso"><a href="https://www.postgresql.org/docs/current/transaction-iso.html">PostgreSQL
+  — Transaction Isolation</a></p>
+  <p><strong>Read §13.2 once, slowly, with two psql windows open.</strong> It is
+  six pages, and it is the source of both quotations and of the level table in
+  Step 7. The <code>accounts</code> example in §13.2.1 explains why
+  <code>READ COMMITTED</code> is right for simple writes and wrong for complex
+  ones. Verified 2026-08-10.</p>
+
+  <p id="src-lock"><a href="https://www.postgresql.org/docs/current/explicit-locking.html">PostgreSQL
+  — Explicit Locking</a></p>
+  <p>§13.3.2 covers the four row-level lock modes and which ones conflict.
+  §13.3.4 covers deadlocks, and gives the rule that prevents them: take locks in
+  the same order everywhere. Verified 2026-08-10.</p>
+
+  <p id="src-loaders"><a href="https://docs.sqlalchemy.org/en/20/orm/queryguide/relationships.html">SQLAlchemy
+  — Relationship Loading Techniques</a></p>
+  <p>The authority for Step 9. Read "Summary of Relationship Loading Styles",
+  then "What Kind of Loading to Use?". Also meet <code>raiseload()</code>: it
+  turns an accidental lazy load into an exception, which is how a team keeps N+1
+  out of a codebase. v2.0.51, verified 2026-08-10.</p>
+
+  <p><a href="https://docs.sqlalchemy.org/en/20/orm/quickstart.html">SQLAlchemy
+  — ORM Quick Start</a></p>
+  <p>The shortest complete tour of <code>DeclarativeBase</code>,
+  <code>mapped_column</code>, <code>relationship</code>, and the
+  <code>Session</code>. Ignore its <code>create_all()</code> step: your
+  migrations own the schema. v2.0.51, verified 2026-08-10.</p>
+
+  <p><a href="https://alembic.sqlalchemy.org/en/latest/tutorial.html">Alembic
+  — Tutorial</a></p>
+  <p>Now is the time for this one. You wrote <code>migrate.py</code> by hand in
+  Lesson 4, so <code>revision</code>, <code>upgrade</code>, and
+  <code>head</code> map onto something you already understand.</p>
+</div>
+
+<h2>Where this goes</h2>
+
+<p>You can now find a defect that no error message reports, and you can prove
+the fix under load. That completes the database half of this curriculum.</p>
+
+<p><strong>Next is deployment.</strong> Lessons 3 to 6 are one project: a JSON
+API, a normalised schema, migrations, measured query performance, and a counter
+that survives 300 concurrent requests. It runs on your laptop, which means no
+reviewer can see it. The next lesson puts it on a public URL with a real
+database, an environment file, and a README that a stranger can follow. That is
+the CV line, and it is also the trigger we agreed for the TypeScript
+conversation.</p>
+
+<div class="ask">
+  <p><strong>Ask me things.</strong> Paste any SQLAlchemy <code>echo</code>
+  output you do not understand — reading generated SQL is a learnable skill and
+  it is the whole defence against an ORM. Three questions are especially worth
+  asking: which loader strategy fits an endpoint you are writing, whether a
+  particular write needs <code>FOR UPDATE</code>, and whether to keep psycopg or
+  move your API to the ORM. The last one is a real decision, and the answer
+  depends on your schema.</p>
+  <p>Two things I still want to know. Did you run Lesson 4's and Lesson 5's
+  practice, and which steps did you skip? Did you post the project to
+  <a href="https://codereview.stackexchange.com/">Code Review Stack Exchange</a>?
+  Show me the post before you send it and I will read it first. Full list in
+  <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0005-why-is-this-slow.html">← Lesson 05: Why is this slow?</a>
+  <a href="0007-deployment.html">Lesson 07: Deployment →</a>
+</nav>
+
+</main>
+</body>
+</html>

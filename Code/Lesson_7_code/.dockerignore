@@ -1,0 +1,15 @@
+# Keep the secret, the noise, and the local state out of the image.
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+.git/
+.gitignore
+
+*.md
+!README.md

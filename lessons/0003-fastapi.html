@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 3 · FastAPI</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 03 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../reference/http-message-anatomy.html">Reference: HTTP anatomy</a> ·
+    <a href="0002-a-server-without-a-framework.html">← Lesson 02</a>
+  </p>
+  <h1>FastAPI
+    <span class="sub">The framework does the plumbing. You do the thinking.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">In Lesson 2 you built a server that parses raw bytes, routes
+requests through a dictionary, and answers with correct status codes — all in
+~80 lines with no dependencies. Then you met WSGI and ASGI, the contracts that
+let a framework take over the plumbing. Today you hand it over. FastAPI is the
+framework this curriculum anchors on, and by the end of this lesson you will
+have a running JSON API with routing, path parameters, query parameters,
+request-body validation, automatic error responses, and live interactive
+documentation — all of which you can explain in terms of the layers you already
+understand.</p>
+
+<p class="sidenote">By the end of this lesson you will have a <code>main.py</code>
+you can <code>curl</code>, open in a browser at <code>/docs</code>, and extend
+into your first portfolio project. Every feature maps to something you wrote by
+hand in Lessons 1–2.</p>
+
+<h2>The one idea</h2>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>FastAPI is an <strong>ASGI application</strong> that turns Python type
+  annotations into routing, validation, serialisation, error responses, and
+  OpenAPI documentation — replacing every line of plumbing you wrote by hand,
+  while adding things you could not easily build yourself.</p>
+</div>
+
+<h2>Step 0 · Install and run</h2>
+
+<p>Create a project directory and install FastAPI:</p>
+
+<pre class="wide"><code>$ mkdir bookmarks-api && cd bookmarks-api
+$ python3 -m venv .venv && source .venv/bin/activate
+$ pip install "fastapi[standard]"</code></pre>
+
+<p class="sidenote"><code>fastapi[standard]</code> pulls in Uvicorn (the ASGI
+server from Lesson 2's stack diagram) and a few other defaults. If you prefer
+<code>uv</code>: <code>uv init --bare && uv add "fastapi[standard]"</code>.</p>
+
+<p>Create <code>main.py</code> with the smallest possible FastAPI app:</p>
+
+<p class="filename">main.py — hello world</p>
+<pre class="wide"><code><span class="c-key">from</span> fastapi <span class="c-key">import</span> FastAPI
+
+app = FastAPI()
+
+<span class="c-fn">@app.get</span>(<span class="c-str">"/"</span>)
+<span class="c-key">async def</span> <span class="c-fn">root</span>():
+    <span class="c-key">return</span> {<span class="c-str">"message"</span>: <span class="c-str">"Hello, world"</span>}</code></pre>
+
+<p>Run it:</p>
+
+<pre class="wide"><code>$ uvicorn main:app --reload
+INFO:     Uvicorn running on http://127.0.0.1:8000</code></pre>
+
+<div class="note">
+  <span class="note-label">What just happened — mapped to the stack</span>
+  <p><code>uvicorn main:app</code> means: "import <code>app</code> from
+  <code>main.py</code> and call it as an ASGI application for every connection."
+  That is the exact contract from Lesson 2:
+  <code>async def application(scope, receive, send)</code>. Uvicorn is the
+  server layer — sockets, <code>recv</code>, parsing. FastAPI is the application
+  layer — routing, validation, your handler functions. The
+  <code>--reload</code> flag watches the file and restarts on save, so you can
+  iterate without restarting the process.</p>
+</div>
+
+<h2>Step 1 · Routing — from a dictionary to decorators</h2>
+
+<p>In Lesson 2 your routing table was a plain dictionary:</p>
+
+<pre class="wide"><code>ROUTES = {
+    (<span class="c-str">"GET"</span>, <span class="c-str">"/"</span>):      handle_index,
+    (<span class="c-str">"GET"</span>, <span class="c-str">"/hello"</span>): handle_hello,
+}</code></pre>
+
+<p>FastAPI replaces this with <strong>decorator-based routing</strong>. The
+decorator <code>@app.get("/")</code> registers the function for
+<code>GET /</code>. There are matching decorators for every HTTP method:
+<code>@app.post</code>, <code>@app.put</code>, <code>@app.delete</code>,
+<code>@app.patch</code>.</p>
+
+<div class="note">
+  <span class="note-label">You wrote this by hand; FastAPI does it here</span>
+  <p>Your Lesson 2 <code>ROUTES</code> dict keyed on <code>(method, path)</code>.
+  FastAPI does the same thing internally — it builds a routing table from your
+  decorated functions. The difference: FastAPI's router handles path parameters
+  (<code>/items/{item_id}</code>), supports middleware, and returns
+  <code>405 Method Not Allowed</code> with an <code>Allow</code> header when the
+  path exists but the method does not. You wrote that logic by hand in
+  <code>allowed_methods()</code>. FastAPI does it for you.</p>
+</div>
+
+<div class="note note--warn">
+  <span class="note-label">A place the framework is not quite right — verify it yourself</span>
+  <p>Lesson 2 drilled that <code>405</code> <strong>must</strong> carry an
+  <code>Allow</code> header listing the methods the resource supports
+  (<a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.1">RFC 9110
+  §10.2.1</a>). FastAPI sends one — but when you register the same path with
+  <em>separate</em> decorators, the header is <strong>incomplete</strong>.</p>
+  <p>In the finished app below, <code>/bookmarks/{bookmark_id}</code> has both a
+  <code>@app.get</code> and a <code>@app.delete</code>. Send it a
+  <code>PUT</code> and you get:</p>
+  <pre><code>$ curl -i -X PUT http://127.0.0.1:8000/bookmarks/1
+HTTP/1.1 405 Method Not Allowed
+allow: GET</code></pre>
+  <p><code>DELETE</code> is missing. Each decorator creates its own route
+  object, and the router reports the methods of the <em>first</em> one whose
+  path matched. Declaring both methods on a single route fixes it —
+  <code>@app.api_route("/bookmarks/{bookmark_id}", methods=["GET", "DELETE"])</code>
+  yields <code>allow: GET, DELETE</code>.</p>
+  <p>Run both versions and compare. The lesson is not "FastAPI is buggy" — it is
+  that <strong>a framework is code someone else wrote, with its own trade-offs</strong>.
+  You can only see this because you built the 405 logic by hand in Lesson 2 and
+  know what the header is supposed to contain. That is the whole argument for
+  learning the mechanism before the abstraction.</p>
+</div>
+
+<h2>Step 2 · Path parameters — no more <code>parse_query</code></h2>
+
+<p>In Lesson 2 you wrote <code>parse_query(target)</code> to split the URL into
+a path and query parameters. Every handler received the full query dict and had
+to fish out the values it needed. FastAPI replaces all of that with function
+signatures.</p>
+
+<p>Let us build a bookmarks API. Each bookmark has an integer ID, a URL, and an
+optional title.</p>
+
+<p class="filename">main.py — path parameters</p>
+<pre class="wide"><code><span class="c-key">from</span> fastapi <span class="c-key">import</span> FastAPI
+
+app = FastAPI()
+
+<span class="c-com"># In-memory store (a real API uses a database — that is Lesson 4).</span>
+BOOKMARKS: <span class="c-fn">dict</span>[<span class="c-fn">int</span>, <span class="c-fn">dict</span>] = {}
+next_id = <span class="c-num">1</span>
+
+<span class="c-fn">@app.get</span>(<span class="c-str">"/bookmarks/{bookmark_id}"</span>)
+<span class="c-key">async def</span> <span class="c-fn">get_bookmark</span>(bookmark_id: <span class="c-fn">int</span>):
+    <span class="c-key">if</span> bookmark_id <span class="c-key">not in</span> BOOKMARKS:
+        <span class="c-key">raise</span> HTTPException(status_code=<span class="c-num">404</span>, detail=<span class="c-str">"Bookmark not found"</span>)
+    <span class="c-key">return</span> BOOKMARKS[bookmark_id]</code></pre>
+
+<p>Three things happened with zero extra code:</p>
+
+<ul>
+  <li><strong>Extraction:</strong> <code>{bookmark_id}</code> in the path
+  string tells FastAPI to pull that segment from the URL and pass it to the
+  function as the argument <code>bookmark_id</code>.</li>
+  <li><strong>Conversion:</strong> The type annotation <code>: int</code> tells
+  FastAPI to convert the string from the URL into a Python <code>int</code>.
+  <code>/bookmarks/3</code> arrives as the integer <code>3</code>, not the
+  string <code>"3"</code>.</li>
+  <li><strong>Validation:</strong> If someone requests
+  <code>/bookmarks/abc</code>, FastAPI automatically returns a
+  <code>422 Unprocessable Entity</code> response with a JSON body explaining
+  exactly what went wrong — no <code>try/except ValueError</code> needed.</li>
+</ul>
+
+<div class="note">
+  <span class="note-label">Compare to Lesson 2</span>
+  <p>In your hand-built server, the path <code>/bookmarks/3</code> would not
+  match the route <code>("/bookmarks")</code> — your dictionary used exact
+  string matches. Supporting path parameters would have meant writing a regex
+  or a trie. FastAPI's router does this for you, and every path parameter is
+  documented in the OpenAPI schema automatically.</p>
+</div>
+
+<h2>Step 3 · Query parameters — declared in the function signature</h2>
+
+<p>In Lesson 2 you used <code>parse_qs</code> from the standard library to turn
+<code>?name=world</code> into <code>{'name': ['world']}</code>, then pulled
+values out with <code>query.get("name", ["stranger"])[0]</code>. FastAPI
+replaces that entire pattern: any function parameter that is <em>not</em> in
+the path is automatically treated as a query parameter.</p>
+
+<p class="filename">main.py — query parameters</p>
+<pre class="wide"><code><span class="c-fn">@app.get</span>(<span class="c-str">"/bookmarks"</span>)
+<span class="c-key">async def</span> <span class="c-fn">list_bookmarks</span>(skip: <span class="c-fn">int</span> = <span class="c-num">0</span>, limit: <span class="c-fn">int</span> = <span class="c-num">10</span>):
+    all_bookmarks = <span class="c-fn">list</span>(BOOKMARKS.values())
+    <span class="c-key">return</span> all_bookmarks[skip : skip + limit]</code></pre>
+
+<ul>
+  <li><code>skip</code> and <code>limit</code> are not in the path string, so
+  FastAPI treats them as query parameters.</li>
+  <li>Default values make them optional: <code>/bookmarks</code> works;
+  <code>/bookmarks?skip=5&amp;limit=2</code> also works.</li>
+  <li>Type annotations (<code>int</code>) mean FastAPI validates and converts
+  them. <code>?skip=abc</code> → 422 error, automatically.</li>
+</ul>
+
+<div class="note">
+  <span class="note-label">You wrote this by hand; FastAPI does it here</span>
+  <p>Lesson 2: <code>parse_qs(parsed.query)</code> plus manual
+  <code>.get()</code> with fallbacks. FastAPI: declare the parameter with a
+  type and a default in the function signature. The framework handles parsing,
+  validation, default values, and documents every parameter in OpenAPI.</p>
+</div>
+
+<h2>Step 4 · Request bodies and Pydantic — validation you could not build easily</h2>
+
+<p>Lesson 2's handlers received the raw body as bytes. If you wanted to accept
+JSON, you would have written <code>json.loads(body)</code>, then manually
+checked that every field existed and had the right type. FastAPI replaces that
+with <strong>Pydantic models</strong>.</p>
+
+<p class="filename">main.py — Pydantic model + POST endpoint</p>
+<pre class="wide"><code><span class="c-key">from</span> fastapi <span class="c-key">import</span> FastAPI, HTTPException
+<span class="c-key">from</span> pydantic <span class="c-key">import</span> BaseModel
+
+app = FastAPI()
+
+BOOKMARKS: <span class="c-fn">dict</span>[<span class="c-fn">int</span>, <span class="c-fn">dict</span>] = {}
+next_id = <span class="c-num">1</span>
+
+<span class="c-key">class</span> <span class="c-fn">BookmarkCreate</span>(BaseModel):
+    url: <span class="c-fn">str</span>
+    title: <span class="c-fn">str</span> | <span class="c-key">None</span> = <span class="c-key">None</span>
+
+<span class="c-fn">@app.post</span>(<span class="c-str">"/bookmarks"</span>, status_code=<span class="c-num">201</span>)
+<span class="c-key">async def</span> <span class="c-fn">create_bookmark</span>(bookmark: <span class="c-fn">BookmarkCreate</span>):
+    <span class="c-key">global</span> next_id
+    entry = {<span class="c-str">"id"</span>: next_id, <span class="c-str">"url"</span>: bookmark.url, <span class="c-str">"title"</span>: bookmark.title}
+    BOOKMARKS[next_id] = entry
+    next_id += <span class="c-num">1</span>
+    <span class="c-key">return</span> entry</code></pre>
+
+<p>What <code>BookmarkCreate(BaseModel)</code> buys you:</p>
+
+<ul>
+  <li><strong>Automatic JSON parsing.</strong> FastAPI reads the request body
+  as JSON and hands it to Pydantic.</li>
+  <li><strong>Type validation.</strong> <code>url</code> must be a string.
+  <code>title</code> is optional (defaults to <code>None</code>). Send
+  <code>{"url": 42}</code> and Pydantic rejects it with a clear error message,
+  returned as a <code>422</code> response.</li>
+  <li><strong>Editor support.</strong> Inside the handler,
+  <code>bookmark.url</code> autocompletes and type-checks — because the
+  parameter is typed as <code>BookmarkCreate</code>, not a generic
+  <code>dict</code>.</li>
+  <li><strong>Documentation.</strong> The model's fields and types appear in
+  the OpenAPI schema and in <code>/docs</code> as a fillable form.</li>
+</ul>
+
+<div class="note note--warn">
+  <span class="note-label">422, not 400</span>
+  <p>FastAPI returns <code>422 Unprocessable Entity</code> for validation
+  errors, not <code>400 Bad Request</code>. This is intentional: <code>400</code>
+  means the request is syntactically broken (like the malformed bytes you sent
+  with <code>nc</code> in Lesson 2). <code>422</code> means the request is
+  well-formed HTTP but the <em>content</em> fails validation — a meaningful
+  distinction when debugging.</p>
+</div>
+
+<h2>Step 5 · Error responses — <code>HTTPException</code> replaces <code>build_response</code></h2>
+
+<p>In Lesson 2 you built error responses manually:</p>
+
+<pre class="wide"><code>conn.sendall(build_response(
+    <span class="c-num">404</span>, <span class="c-str">"text/plain"</span>, <span class="c-str">b"Not Found.\n"</span>))</code></pre>
+
+<p>FastAPI provides <code>HTTPException</code>:</p>
+
+<pre class="wide"><code><span class="c-key">from</span> fastapi <span class="c-key">import</span> HTTPException
+
+<span class="c-key">raise</span> HTTPException(status_code=<span class="c-num">404</span>, detail=<span class="c-str">"Bookmark not found"</span>)</code></pre>
+
+<p>This produces a JSON response:</p>
+
+<pre><code>HTTP/1.1 404 Not Found
+content-type: application/json
+
+{"detail": "Bookmark not found"}</code></pre>
+
+<div class="note">
+  <span class="note-label">You wrote this by hand; FastAPI does it here</span>
+  <p>Your Lesson 2 <code>build_response()</code> assembled the status line,
+  <code>Content-Type</code>, <code>Content-Length</code>, and the blank line
+  separating headers from body — every time. FastAPI does all of that for every
+  response. <code>HTTPException</code> is a Python exception; when you raise
+  it, FastAPI catches it and builds the correct HTTP response, including
+  serialising the <code>detail</code> field to JSON.</p>
+</div>
+
+<h2>Step 6 · OpenAPI and <code>/docs</code> — documentation for free</h2>
+
+<p>Start the server and open <code>http://127.0.0.1:8000/docs</code> in a
+browser. You will see an interactive page listing every endpoint, its path
+parameters, query parameters, request body schema, and response codes — all
+generated automatically from your code.</p>
+
+<p>This is powered by the <strong>OpenAPI specification</strong>
+(<a href="https://spec.openapis.org/oas/latest.html">v3.2.0</a>). FastAPI
+generates an OpenAPI JSON document at <code>/openapi.json</code> and serves it
+through <a href="https://github.com/swagger-api/swagger-ui">Swagger UI</a> at
+<code>/docs</code>. There is also an alternative viewer at
+<code>/redoc</code>.</p>
+
+<p>This is something you could never get from the hand-built server.
+Documentation that stays in sync with the code is a major selling point in an
+interview — and a daily convenience when a frontend developer needs to
+integrate against your API.</p>
+
+<div class="note note--key">
+  <span class="note-label">Where the docs come from</span>
+  <p>Every piece of information in <code>/docs</code> comes from your Python
+  code: the decorator (<code>@app.get</code>) provides the method and path, the
+  function signature provides the parameters and their types, the Pydantic model
+  provides the request body schema, and the <code>status_code</code> argument
+  provides the default response code. FastAPI reads all of this and builds the
+  OpenAPI document. There is no separate config file. The code <em>is</em> the
+  documentation.</p>
+</div>
+
+<h2>Step 7 · The complete app</h2>
+
+<p>Here is the full bookmarks API with all the pieces assembled: two endpoints,
+path parameters, query parameters, request body validation, error handling, and
+correct status codes.</p>
+
+<p class="filename">main.py</p>
+<pre class="wide"><code><span class="c-key">from</span> fastapi <span class="c-key">import</span> FastAPI, HTTPException
+<span class="c-key">from</span> pydantic <span class="c-key">import</span> BaseModel
+
+app = FastAPI()
+
+<span class="c-com"># ── Data ─────────────────────────────────────────────────</span>
+
+BOOKMARKS: <span class="c-fn">dict</span>[<span class="c-fn">int</span>, <span class="c-fn">dict</span>] = {}
+next_id: <span class="c-fn">int</span> = <span class="c-num">1</span>
+
+<span class="c-key">class</span> <span class="c-fn">BookmarkCreate</span>(BaseModel):
+    url: <span class="c-fn">str</span>
+    title: <span class="c-fn">str</span> | <span class="c-key">None</span> = <span class="c-key">None</span>
+
+<span class="c-com"># ── Endpoints ────────────────────────────────────────────</span>
+
+<span class="c-fn">@app.get</span>(<span class="c-str">"/bookmarks"</span>)
+<span class="c-key">async def</span> <span class="c-fn">list_bookmarks</span>(skip: <span class="c-fn">int</span> = <span class="c-num">0</span>, limit: <span class="c-fn">int</span> = <span class="c-num">10</span>):
+    <span class="c-str">"""Return all bookmarks, paginated."""</span>
+    all_bookmarks = <span class="c-fn">list</span>(BOOKMARKS.values())
+    <span class="c-key">return</span> all_bookmarks[skip : skip + limit]
+
+<span class="c-fn">@app.get</span>(<span class="c-str">"/bookmarks/{bookmark_id}"</span>)
+<span class="c-key">async def</span> <span class="c-fn">get_bookmark</span>(bookmark_id: <span class="c-fn">int</span>):
+    <span class="c-str">"""Return a single bookmark by ID."""</span>
+    <span class="c-key">if</span> bookmark_id <span class="c-key">not in</span> BOOKMARKS:
+        <span class="c-key">raise</span> HTTPException(status_code=<span class="c-num">404</span>, detail=<span class="c-str">"Bookmark not found"</span>)
+    <span class="c-key">return</span> BOOKMARKS[bookmark_id]
+
+<span class="c-fn">@app.post</span>(<span class="c-str">"/bookmarks"</span>, status_code=<span class="c-num">201</span>)
+<span class="c-key">async def</span> <span class="c-fn">create_bookmark</span>(bookmark: <span class="c-fn">BookmarkCreate</span>):
+    <span class="c-str">"""Create a new bookmark. Returns the created resource."""</span>
+    <span class="c-key">global</span> next_id
+    entry = {<span class="c-str">"id"</span>: next_id, <span class="c-str">"url"</span>: bookmark.url, <span class="c-str">"title"</span>: bookmark.title}
+    BOOKMARKS[next_id] = entry
+    next_id += <span class="c-num">1</span>
+    <span class="c-key">return</span> entry
+
+<span class="c-fn">@app.delete</span>(<span class="c-str">"/bookmarks/{bookmark_id}"</span>, status_code=<span class="c-num">204</span>)
+<span class="c-key">async def</span> <span class="c-fn">delete_bookmark</span>(bookmark_id: <span class="c-fn">int</span>):
+    <span class="c-str">"""Delete a bookmark by ID."""</span>
+    <span class="c-key">if</span> bookmark_id <span class="c-key">not in</span> BOOKMARKS:
+        <span class="c-key">raise</span> HTTPException(status_code=<span class="c-num">404</span>, detail=<span class="c-str">"Bookmark not found"</span>)
+    <span class="c-key">del</span> BOOKMARKS[bookmark_id]</code></pre>
+
+<p>That is <strong>~30 lines of application code</strong>. Compare it to the
+~80-line server from Lesson 2 that handled only two GET routes and returned
+plain text. This version handles four operations (list, get, create, delete),
+validates input, returns JSON, documents itself, and produces correct status
+codes — <code>201 Created</code>, <code>204 No Content</code>,
+<code>404 Not Found</code>, <code>422 Unprocessable Entity</code>.</p>
+
+<h2>Practice · Run it and prove each feature</h2>
+
+<p>Save <code>main.py</code>, start the server with
+<code>uvicorn main:app --reload</code>, and run each of these in a second
+terminal. Read the response status code <em>and</em> the body.</p>
+
+<ol class="steps">
+  <li><strong>List (empty):</strong>
+    <code>curl -i http://127.0.0.1:8000/bookmarks</code>
+    <br>You should see <code>200 OK</code> and an empty JSON array
+    <code>[]</code>.</li>
+
+  <li><strong>Create:</strong>
+    <code>curl -i -X POST http://127.0.0.1:8000/bookmarks -H "Content-Type: application/json" -d '{"url": "https://fastapi.tiangolo.com", "title": "FastAPI docs"}'</code>
+    <br>You should see <code>201 Created</code> and the bookmark with
+    <code>"id": 1</code>.</li>
+
+  <li><strong>Get by ID:</strong>
+    <code>curl -i http://127.0.0.1:8000/bookmarks/1</code>
+    <br>You should see <code>200 OK</code> and the bookmark you just
+    created.</li>
+
+  <li><strong>404 — not found:</strong>
+    <code>curl -i http://127.0.0.1:8000/bookmarks/999</code>
+    <br>You should see <code>404 Not Found</code> and
+    <code>{"detail":"Bookmark not found"}</code>.</li>
+
+  <li><strong>422 — validation error (wrong type):</strong>
+    <code>curl -i http://127.0.0.1:8000/bookmarks/abc</code>
+    <br>FastAPI rejects <code>"abc"</code> because <code>bookmark_id</code> is
+    typed as <code>int</code>. You should see <code>422</code> and a JSON error
+    body telling you exactly where the validation failed.</li>
+
+  <li><strong>422 — validation error (bad body):</strong>
+    <code>curl -i -X POST http://127.0.0.1:8000/bookmarks -H "Content-Type: application/json" -d '{"title": "no url"}'</code>
+    <br>The <code>url</code> field is required. FastAPI returns
+    <code>422</code> with <code>"msg": "Field required"</code>.</li>
+
+  <li><strong>Delete:</strong>
+    <code>curl -i -X DELETE http://127.0.0.1:8000/bookmarks/1</code>
+    <br>You should see <code>204 No Content</code> and an empty body.</li>
+
+  <li><strong>Query parameters:</strong>
+    Create three more bookmarks, then
+    <code>curl -s "http://127.0.0.1:8000/bookmarks?skip=1&amp;limit=1"</code>
+    <br>You should get exactly one bookmark — the second one. Then try
+    <code>curl -i "http://127.0.0.1:8000/bookmarks?skip=abc"</code> and watch
+    the same <code>422</code> machinery reject a bad <em>query</em> parameter,
+    with <code>"loc": ["query","skip"]</code> instead of
+    <code>["path",...]</code>.</li>
+
+  <li><strong>405 — check the <code>Allow</code> header yourself:</strong>
+    <code>curl -i -X PUT http://127.0.0.1:8000/bookmarks/1</code>
+    <br>You get <code>405 Method Not Allowed</code>. Now read the
+    <code>Allow</code> header. It says <code>GET</code> — even though
+    <code>DELETE</code> is also registered for that path. Go back to the warning
+    box in Step 1, then rewrite the two decorators as a single
+    <code>@app.api_route(..., methods=["GET", "DELETE"])</code> and run the same
+    curl again. The header becomes <code>GET, DELETE</code>. You just found and
+    fixed a spec-conformance gap in a framework used by thousands of
+    companies — because Lesson 2 taught you what the header should say.</li>
+
+  <li><strong>Interactive docs:</strong>
+    Open <code>http://127.0.0.1:8000/docs</code> in a browser. Click
+    "Try it out" on any endpoint and execute a request from the browser. This
+    is the OpenAPI documentation, generated entirely from your code.</li>
+</ol>
+
+<div class="note note--ok">
+  <span class="note-label">What you just built</span>
+  <p>A JSON API with four endpoints, path parameters, query parameters,
+  request-body validation via Pydantic, correct HTTP status codes, automatic
+  error responses, and interactive documentation — in ~30 lines. This is your
+  first portfolio-ready API, and it becomes the skeleton for everything that
+  follows. Next lesson adds a real database.</p>
+</div>
+
+<h2>The map — updated</h2>
+
+<p>Three lessons in, here is where every piece fits. Lesson 3 filled in the
+top layer:</p>
+
+<pre class="wide"><code><span class="c-com">    ┌─────────────────────────────────────────────────────────────┐
+    │  Your application code    (BookmarkCreate, handlers)        │ ← Lesson 3
+    ├─────────────────────────────────────────────────────────────┤
+    │  Framework (FastAPI)                                        │ ← Lesson 3
+    │    @app.get / @app.post  →  routing table                   │
+    │    Pydantic models       →  validation + serialisation      │
+    │    HTTPException         →  error responses                 │
+    │    OpenAPI generation    →  /docs, /openapi.json            │
+    ├─────────────────────────────────────────────────────────────┤
+    │  Gateway contract: ASGI                                     │
+    │    async application(scope, receive, send)   ← Lesson 2     │
+    ├─────────────────────────────────────────────────────────────┤
+    │  Server (Uvicorn)                                           │
+    │    socket, recv, parse, Content-Length        ← Lessons 1–2  │
+    ├─────────────────────────────────────────────────────────────┤
+    │  TCP / the operating system                  ← Lesson 1     │
+    └─────────────────────────────────────────────────────────────┘</span></code></pre>
+
+<p>When a request arrives at <code>GET /bookmarks/3</code>:</p>
+
+<ol>
+  <li><strong>Uvicorn</strong> accepts the TCP connection, reads bytes from the
+  socket (Lesson 1), parses the HTTP request (Lesson 2), and calls FastAPI via
+  the ASGI contract.</li>
+  <li><strong>FastAPI</strong> matches the path <code>/bookmarks/{bookmark_id}</code>,
+  extracts <code>3</code>, converts it to <code>int</code>, validates it, and
+  calls your <code>get_bookmark</code> function.</li>
+  <li><strong>Your handler</strong> looks up the bookmark, raises
+  <code>HTTPException(404)</code> if missing, or returns the dict.</li>
+  <li><strong>FastAPI</strong> serialises the return value to JSON, builds the
+  response headers (<code>Content-Type: application/json</code>,
+  <code>Content-Length</code>), and sends it back through the ASGI contract.</li>
+  <li><strong>Uvicorn</strong> writes the bytes to the socket.</li>
+</ol>
+
+<p>Every step is a layer you can name. That is the point.</p>
+
+<h2>What FastAPI replaced — the full comparison</h2>
+
+<table>
+  <thead>
+    <tr><th>You wrote by hand (Lesson 2)</th><th>FastAPI does it</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>parse_request_line()</code></td><td>Uvicorn parses the start line; FastAPI receives it via ASGI <code>scope</code></td></tr>
+    <tr><td><code>parse_headers()</code></td><td>Uvicorn parses headers; available as <code>request.headers</code></td></tr>
+    <tr><td><code>parse_query()</code></td><td>Query params declared in the function signature with types and defaults</td></tr>
+    <tr><td><code>ROUTES = {}</code></td><td><code>@app.get</code> / <code>@app.post</code> decorators build the routing table</td></tr>
+    <tr><td><code>allowed_methods(path)</code></td><td>FastAPI auto-returns 405 with an <code>Allow</code> header — but see the caveat in Step 1: it is incomplete when one path uses several decorators</td></tr>
+    <tr><td><code>build_response()</code></td><td>FastAPI builds status line, headers, body for every response</td></tr>
+    <tr><td>Manual <code>json.loads(body)</code></td><td>Pydantic models: parse, validate, and document the request body</td></tr>
+    <tr><td>(not possible)</td><td>OpenAPI docs at <code>/docs</code>, generated from code</td></tr>
+  </tbody>
+</table>
+
+<h2>Check yourself</h2>
+
+<p>Close the code above. Answer from memory — getting one wrong now is worth
+more than getting all right by scrolling up.</p>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "What command starts a FastAPI app called <code>app</code> in a file called <code>main.py</code>?",
+    "answer": "uvicorn main:app",
+    "accept": ["uvicorn main:app --reload", "python -m uvicorn main:app"],
+    "placeholder": "command",
+    "why": "uvicorn main:app tells Uvicorn: import 'app' from 'main.py' and call it as an ASGI application. --reload is optional (restarts on file changes)." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "In FastAPI, how does a function parameter become a <em>path</em> parameter vs a <em>query</em> parameter?",
+    "options": [
+      "If the parameter name appears in the path string (e.g. /items/{item_id}), it is a path parameter; otherwise it is a query parameter",
+      "Path parameters use the @path decorator; query parameters use @query",
+      "All parameters are path parameters by default",
+      "You must use the Query() function from fastapi to declare query parameters"
+    ],
+    "answer": 0,
+    "why": "FastAPI inspects the path string in the decorator. Parameter names that appear in curly braces are path parameters. All other function parameters are treated as query parameters (or body, if they are Pydantic models)." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "What HTTP status code does FastAPI return when a path parameter fails type validation (e.g. sending <code>'abc'</code> where <code>int</code> is expected)?",
+    "options": ["422 Unprocessable Entity", "400 Bad Request", "404 Not Found", "500 Internal Server Error"],
+    "answer": 0,
+    "why": "FastAPI uses 422 for validation errors. 400 means the HTTP message itself is malformed. 422 means the message is valid HTTP but the content does not match the expected schema — a more precise distinction." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "What Python library does FastAPI use for request body validation and serialisation?",
+    "answer": "Pydantic",
+    "accept": ["pydantic"],
+    "placeholder": "library name",
+    "why": "Pydantic provides BaseModel. You declare a class with typed fields, and FastAPI uses it to parse JSON request bodies, validate types, and generate the OpenAPI schema for the body." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "Describe the full journey of a request from the wire to your handler function, naming each layer.",
+    "answer": "1. The OS accepts the TCP connection. 2. Uvicorn (the ASGI server) reads bytes from the socket, parses the HTTP request. 3. Uvicorn calls FastAPI via the ASGI contract: async application(scope, receive, send). 4. FastAPI matches the path to a route, extracts and validates path/query parameters, parses and validates the request body with Pydantic. 5. FastAPI calls your handler function with the validated arguments. 6. Your handler returns a value (or raises HTTPException). 7. FastAPI serialises the return value to JSON, builds headers, and sends the response back through ASGI. 8. Uvicorn writes the response bytes to the socket.",
+    "why": "If you can walk through this stack in an interview, you demonstrate that you understand what the framework does — not just how to use it. This is exactly what Lessons 1–3 built up to." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "What is the relationship between FastAPI and Starlette?",
+    "options": [
+      "FastAPI inherits from Starlette — it is a Starlette application with added validation and OpenAPI generation",
+      "Starlette is an alternative to FastAPI for a different use case",
+      "FastAPI replaces Starlette entirely",
+      "They are unrelated projects that happen to use ASGI"
+    ],
+    "answer": 0,
+    "why": "The FastAPI class inherits directly from Starlette's application class. Starlette provides the routing, middleware, request/response objects, and WebSocket support. FastAPI adds Pydantic validation, dependency injection, and automatic OpenAPI documentation on top." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Where does the interactive documentation at <code>/docs</code> come from?",
+    "options": [
+      "FastAPI generates an OpenAPI JSON schema from the code and serves it through Swagger UI",
+      "You write a separate YAML file that FastAPI reads",
+      "The /docs page is a static HTML file included in the FastAPI package",
+      "FastAPI scrapes your docstrings and builds a custom documentation page"
+    ],
+    "answer": 0,
+    "why": "FastAPI reads your decorators, function signatures, type annotations, and Pydantic models to generate an OpenAPI-compliant JSON document at /openapi.json. Swagger UI (bundled with FastAPI) renders that document as the interactive /docs page." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "In FastAPI, how do you return a 404 error from a handler function?",
+    "answer": "raise HTTPException(status_code=404)",
+    "accept": ["raise HTTPException(status_code=404, detail=...)", "raise HTTPException(404)", "HTTPException"],
+    "placeholder": "code",
+    "why": "HTTPException is a Python exception. When raised, FastAPI catches it and builds a JSON error response with the given status code and detail message. You import it from fastapi." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "You register <code>@app.get(\"/items/{id}\")</code> and <code>@app.delete(\"/items/{id}\")</code> as two separate decorators. A client sends <code>PUT /items/1</code>. What does the <code>Allow</code> header on the 405 response contain?",
+    "options": [
+      "Only <code>GET</code> — each decorator makes its own route, and the router reports the first path match's methods",
+      "<code>GET, DELETE</code> — FastAPI merges all decorators for the same path",
+      "<code>GET, DELETE, PUT</code> — it lists every method the router knows about",
+      "Nothing — FastAPI omits the Allow header entirely"
+    ],
+    "answer": 0,
+    "why": "Verified by running it: the header reads 'allow: GET' and DELETE is missing. Separate decorators create separate route objects, and the router reports the methods of the first one whose path matched. Declaring both on one @app.api_route(..., methods=[\"GET\",\"DELETE\"]) produces the complete 'GET, DELETE'. RFC 9110 §10.2.1 wants the full set — a gap you can only spot because you built 405 handling by hand in Lesson 2." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<h2>Read this next</h2>
+
+<div class="source">
+  <h4>Primary sources</h4>
+  <p><a href="https://fastapi.tiangolo.com/tutorial/">FastAPI — Tutorial: User
+  Guide</a></p>
+  <p>Start with "First Steps", "Path Parameters", "Query Parameters", and
+  "Request Body". Every code block is a tested file you can run. This is the
+  primary reference for the framework this curriculum uses.</p>
+
+  <p><a href="https://docs.pydantic.dev/latest/">Pydantic documentation</a></p>
+  <p>Read "Models" and "Fields". Pydantic is the validation engine behind
+  FastAPI — understanding it means understanding why FastAPI returns the errors
+  it does.</p>
+
+  <p><a href="https://spec.openapis.org/oas/latest.html">OpenAPI Specification
+  v3.2.0</a></p>
+  <p>The standard that <code>/docs</code> and <code>/openapi.json</code> conform
+  to. Read the "Introduction" and "Paths Object" sections to understand what
+  FastAPI is generating. This becomes important when a frontend developer asks
+  you for the API spec.</p>
+
+  <p><a href="https://asgi.readthedocs.io/en/latest/specs/main.html">ASGI
+  Specification v3.0</a></p>
+  <p>Still relevant — Uvicorn speaks ASGI to FastAPI. You met this in Lesson 2;
+  now you have seen both sides of the contract.</p>
+</div>
+
+<h2>Where this goes</h2>
+
+<p>You have a running API, but the data lives in a Python dictionary and
+disappears when the server restarts. <strong>Lesson 4 introduces relational
+modelling and SQL</strong> — you will connect this API to PostgreSQL, write
+a normalised schema, and learn what a migration is. The bookmarks API becomes
+a real persistent service, and the pair (Lessons 3 + 4) becomes a portfolio
+piece that demonstrates you can build and persist a JSON API from scratch.</p>
+
+<p class="sidenote"><strong>Keep <code>main.py</code>.</strong> It is the
+starting point for your first deployed project. After Lesson 4 adds a database,
+you will have a working backend that you can put on a public URL — the
+milestone that triggers the TypeScript discussion.</p>
+
+<div class="ask">
+  <p><strong>Ask me things.</strong> If a validation error surprises you, if
+  you want to know how FastAPI handles <code>PUT</code> vs <code>PATCH</code>,
+  if you want to add authentication, or if the Pydantic model syntax is
+  confusing — ask. Pasting the exact <code>curl</code> output or the exact
+  error JSON is the fastest route to an answer.</p>
+  <p>Stuck more than thirty minutes?
+  <a href="https://www.pythondiscord.com/">Python Discord</a> is staffed and
+  beginner-safe. Full list in <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0002-a-server-without-a-framework.html">← Lesson 02: A server without a framework</a>
+  <a href="0004-relational-modelling-and-sql.html">Lesson 04: Relational modelling + SQL →</a>
+</nav>
+
+</main>
+</body>
+</html>

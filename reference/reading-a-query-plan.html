@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference · Reading a Query Plan</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Reference ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../reference/http-message-anatomy.html">Reference: HTTP anatomy</a> ·
+    <a href="../lessons/0005-why-is-this-slow.html">Lesson 05</a>
+  </p>
+  <h1>Reading a Query Plan
+    <span class="sub">Compressed reference for PostgreSQL 17. Behaviour verified
+    against PostgreSQL 17.10; claims cite
+    <a href="https://www.postgresql.org/docs/current/using-explain.html">Using EXPLAIN</a>
+    and <a href="https://www.postgresql.org/docs/current/indexes-opclass.html">Operator Classes</a>.</span>
+  </h1>
+</header>
+
+<main>
+
+<h2>The command</h2>
+
+<pre class="wide"><code>EXPLAIN (ANALYZE, BUFFERS) &lt;your query&gt;;</code></pre>
+
+<ul class="steps">
+  <li><code>EXPLAIN</code> alone — the plan the planner <em>intends</em>. Does not run the query.</li>
+  <li><code>ANALYZE</code> — <strong>runs the query</strong> and adds what really happened.</li>
+  <li><code>BUFFERS</code> — adds page counts. The measurement that does not move when the machine is busy.</li>
+</ul>
+
+<div class="note note--warn">
+  <span class="note-label">ANALYZE really executes</span>
+  <p>On <code>INSERT</code>, <code>UPDATE</code>, or <code>DELETE</code> it
+  changes your data. Wrap it: <code>BEGIN; EXPLAIN (ANALYZE) DELETE …; ROLLBACK;</code></p>
+</div>
+
+<h2>Anatomy of one node</h2>
+
+<pre class="wide"><code> Seq Scan on bookmarks  (cost=0.00..5068.00 rows=1 width=42)
+ <span class="c-com">└ node type  └ table    └ PLANNER ESTIMATE ────────────────┘</span>
+                        (actual time=6.759..9.797 rows=1 loops=1)
+                        <span class="c-com">└ REALITY ────────────────────────────────┘</span>
+   Filter: (title = 'Article number 137000'::text)
+   Rows Removed by Filter: 199999      <span class="c-com">← work done then discarded</span>
+   Buffers: shared hit=2568            <span class="c-com">← 8 kB pages: hit=cache read=disk</span>
+ Planning Time: 0.348 ms
+ Execution Time: 9.846 ms              <span class="c-com">← the number you report</span></code></pre>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>Means</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>cost=start..total</code></td><td>Arbitrary planner units, <em>not</em> milliseconds. 1.0 ≈ one sequential page read. Only ever compare it with another plan for the same query.</td></tr>
+    <tr><td><code>rows=</code> (in cost)</td><td>The estimate. <code>rows=</code> in <code>actual</code> is the truth. A large gap means stale statistics — run <code>ANALYZE</code>.</td></tr>
+    <tr><td><code>width=</code></td><td>Estimated average bytes per row.</td></tr>
+    <tr><td><code>actual time=first..last</code></td><td>Milliseconds to the first row, then to the last. <strong>Per loop.</strong></td></tr>
+    <tr><td><code>loops=N</code></td><td>The node ran N times. <strong>Multiply</strong> <code>actual time</code> by <code>loops</code> for the real total.</td></tr>
+    <tr><td><code>Rows Removed by Filter</code></td><td>Rows read and thrown away. The first line to look at.</td></tr>
+    <tr><td><code>Buffers: shared hit/read</code></td><td>8 kB pages from cache / from disk. The stable measure of work.</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Read the plan from the inside out.</strong> The most indented node
+runs first and passes rows up to its parent.</p>
+
+<h2>Node types you will meet</h2>
+
+<table>
+  <thead>
+    <tr><th>Node</th><th>What it does</th><th>Read it as</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>Seq Scan</code></td><td>Reads every row of the table.</td><td>Fine on a small table. On a large one with a selective <code>WHERE</code>, a missing or unusable index.</td></tr>
+    <tr><td><code>Index Scan</code></td><td>Walks the index, then fetches each matching row from the table.</td><td>What you usually want for a few rows.</td></tr>
+    <tr><td><code>Index Only Scan</code></td><td>Answers entirely from the index; never touches the table.</td><td>Best case. Happens when the index contains every column the query needs.</td></tr>
+    <tr><td><code>Bitmap Index Scan</code> + <code>Bitmap Heap Scan</code></td><td>Collects row locations, sorts them, then reads the table in physical order.</td><td>Chosen when many rows match. Not a problem — it is the planner avoiding thousands of random reads.</td></tr>
+    <tr><td><code>Nested Loop</code></td><td>For each row on the left, look up matching rows on the right.</td><td>Good when the left side is small. If <code>loops=</code> is large and the inner side is a <code>Seq Scan</code>, that is the plan-level N+1.</td></tr>
+    <tr><td><code>Hash Join</code></td><td>Builds a hash table from one side, probes it with the other.</td><td>Normal for joining two large sets.</td></tr>
+    <tr><td><code>Sort</code> / <code>top-N heapsort</code></td><td>Orders rows. <code>top-N</code> means it only kept the N needed by <code>LIMIT</code>.</td><td>Check <code>Sort Method</code>: <code>external merge Disk</code> means it spilled — consider more <code>work_mem</code> or an index in that order.</td></tr>
+    <tr><td><code>Gather</code> / <code>Parallel …</code></td><td>Several worker processes split the scan.</td><td>Often a sign the planner expects a lot of work. Parallel is not the same as fast.</td></tr>
+  </tbody>
+</table>
+
+<h2>Indexes: the rules that matter</h2>
+
+<ul class="steps">
+  <li><strong>You get some for free.</strong> <code>PRIMARY KEY</code> and
+  <code>UNIQUE</code> each create a B-tree index. <code>REFERENCES</code> does
+  <em>not</em> — foreign key columns are unindexed until you say so. Check with
+  <code>\d tablename</code>.</li>
+
+  <li><strong>Leftmost columns only.</strong> An index on
+  <code>(a, b, c)</code> serves <code>a</code> · <code>a, b</code> ·
+  <code>a, b, c</code>. It does not serve <code>b</code>, <code>c</code>, or
+  <code>b, c</code>. Order the columns by which one you filter on
+  first.</li>
+
+  <li><strong>Selectivity decides the payoff.</strong> An index earns in
+  proportion to what it skips. Matching 1 row in 200 000 is a 100× win; matching
+  1 row in 30 is often no win at all. Do not index a boolean.</li>
+
+  <li><strong>Text needs the right operator class.</strong> A default text index
+  is sorted by locale collation and <em>cannot</em> serve
+  <code>LIKE 'abc%'</code> unless the database uses the C locale. Use
+  <code>CREATE INDEX … ON t (col text_pattern_ops)</code>, which also serves
+  <code>=</code>. It does not serve <code>ORDER BY col</code> in dictionary
+  order.</li>
+
+  <li><strong>Leading wildcards are hopeless.</strong>
+  <code>LIKE '%abc%'</code> cannot use a B-tree at all. That is full-text search
+  or a trigram (<code>pg_trgm</code>) index.</li>
+
+  <li><strong>Every index taxes every write.</strong> Measured on 200 000 rows:
+  1 index → 251 ms and 22 MB; 4 indexes → 1533 ms and 50 MB. Add an index for a
+  measured query, not in advance.</li>
+
+  <li><strong>Find the useless ones.</strong>
+  <code>SELECT * FROM pg_stat_user_indexes ORDER BY idx_scan;</code> — an index
+  with <code>idx_scan = 0</code> is pure cost.</li>
+</ul>
+
+<h2>Diagnosis order</h2>
+
+<ol class="steps">
+  <li><strong>Reproduce with realistic data volume.</strong> Forty rows tell you nothing.</li>
+  <li><strong>Measure more than once.</strong> Take a median. One sample is noise.</li>
+  <li><strong>Count the queries first.</strong> One query per row in a loop is
+  <strong>N+1</strong>, and no amount of indexing fixes it. The fix is one query
+  with a join.</li>
+  <li><strong>Then <code>EXPLAIN (ANALYZE, BUFFERS)</code> the slowest single query.</strong>
+  Look at <code>Rows Removed by Filter</code>, then buffers, then estimate-vs-actual.</li>
+  <li><strong><code>\d</code> the table.</strong> See what indexes already exist before adding one.</li>
+  <li><strong>Change one thing. Re-run the same EXPLAIN. Compare time and buffers.</strong></li>
+</ol>
+
+<div class="note note--key">
+  <span class="note-label">Two questions, two different tools</span>
+  <p><em>"Why is this query slow?"</em> → <code>EXPLAIN (ANALYZE, BUFFERS)</code>.<br>
+  <em>"Why is this endpoint slow when every query is fast?"</em> → count the
+  queries. <code>EXPLAIN</code> can never show you an N+1, because each of the
+  N is individually fine.</p>
+</div>
+
+<h2>psql commands for this work</h2>
+
+<pre class="wide"><code>\d tablename        <span class="c-com">columns, indexes, constraints, and what references it</span>
+\di                 <span class="c-com">list all indexes</span>
+\timing on          <span class="c-com">time every statement</span>
+\x                  <span class="c-com">expanded output — worth it for pg_stat_* rows</span>
+\e                  <span class="c-com">edit the last query in $EDITOR</span></code></pre>
+
+<pre class="wide"><code><span class="c-com">-- table and index sizes, largest first</span>
+<span class="c-key">SELECT</span> relname, pg_size_pretty(pg_total_relation_size(relid))
+<span class="c-key">FROM</span> pg_stat_user_tables <span class="c-key">ORDER BY</span> pg_total_relation_size(relid) <span class="c-key">DESC</span>;
+
+<span class="c-com">-- indexes nobody uses</span>
+<span class="c-key">SELECT</span> relname, indexrelname, idx_scan
+<span class="c-key">FROM</span> pg_stat_user_indexes <span class="c-key">ORDER BY</span> idx_scan;</code></pre>
+
+<p class="sidenote">Paste any plan you cannot read into the chat and ask. Plans
+are short and reading them is a skill that transfers to every database you will
+ever be paid to work on.</p>
+
+</main>
+</body>
+</html>

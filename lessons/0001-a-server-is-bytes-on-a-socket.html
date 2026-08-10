@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 1 · A Server Is Bytes On A Socket</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 01 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../reference/http-message-anatomy.html">Reference: HTTP anatomy</a>
+  </p>
+  <h1>A Server Is Bytes On A Socket
+    <span class="sub">Twenty lines of Python, no framework, and the last time HTTP is ever mysterious.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">You can already program. The only thing standing between you and a backend
+job is that you have never made a program that <em>other machines talk to</em>. That turns out
+to be a much smaller step than it looks — and today you take all of it.</p>
+
+<p class="sidenote">This lesson is deliberately framework-free. You will use FastAPI from
+Lesson 3 onwards, but a framework you adopt before you understand what it replaced is a
+framework you can never debug. See <a href="../MISSION.md">MISSION.md</a> for why Python is
+the anchor language here.</p>
+
+<h2>The one idea</h2>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>An HTTP server is a program that accepts a TCP connection, reads some
+  <strong>text</strong> off it, and writes some <strong>text</strong> back in an agreed
+  shape. That is all. Everything else — routing, JSON, auth, ORMs — is convenience built
+  on top of those two moves.</p>
+</div>
+
+<p>Web servers feel magical because we only ever meet them through browsers. Strip the
+browser away and the protocol is startlingly plain: it is a text format with a blank line
+in the middle. <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Overview">MDN
+calls HTTP "a client-server protocol"</a>, and the word to take seriously there is
+<em>protocol</em> — an agreement about what bytes mean, nothing more.</p>
+
+<h3>The shape of a request</h3>
+
+<p>Four parts, in this order. The blank line is load-bearing — you will prove that
+yourself in a few minutes.</p>
+
+<pre class="wide"><code><span class="c-com">┌─ start-line: method, target, version ─────────────┐</span>
+GET /hello?name=world HTTP/1.1
+<span class="c-com">┌─ headers: Name: value, one per line ──────────────┐</span>
+Host: 127.0.0.1:8080
+User-Agent: curl/8.5.0
+Accept: */*
+<span class="c-com">┌─ a blank line. this is the separator ─────────────┐</span>
+
+<span class="c-com">┌─ body: optional. absent on a typical GET ─────────┐</span></code></pre>
+
+<p class="sidenote">Every line ends with <code>\r\n</code> (carriage return, then line
+feed) — not just <code>\n</code>. This is a genuine tripwire when you hand-write bytes.
+<a href="https://www.rfc-editor.org/rfc/rfc9110.html">RFC 9110</a> is the arbiter if you
+ever need to settle a detail.</p>
+
+<h3>The shape of a response</h3>
+
+<p>Identical structure. Only the first line differs: instead of a method and a target, it
+carries a <strong>status code</strong>.</p>
+
+<pre class="wide"><code>HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Content-Length: 21
+
+Hello from a socket.</code></pre>
+
+<p>Full tables of methods, status codes and the headers that matter live in the
+<a href="../reference/http-message-anatomy.html">HTTP anatomy reference</a> — that is the
+document to keep open, not this one.</p>
+
+<h2>Practice 1 · Be the client</h2>
+
+<p>Before writing a server, become a browser. This program opens a raw TCP socket,
+types an HTTP request into it by hand, and prints whatever comes back.</p>
+
+<p class="filename">client.py</p>
+<pre class="wide"><code><span class="c-key">import</span> socket
+
+<span class="c-key">with</span> socket.<span class="c-fn">create_connection</span>((<span class="c-str">"example.com"</span>, <span class="c-num">80</span>), timeout=<span class="c-num">10</span>) <span class="c-key">as</span> sock:
+    sock.<span class="c-fn">sendall</span>(
+        <span class="c-str">b"GET / HTTP/1.1\r\n"</span>
+        <span class="c-str">b"Host: example.com\r\n"</span>
+        <span class="c-str">b"Connection: close\r\n"</span>
+        <span class="c-str">b"\r\n"</span>
+    )
+    chunks = []
+    <span class="c-key">while True</span>:
+        chunk = sock.<span class="c-fn">recv</span>(<span class="c-num">4096</span>)
+        <span class="c-key">if not</span> chunk:          <span class="c-com"># empty bytes == the server hung up</span>
+            <span class="c-key">break</span>
+        chunks.<span class="c-fn">append</span>(chunk)
+
+<span class="c-fn">print</span>(<span class="c-str">b""</span>.<span class="c-fn">join</span>(chunks).<span class="c-fn">decode</span>(<span class="c-str">"utf-8"</span>, <span class="c-str">"replace"</span>)[:<span class="c-num">400</span>])</code></pre>
+
+<pre><code>$ python3 client.py</code></pre>
+
+<div class="note note--ok">
+  <span class="note-label">What you should see</span>
+  <p>A status line, a pile of headers, a blank line, then HTML. Port <code>80</code> is
+  plain HTTP, so the bytes travel unencrypted and you can read them — which is precisely
+  why <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Overview">everything
+  real uses port 443 and TLS</a>.</p>
+</div>
+
+<p class="sidenote"><strong>You will probably see a stray number</strong> such as
+<code>22f</code> just before the HTML, and a header saying
+<code>Transfer-Encoding: chunked</code>. That is the body arriving in length-prefixed
+chunks (<code>22f</code> is hexadecimal for 559 bytes) because the server did not know the
+total size up front. Chunked encoding is the third answer to the framing problem you are
+about to meet in Practice 3. Not a bug — note it and move on.</p>
+
+<p>Three details in those four lines earn their place:</p>
+
+<ul>
+  <li><code>Host:</code> is <strong>mandatory</strong> in HTTP/1.1. One IP address serves
+  thousands of sites; this header is how the server knows which one you meant.</li>
+  <li><code>Connection: close</code> asks the server to hang up when done, which is what
+  ends our <code>while</code> loop. Without it the connection stays open and we wait forever.</li>
+  <li>The final <code>\r\n</code> produces the blank line. Omit it and the server keeps
+  waiting for more headers.</li>
+</ul>
+
+<h2>Practice 2 · Be the server</h2>
+
+<p>Now the other side. This is a complete, working HTTP server. No framework, no imports
+beyond the standard library.</p>
+
+<p class="filename">server.py</p>
+<pre class="wide"><code><span class="c-key">import</span> socket
+
+listener = socket.<span class="c-fn">socket</span>(socket.AF_INET, socket.SOCK_STREAM)
+listener.<span class="c-fn">setsockopt</span>(socket.SOL_SOCKET, socket.SO_REUSEADDR, <span class="c-num">1</span>)
+listener.<span class="c-fn">bind</span>((<span class="c-str">"127.0.0.1"</span>, <span class="c-num">8080</span>))
+listener.<span class="c-fn">listen</span>(<span class="c-num">5</span>)
+<span class="c-fn">print</span>(<span class="c-str">"listening on http://127.0.0.1:8080"</span>)
+
+<span class="c-key">while True</span>:
+    conn, addr = listener.<span class="c-fn">accept</span>()      <span class="c-com"># blocks until someone connects</span>
+    <span class="c-key">with</span> conn:
+        request = conn.<span class="c-fn">recv</span>(<span class="c-num">65536</span>)
+        <span class="c-fn">print</span>(<span class="c-str">"--- request from"</span>, addr[<span class="c-num">0</span>], <span class="c-str">"---"</span>)
+        <span class="c-fn">print</span>(request.<span class="c-fn">decode</span>(<span class="c-str">"utf-8"</span>, <span class="c-str">"replace"</span>))
+
+        body = <span class="c-str">b"Hello from a socket.\n"</span>
+        head = (
+            <span class="c-str">"HTTP/1.1 200 OK\r\n"</span>
+            <span class="c-str">"Content-Type: text/plain; charset=utf-8\r\n"</span>
+            <span class="c-str">f"Content-Length: {len(body)}\r\n"</span>
+            <span class="c-str">"Connection: close\r\n"</span>
+            <span class="c-str">"\r\n"</span>
+        ).<span class="c-fn">encode</span>(<span class="c-str">"ascii"</span>)
+        conn.<span class="c-fn">sendall</span>(head + body)</code></pre>
+
+<p class="sidenote"><code>SO_REUSEADDR</code> lets you restart the server immediately
+instead of hitting "Address already in use" for a minute or two after each stop. You will
+be restarting a lot today.</p>
+
+<ol class="steps">
+  <li>Run it: <code>python3 server.py</code></li>
+  <li>In a second terminal: <code>curl -i http://127.0.0.1:8080/hello?name=world</code>
+    <br>The <code>-i</code> flag prints the response headers, not just the body.</li>
+  <li><strong>Look at the server terminal.</strong> The request you just made is printed
+  there as plain text. This is the moment the lesson is aiming at: you are reading, in
+  full, what a client sends.</li>
+  <li>Now open <code>http://127.0.0.1:8080</code> in a browser and read the server
+  terminal again. Same protocol — but count the headers a browser sends compared with curl.</li>
+</ol>
+
+<div class="note">
+  <span class="note-label">Two honest caveats</span>
+  <p>You may see an occasional <em>empty</em> request logged, especially from a browser.
+  That is a connection opened speculatively and closed without sending anything. Harmless.</p>
+  <p>A single <code>recv()</code> is not guaranteed to return the whole request — TCP is a
+  byte stream, not a message queue, so a large request can arrive in pieces. Real servers
+  loop until they see the blank line. This is the central warning in the
+  <a href="https://docs.python.org/3/howto/sockets.html">Python Socket Programming HOWTO</a>,
+  and it is one of the things a framework buys you.</p>
+</div>
+
+<h2>Practice 3 · Break it on purpose</h2>
+
+<p>Two edits. Each one fails in a way that teaches a rule you will otherwise re-learn
+painfully at 2am, three years into your career.</p>
+
+<h3>Experiment A — delete the blank line</h3>
+
+<p>Remove the final <code>"\r\n"</code> from <code>head</code>, restart, and curl it again.</p>
+
+<pre><code>curl: (8) Header without colon</code></pre>
+
+<p>Curl read <code>Hello from a socket.</code> and tried to parse it as a header, because
+nothing told it the headers had ended. <strong>The blank line is not formatting. It is the
+delimiter between metadata and payload.</strong></p>
+
+<h3>Experiment B — delete Content-Length <em>and</em> keep the connection open</h3>
+
+<p>Remove the <code>Content-Length</code> line, and after <code>sendall</code> add
+<code>time.sleep(30)</code> so the socket stays open. Then curl it.</p>
+
+<pre><code>$ curl -i http://127.0.0.1:8080/
+<span class="c-com">(nothing. it just sits there.)</span></code></pre>
+
+<p class="sidenote">Deleting <code>Content-Length</code> <em>without</em> the sleep appears
+to work fine — because closing the connection is itself a legal way to end a body. The
+bug only shows when the connection is reused, which is the default in HTTP/1.1. Bugs that
+hide behind a fast local close are a recurring theme in backend work.</p>
+
+<div class="note note--warn">
+  <span class="note-label">The rule this teaches</span>
+  <p>HTTP runs over a byte stream with no built-in message boundaries. A client must be
+  told where the body ends, and there are exactly three ways to do it:
+  <strong>Content-Length</strong>, <strong>chunked transfer encoding</strong> (the
+  <code>22f</code> you saw from example.com), or <strong>closing the connection</strong>.
+  Give it none of the three and the client waits forever. This is <em>framing</em>, and it
+  is the single most common cause of a request that "just hangs".</p>
+</div>
+
+<h2>Check yourself</h2>
+
+<p>Close the page above this line if you can — answering from memory is what makes this
+stick, and getting one wrong now is worth more than getting all six right by scrolling up.</p>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "What marks the end of the headers and the start of the body?",
+    "options": ["An empty CRLF line", "A single null byte", "The Content-Type header", "A closing curly brace"],
+    "answer": 0,
+    "why": "Exactly what Experiment A proved: with no blank line, curl parsed the body text as another header and failed with 'Header without colon'." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "Which response header tells the client how many bytes of body to expect?",
+    "answer": "Content-Length",
+    "accept": ["content length", "contentlength", "content_length"],
+    "placeholder": "header name",
+    "why": "One of the three legal framing mechanisms, and the one you will use for almost every JSON API response." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Your response has a body, no <code>Content-Length</code>, no chunked encoding, and the connection stays open. What does the client do?",
+    "options": ["It waits for more bytes", "It prints a parse error", "It retries the request twice", "It falls back to HTTP/1.0"],
+    "answer": 0,
+    "why": "It has no way to know the body ended, so it blocks. Experiment B: curl printed nothing at all until it was killed." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "Which request header is mandatory on every HTTP/1.1 request?",
+    "answer": "Host",
+    "accept": ["host header", "the host header"],
+    "placeholder": "header name",
+    "why": "Omit it and a compliant server answers 400 Bad Request." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why does HTTP/1.1 insist on that header?",
+    "options": ["One address serves many sites", "The server must verify ports", "Proxies need it when caching", "It replaced the older cookies"],
+    "answer": 0,
+    "why": "Virtual hosting. Thousands of domains share one IP, and the request target alone (<code>GET /</code>) does not say which site you meant." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "Without scrolling: say out loud what an HTTP server fundamentally is.",
+    "answer": "A program that accepts a TCP connection, reads text off it in an agreed shape, and writes text back in an agreed shape. Frameworks add convenience on top; they do not change this.",
+    "why": "If you can state this cleanly, every framework you meet from here is a labour-saving device rather than a mystery — which is exactly the posture that reads well in an interview." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<h2>Read this next</h2>
+
+<div class="source">
+  <h4>Primary source</h4>
+  <p><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Messages">MDN —
+  HTTP messages</a></p>
+  <p>Fifteen minutes. It is the byte-level anatomy you just typed by hand, told properly,
+  with the request-target forms and the HTTP/2 framing you have not met yet. MDN is a
+  living document and the best-maintained free HTTP reference that exists; when it and a
+  blog post disagree, MDN wins.</p>
+  <p>If you want the deeper "why does TCP behave like that" thread, follow it into
+  <a href="https://beej.us/guide/bgnet/html/">Beej's Guide to Network Programming</a> §2 —
+  it is C, but it is the clearest account of what <code>bind</code>, <code>listen</code>
+  and <code>accept</code> actually do.</p>
+</div>
+
+<h2>Where this goes</h2>
+
+<p>You now have the mental model that everything else hangs from. Next session:
+<strong>rewriting this server to actually parse the request</strong> — a real start-line
+parser, a routing table, and correct status codes — and then meeting
+<a href="https://peps.python.org/pep-3333/">WSGI</a>/<a href="https://asgi.readthedocs.io/en/latest/specs/main.html">ASGI</a>,
+the contracts that let a framework take over from you. Only then does FastAPI appear, and
+by that point you will be able to say precisely what it is doing on your behalf. That
+sentence, in an interview, is worth more than a certificate.</p>
+
+<p class="sidenote"><strong>Optional, high value:</strong> keep <code>server.py</code>. In
+two sessions it becomes the "before" half of a portfolio piece — a from-scratch HTTP
+server with tests. That is a far more distinctive first repository than another todo app.</p>
+
+<div class="ask">
+  <p><strong>Ask me things.</strong> I am your teacher for this, not just a document
+  generator. If the socket call made no sense, if you want to know what TLS would change,
+  if <code>curl</code> gave you an error this page did not predict, or if you just want to
+  go deeper on framing — ask. Pasting the exact error is the fastest route to an answer.</p>
+  <p>Stuck for more than thirty minutes and want a human?
+  <a href="https://www.pythondiscord.com/">Python Discord</a> is staffed and
+  beginner-safe. Full list in <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+</div>
+
+<nav class="lesson-nav">
+  <span>← no previous lesson</span>
+  <a href="../reference/http-message-anatomy.html">Reference: HTTP anatomy →</a>
+</nav>
+
+</main>
+</body>
+</html>

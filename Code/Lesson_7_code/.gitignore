@@ -1,0 +1,6 @@
+# The secret file. The example file is committed; this one never is.
+.env
+
+__pycache__/
+*.pyc
+.venv/

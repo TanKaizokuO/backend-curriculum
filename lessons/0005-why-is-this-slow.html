@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 5 · Why is this slow?</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 05 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../reference/reading-a-query-plan.html">Reference: reading a query plan</a> ·
+    <a href="0004-relational-modelling-and-sql.html">← Lesson 04</a>
+  </p>
+  <h1>Why is this slow?
+    <span class="sub">Measure first. The database will tell you the truth if you ask it.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">Your API works and your data survives a restart. It also has
+about forty rows in it, which is why everything feels fast. Today you put
+200&nbsp;000 rows in the database and watch the same code become slow. Then you
+learn the one tool that tells you <em>why</em> — <code>EXPLAIN</code> — and use
+it to fix two different kinds of slowness: a query that reads the whole table,
+and an endpoint where every single query is fast and the endpoint is still slow.
+At the end you have a measured before-and-after, which is a much better thing to
+put in a README than another CRUD endpoint.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>You cannot fix slowness you have not measured, and the database will hand
+  you the measurement — so the skill is not "know which things are slow", it is
+  <strong>ask the database what it did, and read the answer</strong>.</p>
+</div>
+
+<p>This matters beyond speed. "Why is this endpoint slow?" is the most common
+real task a backend engineer is handed, and it is a standard interview question
+in two forms: <em>what is an index</em> and <em>what is the N+1 problem</em>.
+By the end of this lesson both are things you have done, not things you have
+read.</p>
+
+<h2>Step 0 · Give the database enough data to be slow</h2>
+
+<p>Forty rows fit in memory and every plan looks the same. Load 200&nbsp;000.
+Save this as <code class="filename">seed.sql</code> next to your migrations:</p>
+
+<pre class="wide"><code><span class="c-com">-- seed.sql — replaces the table contents with 200 000 bookmarks</span>
+<span class="c-key">TRUNCATE</span> bookmark_tags, tags, bookmarks <span class="c-key">RESTART IDENTITY</span>;
+
+<span class="c-key">INSERT INTO</span> bookmarks (url, title, created_at)
+<span class="c-key">SELECT</span>
+    <span class="c-str">'https://example.com/article/'</span> || n,
+    <span class="c-str">'Article number '</span> || n,
+    now() - (n || <span class="c-str">' minutes'</span>)::interval
+<span class="c-key">FROM</span> generate_series(<span class="c-num">1</span>, <span class="c-num">200000</span>) <span class="c-key">AS</span> n;
+
+<span class="c-key">INSERT INTO</span> tags (name)
+<span class="c-key">SELECT</span> <span class="c-str">'tag-'</span> || n <span class="c-key">FROM</span> generate_series(<span class="c-num">1</span>, <span class="c-num">40</span>) <span class="c-key">AS</span> n;
+
+<span class="c-com">-- every bookmark gets 3 tags</span>
+<span class="c-key">INSERT INTO</span> bookmark_tags (bookmark_id, tag_id)
+<span class="c-key">SELECT</span> b.id, <span class="c-num">1</span> + ((b.id * k) % <span class="c-num">40</span>)
+<span class="c-key">FROM</span> bookmarks b, generate_series(<span class="c-num">1</span>, <span class="c-num">3</span>) <span class="c-key">AS</span> k
+<span class="c-key">ON CONFLICT DO NOTHING</span>;
+
+<span class="c-key">ANALYZE</span> bookmarks;
+<span class="c-key">ANALYZE</span> tags;
+<span class="c-key">ANALYZE</span> bookmark_tags;</code></pre>
+
+<pre class="wide"><code>$ docker cp seed.sql pg-bookmarks:/seed.sql
+$ docker exec pg-bookmarks psql -U learner -d bookmarks -f /seed.sql
+INSERT 0 200000
+INSERT 0 40
+INSERT 0 585000</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">Do not skip the ANALYZE</span>
+  <p><code>ANALYZE</code> updates the statistics that PostgreSQL uses to choose
+  a plan. After a bulk load the old statistics say the table is empty, so the
+  planner makes decisions for an empty table and every measurement you take is a
+  lie. Run <code>ANALYZE</code> after any large load, and any time a plan
+  surprises you.</p>
+</div>
+
+<h2>Step 1 · Make the failure observable</h2>
+
+<p>Look up one bookmark by its title. This is an ordinary thing an API does.</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">EXPLAIN</span> (<span class="c-key">ANALYZE</span>, <span class="c-key">BUFFERS</span>)
+bookmarks-# <span class="c-key">SELECT</span> id, url <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> title = <span class="c-str">'Article number 137000'</span>;
+
+ Seq Scan on bookmarks  (cost=0.00..5068.00 rows=1 width=42)
+                        (actual time=6.759..9.797 rows=1 loops=1)
+   Filter: (title = 'Article number 137000'::text)
+   Rows Removed by Filter: 199999
+   Buffers: shared hit=2568
+ Planning Time: 0.348 ms
+ Execution Time: 9.846 ms</code></pre>
+
+<p>Read the third line again. To return <strong>one</strong> row, PostgreSQL
+looked at all 200&nbsp;000 and threw away 199&nbsp;999 of them. It read 2568
+pages of disk to do it. That is a <strong>sequential scan</strong>: read
+everything, keep what matches.</p>
+
+<p>Ten milliseconds sounds survivable. It is not, and the reason is the shape of
+the number rather than its size: the work grows in a straight line with the
+number of rows. At two million rows this query takes a hundred milliseconds. It
+is also on every request, and it is holding a connection from your pool while it
+runs.</p>
+
+<h2>Step 2 · Read the plan</h2>
+
+<p>What you just ran is a <strong>query plan</strong> — the list of steps
+PostgreSQL chose in order to answer your question. <code>EXPLAIN</code> shows the
+plan; <code>EXPLAIN ANALYZE</code> runs the query and shows the plan annotated
+with what really happened.<sup><a href="#src-explain">1</a></sup> The difference
+matters, because the planner's guesses can be wrong, and the gap between guess
+and reality is usually the bug.</p>
+
+<pre class="wide"><code> Seq Scan on bookmarks  (cost=0.00..5068.00 rows=1 width=42)
+ <span class="c-com">└ what it did          └ the planner's GUESS ─────────────┘</span>
+                        (actual time=6.759..9.797 rows=1 loops=1)
+                        <span class="c-com">└ what really happened ───────────────────┘</span>
+   Rows Removed by Filter: 199999   <span class="c-com">← work done for nothing</span>
+   Buffers: shared hit=2568         <span class="c-com">← 8 kB pages touched</span>
+ Execution Time: 9.846 ms           <span class="c-com">← the number you report</span></code></pre>
+
+<ul class="steps">
+  <li><strong><code>cost</code></strong> is not milliseconds. It is an arbitrary
+  unit the planner uses to compare its own options, where 1.0 is roughly the cost
+  of reading one page in sequence.<sup><a href="#src-explain">1</a></sup> Never
+  quote it as a duration. Use it only to compare two plans for the same query.</li>
+
+  <li><strong><code>rows=1</code> in each pair</strong> is the estimate on the
+  left and the truth on the right. When these differ by a large factor, the
+  planner is working from bad statistics and may have chosen a bad plan. That is
+  your cue to run <code>ANALYZE</code>.</li>
+
+  <li><strong><code>Rows Removed by Filter</code></strong> is the line that
+  finds most problems. It is the amount of work the database did and then threw
+  away.</li>
+
+  <li><strong><code>Buffers</code></strong> counts 8&nbsp;kB pages touched.
+  <code>hit</code> came from cache, <code>read</code> came from disk. This is the
+  most honest measure of work, because it does not change when your laptop is
+  busy.</li>
+
+  <li><strong>Read the plan from the inside out.</strong> The deepest, most
+  indented node runs first and passes its rows upward.</li>
+</ul>
+
+<p class="sidenote">Always use <code>EXPLAIN (ANALYZE, BUFFERS)</code>, not bare
+<code>EXPLAIN</code>. Bare <code>EXPLAIN</code> shows you what the planner
+intends, which is exactly the thing you are trying to check.
+<strong>Careful:</strong> <code>ANALYZE</code> really executes the query, so on
+an <code>UPDATE</code> or <code>DELETE</code> it really changes your data. Wrap
+those in <code>BEGIN; … ROLLBACK;</code>.</p>
+
+<h2>Step 3 · The fix, and the two you already had</h2>
+
+<p>An <strong>index</strong> is a second, sorted copy of one or more columns,
+kept up to date by the database, that lets it jump straight to the rows you want
+instead of reading every row. It is the same idea as the index at the back of a
+book.</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">CREATE INDEX</span> bookmarks_title_idx <span class="c-key">ON</span> bookmarks (title);
+bookmarks=# <span class="c-key">ANALYZE</span> bookmarks;
+bookmarks=# <span class="c-key">EXPLAIN</span> (<span class="c-key">ANALYZE</span>, <span class="c-key">BUFFERS</span>)
+bookmarks-# <span class="c-key">SELECT</span> id, url <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> title = <span class="c-str">'Article number 137000'</span>;
+
+ Index Scan using bookmarks_title_idx on bookmarks
+        (cost=0.42..8.44 rows=1 width=42) (actual time=0.054..0.056 rows=1 loops=1)
+   Index Cond: (title = 'Article number 137000'::text)
+   Buffers: shared hit=1 read=3
+ Execution Time: 0.085 ms</code></pre>
+
+<div class="note note--ok">
+  <span class="note-label">The measurement</span>
+  <p><strong>9.846 ms → 0.085 ms.</strong> 116 times faster. More telling:
+  <strong>2568 pages → 4 pages</strong>. <code>Rows Removed by Filter</code> is
+  gone from the plan entirely, because no row was examined and rejected. The
+  page count is the number to trust — it does not move when your machine is
+  busy.</p>
+</div>
+
+<p>Now look at what was already there before you created anything:</p>
+
+<pre class="wide"><code>bookmarks=# \d bookmarks
+Indexes:
+    "bookmarks_pkey" PRIMARY KEY, btree (id)
+    "bookmarks_url_key" UNIQUE CONSTRAINT, btree (url)</code></pre>
+
+<p>You have had two indexes since Lesson 4 without writing the word
+<code>INDEX</code> once. This is how PostgreSQL enforces those two constraints:
+to check that an <code>id</code> or a <code>url</code> is unique it needs to find
+the existing value fast, and an index is how it does that. So
+<code>GET /bookmarks/{id}</code> was always fast, and lookups by
+<code>url</code> were always fast, and lookups by <code>title</code> were not —
+and nothing in your Python said so. <strong><code>\d</code> is where you look
+first</strong> when something is slow.</p>
+
+<h2>Step 4 · The index that does nothing</h2>
+
+<p>Now build the feature this was all for: search. Prefix search on the title,
+newest first. The index on <code>title</code> is still in place from Step 3.</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">EXPLAIN</span> (<span class="c-key">ANALYZE</span>, <span class="c-key">BUFFERS</span>)
+bookmarks-# <span class="c-key">SELECT</span> id, title <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> title <span class="c-key">LIKE</span> <span class="c-str">'Article number 1370%'</span>;
+
+ Seq Scan on bookmarks  (cost=0.00..5068.00 rows=2020 width=29)
+                        (actual time=0.098..11.767 rows=111 loops=1)
+   Filter: (title ~~ 'Article number 1370%'::text)
+   Rows Removed by Filter: 199889
+   Buffers: shared hit=2568
+ Execution Time: 11.810 ms</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">Stop and notice what just happened</span>
+  <p>The index on <code>title</code> exists. The query filters on
+  <code>title</code>. PostgreSQL ignored the index and read all 200&nbsp;000
+  rows. If you had trusted "I added an index, so it is fast now" you would have
+  shipped this and been wrong — and nothing would have told you.</p>
+</div>
+
+<p>The reason is sorting order. Your database sorts text by the rules of its
+collation, which here is <code>en_US.utf8</code> — the order a dictionary uses,
+where case and punctuation are handled the way a human expects. A prefix search
+needs the other kind of order: strict character-by-character comparison. In
+dictionary order the rows starting with a given prefix are not stored next to
+each other, so the index cannot hand back a contiguous range, so it is useless
+for this query. The PostgreSQL manual is explicit about it:</p>
+
+<blockquote>
+  <p>"The operator classes <code>text_pattern_ops</code>,
+  <code>varchar_pattern_ops</code>, and <code>bpchar_pattern_ops</code> support
+  B-tree indexes on the types <code>text</code>, <code>varchar</code>, and
+  <code>char</code> respectively. The difference from the default operator
+  classes is that the values are compared strictly character by character rather
+  than according to the locale-specific collation rules. This makes these
+  operator classes suitable for use by queries involving pattern matching
+  expressions (<code>LIKE</code> or POSIX regular expressions) when the database
+  does not use the standard C locale."</p>
+  <p class="sidenote">— <a href="#src-opclass">PostgreSQL, Operator Classes and
+  Operator Families</a></p>
+</blockquote>
+
+<p>So you ask for an index sorted the other way. Write it as a migration —
+migration 0003, beside the two from Lesson 4:</p>
+
+<pre class="wide"><code><span class="c-com">-- migrations/0003_add_title_search_index.sql</span>
+<span class="c-key">CREATE INDEX</span> bookmarks_title_pattern_idx
+    <span class="c-key">ON</span> bookmarks (title text_pattern_ops);</code></pre>
+
+<pre class="wide"><code> Index Scan using bookmarks_title_pattern_idx on bookmarks
+        (cost=0.42..8.44 rows=20 width=29) (actual time=0.051..0.095 rows=111 loops=1)
+   Index Cond: ((title ~&gt;=~ 'Article number 1370'::text)
+            AND (title ~&lt;~ 'Article number 1371'::text))
+   Filter: (title ~~ 'Article number 1370%'::text)
+   Buffers: shared hit=23 read=4
+ Execution Time: 0.128 ms</code></pre>
+
+<div class="note note--ok">
+  <span class="note-label">The measurement</span>
+  <p><strong>11.810 ms → 0.128 ms.</strong> 92 times faster, and 2568 pages
+  → 27. Look at <code>Index Cond</code>: PostgreSQL rewrote your
+  <code>LIKE</code> into a range — everything from
+  <code>'Article number 1370'</code> up to but not including
+  <code>'Article number 1371'</code>. That rewrite is the whole trick, and it is
+  only correct in character-by-character order.</p>
+</div>
+
+<p>One useful detail: this single index serves <em>both</em> queries. Exact
+match on <code>title</code> also uses <code>bookmarks_title_pattern_idx</code>,
+so you can drop <code>bookmarks_title_idx</code> and keep one index instead of
+two. It will not help an <code>ORDER BY title</code> that needs dictionary
+order — that still wants the default index. Two indexes on one column is a
+legitimate choice; just make it deliberately.</p>
+
+<p class="sidenote">Prefix search only. <code>LIKE '%middle%'</code> — a leading
+wildcard — cannot use a B-tree at all, in any operator class, because there is
+no prefix to jump to. That is a full-text search or a trigram index, and it is a
+different lesson.</p>
+
+<h2>Step 5 · Which column comes first</h2>
+
+<p>Open Lesson 4's migration 0002. There is a line in it you copied without a
+reason:</p>
+
+<pre class="wide"><code><span class="c-key">CREATE TABLE</span> bookmark_tags (
+    bookmark_id  <span class="c-key">BIGINT NOT NULL REFERENCES</span> bookmarks(id) <span class="c-key">ON DELETE CASCADE</span>,
+    tag_id       <span class="c-key">BIGINT NOT NULL REFERENCES</span> tags(id)      <span class="c-key">ON DELETE CASCADE</span>,
+    <span class="c-key">PRIMARY KEY</span> (bookmark_id, tag_id)
+);
+
+<span class="c-key">CREATE INDEX</span> bookmark_tags_tag_id_idx <span class="c-key">ON</span> bookmark_tags (tag_id);  <span class="c-com">← why?</span></code></pre>
+
+<p>The primary key already indexes both columns. So why a second index on a
+column the primary key covers? Take it away and ask.</p>
+
+<pre class="wide"><code><span class="c-com">-- "which tags does this bookmark have?" — filters on bookmark_id</span>
+ Index Only Scan using bookmark_tags_pkey on bookmark_tags
+        (actual time=0.096..0.098 rows=1 loops=1)
+   Index Cond: (bookmark_id = 137000)
+ Execution Time: 0.162 ms
+
+<span class="c-com">-- "which bookmarks have this tag?" — filters on tag_id, index dropped</span>
+ Parallel Seq Scan on bookmark_tags  (actual time=0.019..13.256 rows=6667 loops=3)
+   Filter: (tag_id = 7)
+   Rows Removed by Filter: 188333
+ Execution Time: 21.895 ms</code></pre>
+
+<p>A multi-column index is sorted by its first column, then by its second inside
+each group of equal first values — exactly like a phone book sorted by surname,
+then first name. A phone book finds every "Okonkwo" instantly and cannot find
+every "Amara" without reading the whole thing. So an index on
+<code>(bookmark_id, tag_id)</code> answers questions about
+<code>bookmark_id</code>, and about both together, and is no help at all for
+<code>tag_id</code> alone.<sup><a href="#src-luke">3</a></sup></p>
+
+<div class="note note--key">
+  <span class="note-label">The rule</span>
+  <p>A multi-column index can be used for a query that filters on its
+  <strong>leftmost columns</strong>, in order. Index
+  <code>(a, b, c)</code> serves <code>a</code>, and <code>a, b</code>, and
+  <code>a, b, c</code>. It does not serve <code>b</code>, or <code>c</code>, or
+  <code>b, c</code>.</p>
+</div>
+
+<p>Put the index back and the same query becomes:</p>
+
+<pre class="wide"><code> Bitmap Heap Scan on bookmark_tags  (actual time=0.566..4.989 rows=20000 loops=1)
+   Recheck Cond: (tag_id = 7)
+   Heap Blocks: exact=3162
+   -&gt;  Bitmap Index Scan on bookmark_tags_tag_id_idx (actual time=0.353..0.353 rows=20000 loops=1)
+         Index Cond: (tag_id = 7)
+ Execution Time: 5.312 ms</code></pre>
+
+<p><strong>21.9 ms → 5.3 ms.</strong> Four times faster, not a hundred — and the
+reason is worth as much as the fix. Tag 7 is on 20&nbsp;000 of the 585&nbsp;000
+rows. An index earns its keep in proportion to how much it lets the database
+skip, and this one only skips 97%. That is also why the plan is a
+<em>bitmap</em> scan: with that many matches, PostgreSQL collects the row
+locations first, sorts them, and then reads the table in physical order, because
+20&nbsp;000 random single-row reads would cost more than the scan it replaced.
+An index on a column with few distinct values — a boolean, a status with three
+states — often earns nothing at all.</p>
+
+<h2>Step 6 · Indexes are not free</h2>
+
+<p>Every index is a second structure the database must update on every
+<code>INSERT</code>, <code>UPDATE</code>, and <code>DELETE</code>. Two identical
+tables, one with just its primary key, one with three more indexes; the same
+200&nbsp;000 rows into each:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-com">-- 1 index (the primary key)</span>
+INSERT 0 200000
+Time: 250.825 ms
+
+bookmarks=# <span class="c-com">-- 4 indexes</span>
+INSERT 0 200000
+Time: 1533.350 ms
+
+ one_index | four_indexes
+-----------+--------------
+ 22 MB     | 50 MB</code></pre>
+
+<p><strong>Six times slower to write, and more than twice the disk.</strong> So
+the answer to "should I add an index?" is never automatically yes. Add one when
+you have a measured slow query, add the one that plan asks for, and measure
+again. An index nobody's query uses is pure cost — and
+<code>pg_stat_user_indexes</code> will tell you which ones those are.</p>
+
+<h2>Step 7 · Every query is fast and the endpoint is slow</h2>
+
+<p>This is the other kind of slowness, and it does not show up in any single
+<code>EXPLAIN</code>, which is exactly why it survives so long in real code.</p>
+
+<p>Listing bookmarks with their tags. The obvious way: fetch the page of
+bookmarks, then for each one fetch its tags.</p>
+
+<pre class="wide"><code><span class="c-key">def</span> <span class="c-fn">with_n_plus_1</span>(conn):
+    cur = conn.cursor(row_factory=dict_row)
+    cur.execute(<span class="c-str">"SELECT id, url, title FROM bookmarks ORDER BY id LIMIT %s"</span>, (PAGE,))
+    rows = cur.fetchall()
+    <span class="c-key">for</span> row <span class="c-key">in</span> rows:                      <span class="c-com"># &lt;- the bug is this loop</span>
+        cur.execute(
+            <span class="c-str">"SELECT t.name FROM tags t"</span>
+            <span class="c-str">" JOIN bookmark_tags bt ON bt.tag_id = t.id"</span>
+            <span class="c-str">" WHERE bt.bookmark_id = %s ORDER BY t.name"</span>,
+            (row[<span class="c-str">"id"</span>],),
+        )
+        row[<span class="c-str">"tags"</span>] = [r[<span class="c-str">"name"</span>] <span class="c-key">for</span> r <span class="c-key">in</span> cur.fetchall()]
+    <span class="c-key">return</span> rows</code></pre>
+
+<p>Every one of those queries is indexed and takes well under a millisecond.
+There is nothing to find in any individual plan. But for a page of 100 bookmarks
+the code runs 1 + 100 = 101 queries where 1 would do. This is the
+<strong>N+1 problem</strong>: one query to get N things, then N more queries,
+one per thing.</p>
+
+<p>Run <code class="filename">n_plus_1.py</code>, which does it both ways and
+times them:</p>
+
+<pre class="wide"><code>$ python n_plus_1.py
+N+1                9.5 ms    101 queries   100 rows
+single query       1.3 ms      1 queries   100 rows
+
+the join is 7x faster</code></pre>
+
+<p>Seven times. Real, but not alarming — and that is the trap. Your database is
+on <code>localhost</code>, where a round trip costs about 40 microseconds. In
+production it is on another machine and a round trip costs about a millisecond.
+The N+1 version pays that 101 times; the join pays it once.</p>
+
+<p>You do not have to imagine this. <code class="filename">slow_link.py</code>
+is a small TCP proxy that forwards to PostgreSQL and adds one millisecond in
+each direction — production latency, on your laptop. Run it, point
+<code>DATABASE_URL</code> at port 55433, and run exactly the same script:</p>
+
+<pre class="wide"><code>$ python slow_link.py &amp;
+slow link: localhost:55433 -&gt; localhost:55432  (+1 ms each way)
+
+$ export DATABASE_URL="postgresql://learner:lesson4@localhost:55433/bookmarks"
+$ python n_plus_1.py
+N+1              329.5 ms    101 queries   100 rows
+single query       6.5 ms      1 queries   100 rows
+
+the join is 51x faster</code></pre>
+
+<div class="note note--key">
+  <span class="note-label">Why this one is worth remembering</span>
+  <p>The code did not change. The database did not change. Only the distance
+  changed, and a 7× problem became a 51× problem. N+1 is the bug that behaves on
+  your laptop and fails in production, and it is the single most common
+  performance defect in web applications — which is why interviewers ask about
+  it.</p>
+</div>
+
+<p>The fix is to make the database do the joining, once — the query you already
+wrote in Lesson 4, with its <code>LEFT JOIN</code> and
+<code>array_agg ... FILTER</code>. The rule to carry: <strong>a query inside a
+loop over rows is the bug.</strong> Learn to see that shape. In Lesson 6 you
+will meet an ORM, which produces this shape by default and hides it behind
+attribute access — <code>bookmark.tags</code> looks free and is a network round
+trip.</p>
+
+<div class="note">
+  <span class="note-label">Measure at the layer your claim lives in</span>
+  <p>Timing this through <code>curl</code> would have been the natural move, and
+  it would have misled you: at this scale an HTTP round trip on
+  <code>localhost</code> is dominated by TCP behaviour that has nothing to do
+  with your database, and the noise is larger than the effect you are measuring.
+  A claim about query cost is measured in <code>EXPLAIN</code>. A claim about
+  round trips is measured around the database calls. A claim about the endpoint
+  needs many requests and a median, not one <code>curl</code>. One measurement
+  is never a measurement.</p>
+</div>
+
+<h2>Practice</h2>
+
+<ol class="steps">
+  <li><strong>Seed and confirm the slow query.</strong> Load
+  <code>seed.sql</code>, then run the Step 1 <code>EXPLAIN</code>. Find
+  <code>Rows Removed by Filter</code> in your own output and say the number out
+  loud. Your timings will differ from the ones above; the page counts will
+  not.</li>
+
+  <li><strong>Fix it and prove it.</strong> Create the index, re-run the same
+  <code>EXPLAIN</code>, and write down four numbers: execution time before and
+  after, buffers before and after. Those four numbers are your README line.</li>
+
+  <li><strong>Break the assumption.</strong> With the index on
+  <code>title</code> in place, run the <code>LIKE 'Article number 1370%'</code>
+  query. Confirm you get a <code>Seq Scan</code> before you read the
+  explanation again. This is the step that teaches you not to trust "I added an
+  index".</li>
+
+  <li><strong>Ship migration 0003.</strong> Write
+  <code>0003_add_title_search_index.sql</code>, run your
+  <code>migrate.py</code> from Lesson 4, and confirm it says
+  <code>applied 0003_add_title_search_index</code>. Then add the
+  <code>/bookmarks/search</code> endpoint from
+  <code class="filename">main.py</code> and search for something.</li>
+
+  <li><strong>Test the leftmost-columns rule yourself.</strong> Drop
+  <code>bookmark_tags_tag_id_idx</code>, run
+  <code>EXPLAIN (ANALYZE, BUFFERS) SELECT bookmark_id FROM bookmark_tags WHERE
+  tag_id = 7;</code>, then create it again and re-run. Predict the plan before
+  each run. Being wrong here is the useful part.</li>
+
+  <li><strong>Feel the latency.</strong> Run <code>n_plus_1.py</code> against
+  <code>localhost</code>, then start <code>slow_link.py</code> and run it against
+  port 55433. Then change <code>PAGE</code> from 100 to 500 and predict both
+  numbers before you run it.</li>
+
+  <li><strong>Find one in the wild.</strong> Open your own
+  <code>bookmarks-api/main.py</code> and look for any query inside a loop. If
+  there is not one yet, there will be — this is a shape to keep checking
+  for.</li>
+
+  <li><strong>Write the README section.</strong> Three or four lines:
+  the query, the plan before, the plan after, the numbers. This is the single
+  most employer-legible thing in your repository so far, because almost no
+  junior candidate has one.</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<p>Answer before you scroll back. Getting one wrong now is worth more than
+getting it right by re-reading.</p>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "Which EXPLAIN output line tells you how much work the database did and then discarded?",
+    "answer": "Rows Removed by Filter",
+    "accept": ["rows removed by filter", "Rows Removed"],
+    "why": "It is the fastest signal that a scan is reading rows it did not need. A large number here almost always means a missing or unusable index." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "What does the cost number in a query plan measure?",
+    "options": [
+      "An internal unit for comparing candidate plans",
+      "The milliseconds the query took to run fully",
+      "The number of table rows the query returned",
+      "The megabytes of memory the query allocated"
+    ],
+    "answer": 0,
+    "why": "Cost is arbitrary units the planner uses to choose between its own options; 1.0 is roughly one sequential page read. It is never a duration. Actual time is the duration." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "You never wrote CREATE INDEX in Lesson 4, yet bookmarks had two indexes. Why?",
+    "options": [
+      "PRIMARY KEY and UNIQUE are enforced using an index",
+      "PostgreSQL indexes every text column automatically",
+      "The psycopg connection pool creates them on start",
+      "Running ANALYZE builds an index for each column"
+    ],
+    "answer": 0,
+    "why": "To check uniqueness the database must find an existing value fast, so it builds an index to do it. This is why lookups by id and url were always fast and lookups by title were not." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "An index on title exists, but LIKE 'abc%' still does a sequential scan. Why?",
+    "options": [
+      "The index sorts by collation, not by character",
+      "The index was created before the rows existed",
+      "LIKE can never use an index of any kind",
+      "The table statistics were never updated at all"
+    ],
+    "answer": 0,
+    "why": "A default text index is ordered by locale collation rules. Prefix matching needs strict character-by-character order, which is what the text_pattern_ops operator class gives you." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Which query can use an index on (a, b, c)?",
+    "options": [
+      "WHERE a = 1 AND b = 2",
+      "WHERE b = 2 AND c = 3",
+      "WHERE c = 3 AND b = 2",
+      "WHERE b = 2"
+    ],
+    "answer": 0,
+    "why": "A multi-column index is sorted by its leftmost column first. It serves a, then a and b, then all three. It cannot serve b or c without a, in any order you write them." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "One query for a page of 100 rows, then one more query per row. What is this problem called?",
+    "answer": "N+1",
+    "accept": ["n+1", "n plus 1", "the n+1 problem", "n+1 problem"],
+    "why": "1 query for the list, then N for the details. Each individual query is fast, so no single EXPLAIN reveals it. The fix is one query with a join." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why does an N+1 bug look mild on a laptop and severe in production?",
+    "options": [
+      "The cost is round trips, which get slower over a network",
+      "Production servers run with much less available memory",
+      "The production planner chooses a different query plan",
+      "Production databases hold far more rows in each table"
+    ],
+    "answer": 0,
+    "why": "A localhost round trip is about 40 microseconds; across a network it is about a millisecond. N+1 pays that cost N times, so the same code went from 7x slower to 51x slower in the lesson." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why not add an index to every column, just in case?",
+    "options": [
+      "Each index slows every write and uses more disk",
+      "PostgreSQL permits at most four indexes per table",
+      "Extra indexes make the planner ignore all of them",
+      "Indexes must be rebuilt by hand after every insert"
+    ],
+    "answer": 0,
+    "why": "Every index is another structure to update on INSERT, UPDATE, and DELETE. In the lesson three extra indexes made the same load six times slower and more than doubled the disk used." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "You are told an endpoint is slow. Describe your first four steps, in order.",
+    "answer": "1. Reproduce it with realistic data volume, and measure it more than once to get a median rather than one sample. 2. Find out how many queries the endpoint issues — if it is one per row in a loop, that is N+1 and the fix is a join, not an index. 3. Take the slowest single query and run EXPLAIN (ANALYZE, BUFFERS) on it; read Rows Removed by Filter and the buffer counts, and check \\d to see which indexes already exist. 4. Change one thing, re-run the same EXPLAIN, and compare execution time and buffers before and after.",
+    "why": "The order matters. Counting queries before optimising one is what stops you from spending a day indexing your way around an N+1." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<div class="source">
+  <h4>Primary sources</h4>
+
+  <p id="src-luke"><a href="https://use-the-index-luke.com/sql/table-of-contents">Use
+  The Index, Luke! — Markus Winand</a></p>
+  <p><strong>Read this one.</strong> It is the best free writing on database
+  indexing that exists, it is database-agnostic, and it is short. Chapter 1
+  (Anatomy of an Index) and Chapter 2 (The Where Clause) cover everything in
+  Steps 3 to 5 properly, including the concatenated-index column order rule.
+  Two evenings, and you will be ahead of most people interviewing beside
+  you.</p>
+
+  <p id="src-explain"><a href="https://www.postgresql.org/docs/current/using-explain.html">PostgreSQL
+  — Using EXPLAIN</a></p>
+  <p>The reference for everything in Step 2: what cost units mean, how to read
+  nested plan nodes, and what <code>BUFFERS</code> reports. Read §14.1 once
+  slowly with a psql window open. Verified 2026-08-09.</p>
+
+  <p id="src-opclass"><a href="https://www.postgresql.org/docs/current/indexes-opclass.html">PostgreSQL
+  — Operator Classes and Operator Families</a></p>
+  <p>Short, and the source of the quotation in Step 4. This is the page to cite
+  when a colleague says "but there is an index on that column". Verified
+  2026-08-09.</p>
+
+  <p><a href="https://pgexercises.com/">PostgreSQL Exercises</a></p>
+  <p>If you did not finish the Joins and Subqueries set from Lesson 4, finish it
+  this week. Step 7's fix is a join, and writing joins fluently is what makes
+  the N+1 fix feel obvious rather than clever.</p>
+</div>
+
+<h2>Where this goes</h2>
+
+<p>You can now find slowness and prove you fixed it. Lesson 6 is the other half
+of "the data is real": <strong>concurrency and the ORM</strong>. Two people
+write the same row at the same time and one write disappears — you will make
+that happen in two psql windows, then fix it with <code>SELECT … FOR
+UPDATE</code>, and find out why <code>READ COMMITTED</code> is the PostgreSQL
+default. Then SQLAlchemy 2.x over this same schema with <code>echo=True</code>,
+so you can read the SQL it writes for you against the SQL you wrote yourself —
+including the N+1 it will produce unless you ask it not to.</p>
+
+<p class="sidenote"><strong>Time to deploy.</strong> Lessons 3, 4 and 5 are a
+complete portfolio project: a JSON API, a real schema, migrations, and now
+measured performance work. Get it on a public URL. That is the CV line, and it
+is also the trigger we agreed on for the TypeScript conversation — so pushing
+this live changes what we do next.</p>
+
+<div class="ask">
+  <p><strong>Ask me things.</strong> Paste any plan you do not understand — that
+  is the fastest way to learn to read them, and they are short. Especially worth
+  asking about: a plan where the estimated and actual row counts differ wildly,
+  an index you created that the planner refuses to use, or a query that got
+  slower after you indexed it. All three have specific causes and all three are
+  interesting.</p>
+  <p>Worth posting publicly too: <a href="https://old.reddit.com/r/PostgreSQL/">r/PostgreSQL</a>
+  answers "why is this plan doing that?" well, and it is the normal way to ask —
+  paste the schema, the query, and the full <code>EXPLAIN (ANALYZE, BUFFERS)</code>
+  output. Now that Lessons 3–5 are a finished project, this is also the moment
+  for <a href="https://codereview.stackexchange.com/">Code Review Stack
+  Exchange</a>: working code, line-by-line critique from strangers. Full list in
+  <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0004-relational-modelling-and-sql.html">← Lesson 04: Relational modelling + SQL</a>
+  <a href="0006-concurrency-and-the-orm.html">Lesson 06: Concurrency and the ORM →</a>
+</nav>
+
+</main>
+</body>
+</html>

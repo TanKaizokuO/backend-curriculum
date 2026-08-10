@@ -1,0 +1,214 @@
+/* ============================================================
+   quiz.css — styling for the retrieval-practice widgets in quiz.js.
+   Loaded alongside course.css. Deliberately quiet: the widgets should
+   read as part of the page, not as a bolted-on app.
+   ============================================================ */
+
+.quiz {
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+  background: var(--surface);
+  padding: 1.1rem 1.3rem 1.2rem;
+  margin: 1.6rem 0;
+}
+
+.quiz-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  margin-bottom: 0.6rem;
+}
+
+.quiz-kind {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.quiz-flag {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  color: var(--err);
+  background: var(--err-bg);
+  padding: 0.1rem 0.45rem;
+  border-radius: 2px;
+}
+
+.quiz-q {
+  font-size: 1.08rem;
+  line-height: 1.5;
+  margin: 0 0 0.9rem;
+}
+
+/* ---------- options ---------- */
+
+.quiz-opts {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+.quiz-opts li { margin: 0; padding: 0; }
+
+.quiz-opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--serif);
+  font-size: 1rem;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.55rem 0.8rem;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.quiz-opt:hover:not(:disabled) { background: var(--accent-lt); border-color: var(--accent); }
+.quiz-opt:disabled { cursor: default; opacity: 0.72; }
+
+.quiz-opt.is-ok {
+  background: var(--ok-bg);
+  border-color: var(--ok);
+  color: var(--ok);
+  opacity: 1;
+}
+.quiz-opt.is-miss {
+  background: var(--err-bg);
+  border-color: var(--err);
+  color: var(--err);
+  opacity: 1;
+}
+/* the right answer, revealed after a wrong pick */
+.quiz-opt.is-answer {
+  border-color: var(--ok);
+  border-style: dashed;
+  color: var(--ok);
+  opacity: 1;
+}
+
+/* ---------- typed answers ---------- */
+
+.quiz-form { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+.quiz-input {
+  flex: 1 1 12rem;
+  font-family: var(--mono);
+  font-size: 0.92rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.quiz-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.quiz-input.is-ok   { border-color: var(--ok);  background: var(--ok-bg); }
+.quiz-input.is-miss { border-color: var(--err); background: var(--err-bg); }
+
+.quiz-submit {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--paper);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+.quiz-submit:hover { background: var(--accent-hi); }
+.quiz-submit:disabled { opacity: 0.5; cursor: default; }
+
+.quiz-answer { font-size: 0.95rem; margin: 0.7rem 0 0; }
+
+/* ---------- recall cards ---------- */
+
+.quiz-hint {
+  font-size: 0.92rem;
+  font-style: italic;
+  color: var(--ink-faint);
+  margin: 0 0 0.8rem;
+}
+.quiz-model {
+  border-left: 2px solid var(--rule);
+  padding: 0.2rem 0 0.2rem 0.9rem;
+  margin: 0 0 0.9rem;
+  font-size: 1rem;
+  color: var(--ink-soft);
+}
+.quiz-model > :last-child { margin-bottom: 0; }
+.quiz-grade { display: flex; gap: 0.5rem; }
+.quiz-grade-btn { width: auto; flex: 0 0 auto; }
+
+/* ---------- feedback ---------- */
+
+.quiz-fb {
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--rule);
+  font-size: 0.97rem;
+  line-height: 1.5;
+}
+.quiz-verdict {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
+}
+.quiz-fb.is-ok   .quiz-verdict { color: var(--ok); }
+.quiz-fb.is-miss .quiz-verdict { color: var(--err); }
+.quiz-why { color: var(--ink-soft); }
+
+.quiz-err { color: var(--err); font-family: var(--mono); font-size: 0.85rem; }
+
+/* ---------- score tally ---------- */
+
+.quiz-score { margin: 2rem 0 1rem; }
+
+.quiz-score-bar { display: flex; gap: 0.35rem; margin-bottom: 0.55rem; }
+.quiz-pip {
+  width: 1.7rem;
+  height: 0.32rem;
+  border-radius: 2px;
+  background: var(--rule);
+}
+.quiz-pip.is-ok   { background: var(--ok); }
+.quiz-pip.is-miss { background: var(--err); }
+
+.quiz-score-label {
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  margin: 0 0 0.6rem;
+}
+
+.quiz-reset {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+.quiz-reset:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ---------- print ---------- */
+
+@media print {
+  .quiz { break-inside: avoid; background: #fff; }
+  .quiz-opt { border-color: #bbb; }
+  .quiz-submit, .quiz-reset, .quiz-grade { display: none; }
+  .quiz-score-bar { display: none; }
+}

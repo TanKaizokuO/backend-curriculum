@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: learner
+      POSTGRES_PASSWORD: lesson7-local-only
+      POSTGRES_DB: bookmarks
+    ports:
+      - "55432:5432"
+    volumes:
+      - bookmarks-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U learner -d bookmarks"]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+
+  migrate:
+    build: .
+    command: ["node", "migrate.js"]
+    environment:
+      DATABASE_URL: postgresql://learner:lesson7-local-only@db:5432/bookmarks
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: .
+    ports:
+      - "8007:8000"
+    environment:
+      PORT: 8000
+      NODE_ENV: production
+      DATABASE_URL: postgresql://learner:lesson7-local-only@db:5432/bookmarks
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  bookmarks-data:

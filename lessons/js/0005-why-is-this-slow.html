@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JS Lesson 5 · Why is this slow?</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../../assets/course.css">
+<link rel="stylesheet" href="../../assets/quiz.css">
+<script src="../../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · JS Lesson 05 ·
+    <a href="../../MISSION.md">Mission</a> ·
+    <a href="../../RESOURCES.md">Resources</a> ·
+    <a href="../../reference/reading-a-query-plan.html">Reference: reading a query plan</a> ·
+    <a href="0004-relational-modelling-and-sql.html">← JS Lesson 04</a>
+  </p>
+  <h1>Why is this slow?
+    <span class="sub">Measure first. The database will tell you the truth if you ask it.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">Your API stores data in PostgreSQL. With forty rows, every endpoint returns quickly. Today you load 200&nbsp;000 rows into the database and inspect slow execution paths. You use <code>EXPLAIN</code> to analyze two performance failures: sequential table scans and N+1 query loops. At the end, you measure performance before and after optimization.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>You cannot fix slowness you have not measured. Ask PostgreSQL for a query plan with <code>EXPLAIN (ANALYZE, BUFFERS)</code> and read the execution statistics.</p>
+</div>
+
+<h2>Step 0 · Load test data into PostgreSQL</h2>
+
+<p>Populate your database with 200&nbsp;000 bookmarks. Copy <code class="filename">seed.sql</code> to the PostgreSQL container and run it with <code>psql</code>:</p>
+
+<pre class="wide"><code>$ docker cp seed.sql pg-bookmarks:/seed.sql
+$ docker exec pg-bookmarks psql -U learner -d bookmarks -f /seed.sql
+INSERT 0 200000
+INSERT 0 40
+INSERT 0 585000</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">Run ANALYZE after large updates</span>
+  <p><code>ANALYZE</code> updates table statistics for the query planner. Without updated statistics, PostgreSQL makes execution decisions based on outdated row counts, producing invalid plan estimates.</p>
+</div>
+
+<h2>Step 1 · Observe a sequential scan</h2>
+
+<p>Query one bookmark by title inside <code>psql</code> using <code>EXPLAIN (ANALYZE, BUFFERS)</code>:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">EXPLAIN</span> (<span class="c-key">ANALYZE</span>, <span class="c-key">BUFFERS</span>)
+bookmarks-# <span class="c-key">SELECT</span> id, url <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> title = <span class="c-str">'Article number 137000'</span>;
+
+ Seq Scan on bookmarks  (cost=0.00..5068.00 rows=1 width=42)
+                        (actual time=6.759..9.797 rows=1 loops=1)
+   Filter: (title = 'Article number 137000'::text)
+   Rows Removed by Filter: 199999
+   Buffers: shared hit=2568
+ Execution Time: 9.846 ms</code></pre>
+
+<p>To return one row, PostgreSQL inspected all 200&nbsp;000 rows and discarded 199&nbsp;999 rows. That execution step is a <strong>sequential scan</strong> (<code>Seq Scan</code>).</p>
+
+<h2>Step 2 · Read the query plan</h2>
+
+<p>The output of <code>EXPLAIN (ANALYZE, BUFFERS)</code> displays the query plan and execution measurements:</p>
+
+<ul class="steps">
+  <li><strong><code>Seq Scan</code></strong> — PostgreSQL reads the table sequentially from start to finish.</li>
+  <li><strong><code>Rows Removed by Filter</code></strong> — Displays the number of examined rows rejected by filter conditions.</li>
+  <li><strong><code>Buffers</code></strong> — Measures the number of 8&nbsp;kB memory pages accessed during query execution.</li>
+  <li><strong><code>Execution Time</code></strong> — Total query execution duration in milliseconds.</li>
+</ul>
+
+<h2>Step 3 · Add a B-tree index</h2>
+
+<p>Create a B-tree index on the <code>title</code> column to remove the sequential scan:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">CREATE INDEX</span> bookmarks_title_idx <span class="c-key">ON</span> bookmarks (title);
+bookmarks=# <span class="c-key">ANALYZE</span> bookmarks;
+bookmarks=# <span class="c-key">EXPLAIN</span> (<span class="c-key">ANALYZE</span>, <span class="c-key">BUFFERS</span>)
+bookmarks-# <span class="c-key">SELECT</span> id, url <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> title = <span class="c-str">'Article number 137000'</span>;
+
+ Index Scan using bookmarks_title_idx on bookmarks
+        (cost=0.42..8.44 rows=1 width=42) (actual time=0.054..0.056 rows=1 loops=1)
+   Index Cond: (title = 'Article number 137000'::text)
+   Buffers: shared hit=1 read=3
+ Execution Time: 0.085 ms</code></pre>
+
+<div class="note note--ok">
+  <span class="note-label">Performance result</span>
+  <p>Execution duration drops from <strong>9.846 ms to 0.085 ms</strong>. Accessed pages drop from <strong>2568 pages to 4 pages</strong>. The query plan uses an <code>Index Scan</code>.</p>
+</div>
+
+<h2>Step 4 · Fix prefix search with text_pattern_ops</h2>
+
+<p>Run a prefix search query using <code>LIKE 'Article number 1370%'</code>:</p>
+
+<pre class="wide"><code>bookmarks=# <span class="c-key">EXPLAIN</span> (<span class="c-key">ANALYZE</span>, <span class="c-key">BUFFERS</span>)
+bookmarks-# <span class="c-key">SELECT</span> id, title <span class="c-key">FROM</span> bookmarks <span class="c-key">WHERE</span> title <span class="c-key">LIKE</span> <span class="c-str">'Article number 1370%'</span>;
+
+ Seq Scan on bookmarks  (cost=0.00..5068.00 rows=2020 width=29)
+                        (actual time=0.098..11.767 rows=111 loops=1)
+   Filter: (title ~~ 'Article number 1370%'::text)
+   Rows Removed by Filter: 199889</code></pre>
+
+<p>The standard B-tree index does not support pattern matching under locale collations. Apply migration <code>0003_add_title_search_index.sql</code> using the <code>text_pattern_ops</code> operator class:</p>
+
+<pre class="wide"><code><span class="c-key">CREATE INDEX</span> bookmarks_title_pattern_idx
+    <span class="c-key">ON</span> bookmarks (title text_pattern_ops);</code></pre>
+
+<p>Run the prefix search query again. The query planner uses <code>bookmarks_title_pattern_idx</code> for fast index range scans.</p>
+
+<h2>Step 5 · Eliminate N+1 queries in Express</h2>
+
+<p>The N+1 problem occurs when an application executes 1 initial query followed by N secondary queries in a loop.</p>
+
+<p class="filename">The slow handler — N+1 query loop</p>
+<pre class="wide"><code>app.<span class="c-fn">get</span>(<span class="c-str">'/bookmarks/slow'</span>, <span class="c-key">async</span> (req, res, next) => {
+  <span class="c-key">try</span> {
+    <span class="c-key">const</span> skip = <span class="c-fn">parseInt</span>(req.query.skip, <span class="c-num">10</span>) || <span class="c-num">0</span>;
+    <span class="c-key">const</span> limit = <span class="c-fn">parseInt</span>(req.query.limit, <span class="c-num">10</span>) || <span class="c-num">10</span>;
+    <span class="c-key">const</span> { rows } = <span class="c-key">await</span> pool.<span class="c-fn">query</span>(
+      <span class="c-str">'SELECT id, url, title, created_at FROM bookmarks ORDER BY id LIMIT $1 OFFSET $2'</span>,
+      [limit, skip]
+    );
+
+    <span class="c-key">for</span> (<span class="c-key">const</span> row <span class="c-key">of</span> rows) {
+      <span class="c-key">const</span> { rows: tags } = <span class="c-key">await</span> pool.<span class="c-fn">query</span>(
+        <span class="c-str">'SELECT t.name FROM tags t JOIN bookmark_tags bt ON bt.tag_id = t.id WHERE bt.bookmark_id = $1 ORDER BY t.name'</span>,
+        [row.id]
+      );
+      row.tags = tags.<span class="c-fn">map</span>(r => r.name);
+    }
+    res.<span class="c-fn">json</span>(rows);
+  } <span class="c-key">catch</span> (err) {
+    <span class="c-fn">next</span>(err);
+  }
+});</code></pre>
+
+<p>Replace the loop with a single aggregated query using <code>LEFT JOIN</code> and <code>array_agg</code>:</p>
+
+<p class="filename">The fast handler — single aggregated query</p>
+<pre class="wide"><code><span class="c-key">const</span> LIST_SQL = `
+SELECT b.id, b.url, b.title, b.created_at,
+       coalesce(array_agg(t.name ORDER BY t.name)
+                FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
+FROM bookmarks b
+LEFT JOIN bookmark_tags bt ON bt.bookmark_id = b.id
+LEFT JOIN tags t           ON t.id = bt.tag_id
+GROUP BY b.id
+ORDER BY b.id DESC
+OFFSET $1 LIMIT $2
+`;
+
+app.<span class="c-fn">get</span>(<span class="c-str">'/bookmarks'</span>, <span class="c-key">async</span> (req, res, next) => {
+  <span class="c-key">try</span> {
+    <span class="c-key">const</span> skip = <span class="c-fn">parseInt</span>(req.query.skip, <span class="c-num">10</span>) || <span class="c-num">0</span>;
+    <span class="c-key">const</span> limit = <span class="c-fn">parseInt</span>(req.query.limit, <span class="c-num">10</span>) || <span class="c-num">10</span>;
+    <span class="c-key">const</span> { rows } = <span class="c-key">await</span> pool.<span class="c-fn">query</span>(LIST_SQL, [skip, limit]);
+    res.<span class="c-fn">json</span>(rows);
+  } <span class="c-key">catch</span> (err) {
+    <span class="c-fn">next</span>(err);
+  }
+});</code></pre>
+
+<h2>Step 6 · Simulate network latency with slow_link.js</h2>
+
+<p>Run <code>n_plus_1.js</code> to benchmark N+1 query execution against a single aggregated query:</p>
+
+<pre class="wide"><code>$ export DATABASE_URL="postgresql://learner:lesson4@localhost:55432/bookmarks"
+$ node n_plus_1.js
+N+1               14.2 ms    101 queries   100 rows
+single query       1.1 ms      1 queries   100 rows
+
+the join is 13x faster</code></pre>
+
+<p>Start <code>slow_link.js</code> in a terminal to add 1&nbsp;ms latency to database connections on port 55433. Run <code>n_plus_1.js</code> over port 55433 to observe network round-trip costs:</p>
+
+<pre class="wide"><code>$ node slow_link.js &
+$ export DATABASE_URL="postgresql://learner:lesson4@localhost:55433/bookmarks"
+$ node n_plus_1.js
+N+1              215.4 ms    101 queries   100 rows
+single query       3.2 ms      1 queries   100 rows
+
+the join is 67x faster</code></pre>
+
+<p>Network latency makes the N+1 loop 67 times slower than a single SQL query.</p>
+
+<section class="quiz">
+  <h3>Check your understanding</h3>
+
+  <div class="quiz-question" data-answer="1">
+    <p class="question">1. What does <code>EXPLAIN (ANALYZE, BUFFERS)</code> show that bare <code>EXPLAIN</code> does not?</p>
+    <div class="options">
+      <label><input type="radio" name="q1" value="0"> Table schema definitions and column datatypes.</label>
+      <label><input type="radio" name="q1" value="1"> Actual execution timings, row counts, and buffer page accesses.</label>
+      <label><input type="radio" name="q1" value="2"> Index definitions created on temporary tables.</label>
+      <label><input type="radio" name="q1" value="3"> Network packet byte counters between Node.js and PostgreSQL.</label>
+    </div>
+    <div class="explanation">
+      <p>Correct! <code>ANALYZE</code> executes the query and compares actual row counts, timings, and buffer page reads against planner estimates.</p>
+    </div>
+  </div>
+
+  <div class="quiz-question" data-answer="2">
+    <p class="question">2. Why does the N+1 query problem degrade performance over real network connections?</p>
+    <div class="options">
+      <label><input type="radio" name="q2" value="0"> Node.js locks the event loop when processing multiple SQL statements.</label>
+      <label><input type="radio" name="q2" value="1"> PostgreSQL rejects queries when an application opens more than 10 transactions.</label>
+      <label><input type="radio" name="q2" value="2"> Every extra query incurs a full TCP round-trip latency penalty between Express and PostgreSQL.</label>
+      <label><input type="radio" name="q2" value="3"> Express buffers response payloads until all database connections close.</label>
+    </div>
+    <div class="explanation">
+      <p>Correct! Performing N database requests incurs N individual round-trip network delays, multiplying latency overall.</p>
+    </div>
+  </div>
+
+  <div class="quiz-score"></div>
+</section>
+
+<h2>Read this next</h2>
+<div class="source">
+  <h4>Primary sources</h4>
+  <p><a href="https://www.postgresql.org/docs/current/using-explain.html">PostgreSQL Documentation — Using EXPLAIN</a></p>
+  <p>Official PostgreSQL guide on reading query plans and optimizing database queries.</p>
+  <p><a href="https://www.postgresql.org/docs/current/indexes.html">PostgreSQL Documentation — Indexes</a></p>
+  <p>Detailed reference on B-tree indexes, operator classes, and multi-column indexing.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0004-relational-modelling-and-sql.html">← JS Lesson 04: Relational modelling + SQL</a>
+  <a href="0006-concurrency-and-the-orm.html">JS Lesson 06: Concurrency + the ORM →</a>
+</nav>
+
+</main>
+</body>
+</html>

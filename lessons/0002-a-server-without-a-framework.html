@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 2 · A Server Without A Framework</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 02 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../reference/http-message-anatomy.html">Reference: HTTP anatomy</a> ·
+    <a href="0001-a-server-is-bytes-on-a-socket.html">← Lesson 01</a>
+  </p>
+  <h1>A Server Without A Framework
+    <span class="sub">Parse the request. Route it. Answer correctly. Then hand it to something better.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">In Lesson 1 you wrote a server that <em>ignored</em> what the client
+asked for. Every request got <code>200 OK</code> and the same string. That is not a
+server — it is a greeting card taped to a socket. Today you make it actually
+read the request and respond differently depending on what was asked.</p>
+
+<p class="sidenote">By the end of this lesson you will have a server that parses
+the start line, pulls out headers and query strings, routes to different
+functions, and answers with correct status codes. Then you will meet the
+contract that lets you hand all of that work to a framework — and understand
+exactly what that framework is doing for you.</p>
+
+<h2>The one idea</h2>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>A framework is a <strong>standard calling convention</strong> between a server
+  program and your application code — nothing more. You can write that convention
+  yourself, and once you have, the framework is no longer magic; it is a
+  labour-saving device whose cost you can measure.</p>
+</div>
+
+<h2>Step 1 · Parse the start line</h2>
+
+<p>Lesson 1's <code>server.py</code> read the request bytes and threw them away.
+The first real work is to split the start line into its three parts: method,
+target, and version.</p>
+
+<p class="filename">server.py — start-line parser</p>
+<pre class="wide"><code><span class="c-key">def</span> <span class="c-fn">parse_request_line</span>(raw: <span class="c-fn">bytes</span>) -> <span class="c-fn">tuple</span>[<span class="c-fn">str</span>, <span class="c-fn">str</span>, <span class="c-fn">str</span>]:
+    <span class="c-str">"""Return (method, target, version) or raise ValueError."""</span>
+    <span class="c-com"># Split the raw bytes at the first \r\n — that is the request line.</span>
+    request_line, _rest = raw.<span class="c-fn">split</span>(<span class="c-str">b"\r\n"</span>, <span class="c-num">1</span>)
+    parts = request_line.<span class="c-fn">decode</span>(<span class="c-str">"ascii"</span>).<span class="c-fn">split</span>(<span class="c-str">" "</span>)
+    <span class="c-key">if</span> <span class="c-fn">len</span>(parts) != <span class="c-num">3</span>:
+        <span class="c-key">raise</span> <span class="c-fn">ValueError</span>(<span class="c-str">f"Malformed request line: {request_line!r}"</span>)
+    method, target, version = parts
+    <span class="c-key">return</span> method, target, version</code></pre>
+
+<p>Three things to notice:</p>
+
+<ul>
+  <li><strong>ASCII, not UTF-8.</strong> The start line and headers are defined as
+  ASCII. Bodies can be anything — the <code>Content-Type</code> header tells you
+  what.</li>
+  <li><strong>Exactly three parts.</strong> If <code>split(" ")</code> does not produce
+  three items, the request is malformed and the server must answer
+  <code>400 Bad Request</code>. This is not pedantry — a missing version field once
+  crashed a production proxy at Cloudflare (<a href="https://blog.cloudflare.com/">their engineering blog</a>
+  regularly post-mortems such bugs).</li>
+  <li><strong>You will throw this code away.</strong> Every line of parsing you write
+  here is a line a framework will write for you. The point is to know what
+  that line does — not to maintain it.</li>
+</ul>
+
+<h2>Step 2 · Parse headers and the query string</h2>
+
+<p>After the request line, every line until the blank line is a header.
+Each header is <code>Name: value</code>. The name is
+<strong>case-insensitive</strong> — the RFC is explicit about this
+(<a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-5.1">RFC 9110 §5.1</a>:
+"Each field name … is case-insensitive").</p>
+
+<p class="filename">server.py — header + query parser</p>
+<pre class="wide"><code><span class="c-key">from</span> urllib.parse <span class="c-key">import</span> urlparse, parse_qs
+
+<span class="c-key">def</span> <span class="c-fn">parse_headers</span>(raw: <span class="c-fn">bytes</span>) -> <span class="c-fn">dict</span>[<span class="c-fn">str</span>, <span class="c-fn">str</span>]:
+    <span class="c-str">"""Return headers as a lower-cased dict."""</span>
+    _request_line, rest = raw.<span class="c-fn">split</span>(<span class="c-str">b"\r\n"</span>, <span class="c-num">1</span>)
+    header_block, _body = rest.<span class="c-fn">split</span>(<span class="c-str">b"\r\n\r\n"</span>, <span class="c-num">1</span>)
+    headers = {}
+    <span class="c-key">for</span> line <span class="c-key">in</span> header_block.<span class="c-fn">split</span>(<span class="c-str">b"\r\n"</span>):
+        name, _sep, value = line.<span class="c-fn">decode</span>(<span class="c-str">"ascii"</span>).<span class="c-fn">partition</span>(<span class="c-str">":"</span>)
+        headers[name.<span class="c-fn">strip</span>().<span class="c-fn">lower</span>()] = value.<span class="c-fn">strip</span>()
+    <span class="c-key">return</span> headers
+
+<span class="c-key">def</span> <span class="c-fn">parse_query</span>(target: <span class="c-fn">str</span>) -> <span class="c-fn">tuple</span>[<span class="c-fn">str</span>, <span class="c-fn">dict</span>]:
+    <span class="c-str">"""Split '/hello?name=world' → ('/hello', {'name': ['world']})."""</span>
+    parsed = <span class="c-fn">urlparse</span>(target)
+    <span class="c-key">return</span> parsed.path, <span class="c-fn">parse_qs</span>(parsed.query)</code></pre>
+
+<div class="note">
+  <span class="note-label">Why lower-case the header names?</span>
+  <p>HTTP headers are case-insensitive by spec. A client can send
+  <code>Content-Type</code>, <code>content-type</code>, or
+  <code>CONTENT-TYPE</code> — all mean the same thing. Normalising to lower-case
+  on arrival means the rest of your code never has to think about it. Every
+  production server does this, and so does every framework. In
+  <a href="https://peps.python.org/pep-3333/">PEP 3333</a>, header names in the WSGI
+  <code>environ</code> dict are upper-cased and prefixed with <code>HTTP_</code> — a
+  different normalisation, but the same principle: pick a canonical form once.</p>
+</div>
+
+<p class="sidenote"><code>urlparse</code> and <code>parse_qs</code> are from the
+standard library. The query string <code>?name=world&lang=en</code> is just
+URL-encoded key-value pairs. <code>parse_qs</code> returns lists because a key can
+appear more than once: <code>?tag=python&tag=http</code> is legal and common.</p>
+
+<h2>Step 3 · A routing table</h2>
+
+<p>Lesson 1's server ran the same code for every request. A real server maps a
+(method, path) pair to a function. The simplest version of this is a
+dictionary.</p>
+
+<p class="filename">server.py — routing</p>
+<pre class="wide"><code><span class="c-key">def</span> <span class="c-fn">handle_index</span>(method, path, query, headers):
+    <span class="c-key">return</span> <span class="c-num">200</span>, <span class="c-str">"text/plain"</span>, <span class="c-str">b"Welcome.\n"</span>
+
+<span class="c-key">def</span> <span class="c-fn">handle_hello</span>(method, path, query, headers):
+    name = query.<span class="c-fn">get</span>(<span class="c-str">"name"</span>, [<span class="c-str">"stranger"</span>])[<span class="c-num">0</span>]
+    body = <span class="c-fn">f</span><span class="c-str">"Hello, {name}!\n"</span>.<span class="c-fn">encode</span>()
+    <span class="c-key">return</span> <span class="c-num">200</span>, <span class="c-str">"text/plain"</span>, body
+
+ROUTES = {
+    (<span class="c-str">"GET"</span>, <span class="c-str">"/"</span>):      handle_index,
+    (<span class="c-str">"GET"</span>, <span class="c-str">"/hello"</span>): handle_hello,
+}</code></pre>
+
+<p>Look at what the key is: <strong>both method and path</strong>. This is why a
+server can tell you "that path exists but you used the wrong method" — the
+distinction between <code>404 Not Found</code> and <code>405 Method Not
+Allowed</code> falls out of how you look the route up.</p>
+
+<h2>Step 4 · Correct status codes</h2>
+
+<p>A server that answers <code>200 OK</code> to everything is lying. HTTP defines
+a vocabulary of status codes for a reason: they tell the <em>client</em> what to
+do next. The ones that matter today
+(<a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-15">RFC 9110 §15</a>):</p>
+
+<table>
+  <thead>
+    <tr><th>Code</th><th>Meaning</th><th>When your server sends it</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>200</code></td><td>OK</td><td>The handler ran and produced a body.</td></tr>
+    <tr><td><code>400</code></td><td>Bad Request</td><td>The request line could not be parsed.</td></tr>
+    <tr><td><code>404</code></td><td>Not Found</td><td>No route matches the path at all.</td></tr>
+    <tr><td><code>405</code></td><td>Method Not Allowed</td><td>The path exists, but not for that method.</td></tr>
+  </tbody>
+</table>
+
+<div class="note note--warn">
+  <span class="note-label">405 has a requirement most beginners miss</span>
+  <p>When you send <code>405 Method Not Allowed</code>, you <strong>must</strong>
+  include an <code>Allow</code> header listing the methods that <em>are</em> allowed
+  for that path (<a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.1">RFC 9110
+  §10.2.1</a>). Without it, the client has no way to know what <em>would</em> work.
+  This is the kind of detail that separates a server that technically runs from a
+  server that a colleague can integrate against.</p>
+</div>
+
+<h2>Step 5 · Put it all together</h2>
+
+<p>Here is the complete server. It is still one file, still no imports beyond the
+standard library, but now it actually reads the request and answers correctly.</p>
+
+<p class="filename">server.py</p>
+<pre class="wide"><code><span class="c-key">import</span> socket
+<span class="c-key">from</span> urllib.parse <span class="c-key">import</span> urlparse, parse_qs
+
+<span class="c-com"># ── Parsing ─────────────────────────────────────────────</span>
+
+<span class="c-key">def</span> <span class="c-fn">parse_request_line</span>(raw):
+    request_line, _rest = raw.<span class="c-fn">split</span>(<span class="c-str">b"\r\n"</span>, <span class="c-num">1</span>)
+    parts = request_line.<span class="c-fn">decode</span>(<span class="c-str">"ascii"</span>).<span class="c-fn">split</span>(<span class="c-str">" "</span>)
+    <span class="c-key">if</span> <span class="c-fn">len</span>(parts) != <span class="c-num">3</span>:
+        <span class="c-key">raise</span> <span class="c-fn">ValueError</span>(<span class="c-str">f"Malformed request line: {request_line!r}"</span>)
+    <span class="c-key">return</span> parts[<span class="c-num">0</span>], parts[<span class="c-num">1</span>], parts[<span class="c-num">2</span>]
+
+<span class="c-key">def</span> <span class="c-fn">parse_headers</span>(raw):
+    _request_line, rest = raw.<span class="c-fn">split</span>(<span class="c-str">b"\r\n"</span>, <span class="c-num">1</span>)
+    header_block, _body = rest.<span class="c-fn">split</span>(<span class="c-str">b"\r\n\r\n"</span>, <span class="c-num">1</span>)
+    headers = {}
+    <span class="c-key">for</span> line <span class="c-key">in</span> header_block.<span class="c-fn">split</span>(<span class="c-str">b"\r\n"</span>):
+        name, _sep, value = line.<span class="c-fn">decode</span>(<span class="c-str">"ascii"</span>).<span class="c-fn">partition</span>(<span class="c-str">":"</span>)
+        headers[name.<span class="c-fn">strip</span>().<span class="c-fn">lower</span>()] = value.<span class="c-fn">strip</span>()
+    <span class="c-key">return</span> headers
+
+<span class="c-key">def</span> <span class="c-fn">parse_query</span>(target):
+    parsed = <span class="c-fn">urlparse</span>(target)
+    <span class="c-key">return</span> parsed.path, <span class="c-fn">parse_qs</span>(parsed.query)
+
+<span class="c-com"># ── Handlers ────────────────────────────────────────────</span>
+
+<span class="c-key">def</span> <span class="c-fn">handle_index</span>(method, path, query, headers):
+    <span class="c-key">return</span> <span class="c-num">200</span>, <span class="c-str">"text/plain"</span>, <span class="c-str">b"Welcome.\n"</span>
+
+<span class="c-key">def</span> <span class="c-fn">handle_hello</span>(method, path, query, headers):
+    name = query.<span class="c-fn">get</span>(<span class="c-str">"name"</span>, [<span class="c-str">"stranger"</span>])[<span class="c-num">0</span>]
+    body = <span class="c-fn">f</span><span class="c-str">"Hello, {name}!\n"</span>.<span class="c-fn">encode</span>()
+    <span class="c-key">return</span> <span class="c-num">200</span>, <span class="c-str">"text/plain"</span>, body
+
+ROUTES = {
+    (<span class="c-str">"GET"</span>, <span class="c-str">"/"</span>):      handle_index,
+    (<span class="c-str">"GET"</span>, <span class="c-str">"/hello"</span>): handle_hello,
+}
+
+STATUS_PHRASES = {<span class="c-num">200</span>: <span class="c-str">"OK"</span>, <span class="c-num">400</span>: <span class="c-str">"Bad Request"</span>,
+                  <span class="c-num">404</span>: <span class="c-str">"Not Found"</span>, <span class="c-num">405</span>: <span class="c-str">"Method Not Allowed"</span>}
+
+<span class="c-com"># ── Response helpers ─────────────────────────────────────</span>
+
+<span class="c-key">def</span> <span class="c-fn">build_response</span>(status, content_type, body, extra_headers=<span class="c-key">None</span>):
+    phrase = STATUS_PHRASES.<span class="c-fn">get</span>(status, <span class="c-str">"Unknown"</span>)
+    lines = [<span class="c-fn">f</span><span class="c-str">"HTTP/1.1 {status} {phrase}"</span>]
+    lines.<span class="c-fn">append</span>(<span class="c-fn">f</span><span class="c-str">"Content-Type: {content_type}; charset=utf-8"</span>)
+    lines.<span class="c-fn">append</span>(<span class="c-fn">f</span><span class="c-str">"Content-Length: {len(body)}"</span>)
+    lines.<span class="c-fn">append</span>(<span class="c-str">"Connection: close"</span>)
+    <span class="c-key">for</span> h <span class="c-key">in</span> (extra_headers <span class="c-key">or</span> []):
+        lines.<span class="c-fn">append</span>(h)
+    lines.<span class="c-fn">append</span>(<span class="c-str">""</span>)  <span class="c-com"># blank line</span>
+    head = <span class="c-str">"\r\n"</span>.<span class="c-fn">join</span>(lines).<span class="c-fn">encode</span>(<span class="c-str">"ascii"</span>) + <span class="c-str">b"\r\n"</span>
+    <span class="c-key">return</span> head + body
+
+<span class="c-key">def</span> <span class="c-fn">allowed_methods</span>(path):
+    <span class="c-str">"""Which methods are registered for this path?"""</span>
+    <span class="c-key">return</span> [m <span class="c-key">for</span> (m, p) <span class="c-key">in</span> ROUTES <span class="c-key">if</span> p == path]
+
+<span class="c-com"># ── Main loop ────────────────────────────────────────────</span>
+
+<span class="c-key">def</span> <span class="c-fn">serve</span>(host=<span class="c-str">"127.0.0.1"</span>, port=<span class="c-num">8080</span>):
+    listener = socket.<span class="c-fn">socket</span>(socket.AF_INET, socket.SOCK_STREAM)
+    listener.<span class="c-fn">setsockopt</span>(socket.SOL_SOCKET, socket.SO_REUSEADDR, <span class="c-num">1</span>)
+    listener.<span class="c-fn">bind</span>((host, port))
+    listener.<span class="c-fn">listen</span>(<span class="c-num">5</span>)
+    <span class="c-fn">print</span>(<span class="c-fn">f</span><span class="c-str">"listening on http://{host}:{port}"</span>)
+
+    <span class="c-key">while True</span>:
+        conn, addr = listener.<span class="c-fn">accept</span>()
+        <span class="c-key">with</span> conn:
+            raw = conn.<span class="c-fn">recv</span>(<span class="c-num">65536</span>)
+            <span class="c-key">if not</span> raw:
+                <span class="c-key">continue</span>
+
+            <span class="c-key">try</span>:
+                method, target, version = <span class="c-fn">parse_request_line</span>(raw)
+            <span class="c-key">except</span> <span class="c-fn">ValueError</span>:
+                conn.<span class="c-fn">sendall</span>(<span class="c-fn">build_response</span>(
+                    <span class="c-num">400</span>, <span class="c-str">"text/plain"</span>, <span class="c-str">b"Bad Request.\n"</span>))
+                <span class="c-key">continue</span>
+
+            path, query = <span class="c-fn">parse_query</span>(target)
+            headers = <span class="c-fn">parse_headers</span>(raw)
+
+            <span class="c-fn">print</span>(<span class="c-fn">f</span><span class="c-str">"{method} {path} from {addr[0]}"</span>)
+
+            handler = ROUTES.<span class="c-fn">get</span>((method, path))
+            <span class="c-key">if</span> handler:
+                status, ctype, body = <span class="c-fn">handler</span>(method, path, query, headers)
+                conn.<span class="c-fn">sendall</span>(<span class="c-fn">build_response</span>(status, ctype, body))
+            <span class="c-key">else</span>:
+                allowed = <span class="c-fn">allowed_methods</span>(path)
+                <span class="c-key">if</span> allowed:
+                    <span class="c-com"># Path exists, wrong method → 405</span>
+                    conn.<span class="c-fn">sendall</span>(<span class="c-fn">build_response</span>(
+                        <span class="c-num">405</span>, <span class="c-str">"text/plain"</span>,
+                        <span class="c-str">b"Method Not Allowed.\n"</span>,
+                        [<span class="c-fn">f</span><span class="c-str">"Allow: {', '.join(allowed)}"</span>]))
+                <span class="c-key">else</span>:
+                    <span class="c-com"># No route at all → 404</span>
+                    conn.<span class="c-fn">sendall</span>(<span class="c-fn">build_response</span>(
+                        <span class="c-num">404</span>, <span class="c-str">"text/plain"</span>,
+                        <span class="c-str">b"Not Found.\n"</span>))
+
+<span class="c-key">if</span> __name__ == <span class="c-str">"__main__"</span>:
+    <span class="c-fn">serve</span>()</code></pre>
+
+<h2>Practice · Run it and prove the status codes</h2>
+
+<p>Save the file, start the server, and run each of these in a second terminal.
+Read both the response <em>and</em> the server log — the pair is the full picture.</p>
+
+<ol class="steps">
+  <li><strong>200 OK:</strong>
+    <code>curl -i http://127.0.0.1:8080/hello?name=world</code>
+    <br>You should see <code>Hello, world!</code> and status <code>200</code>.</li>
+
+  <li><strong>404 Not Found:</strong>
+    <code>curl -i http://127.0.0.1:8080/nope</code>
+    <br>No route for <code>/nope</code>, so the server answers <code>404</code>.</li>
+
+  <li><strong>405 Method Not Allowed:</strong>
+    <code>curl -i -X POST http://127.0.0.1:8080/hello</code>
+    <br>The path exists but only for <code>GET</code>. Check that the response
+    includes an <code>Allow: GET</code> header — that is the RFC requirement.</li>
+
+  <li><strong>400 Bad Request:</strong>
+    <code>printf 'garbage\r\n\r\n' | nc 127.0.0.1 8080</code>
+    <br>Send malformed bytes. The parser fails and the server answers
+    <code>400</code> instead of crashing.</li>
+</ol>
+
+<div class="note note--ok">
+  <span class="note-label">What you just built</span>
+  <p>A server that parses an HTTP request from raw bytes, routes it through a
+  table, and answers with the correct status code, headers, and body. No
+  framework. One file, ~80 lines. This is the skeleton that every framework in
+  every language replaces — and now you know what that skeleton looks like.</p>
+</div>
+
+<h2>What a framework replaces</h2>
+
+<p>Look at how much of that file is <em>plumbing</em>: the socket setup, the
+<code>recv</code> loop, splitting <code>\r\n</code>, lower-casing header names,
+building the response string, getting <code>Content-Length</code> right. None of
+that changes between applications. If you wrote a second app on the same server,
+you would copy-paste all of it.</p>
+
+<p>That observation is the entire reason WSGI and ASGI exist. They define a
+<strong>contract</strong> — a calling convention — so that the plumbing lives in one
+program (the <em>server</em>) and your application logic lives in another (the
+<em>app</em>). The server does the parsing; your code receives a clean dictionary
+and returns a response. You never write <code>recv</code> again.</p>
+
+<h2>WSGI — the synchronous contract</h2>
+
+<p><a href="https://peps.python.org/pep-3333/">PEP 3333</a> (final since 2010)
+defines WSGI. The entire contract is one callable:</p>
+
+<pre class="wide"><code><span class="c-key">def</span> <span class="c-fn">application</span>(environ, start_response):
+    <span class="c-str">"""environ: a dict of request data. start_response: you call it to set
+    the status and headers. Return an iterable of body chunks."""</span>
+    start_response(<span class="c-str">"200 OK"</span>, [(<span class="c-str">"Content-Type"</span>, <span class="c-str">"text/plain"</span>)])
+    <span class="c-key">return</span> [<span class="c-str">b"Hello from WSGI.\n"</span>]</code></pre>
+
+<p>That is a complete WSGI application. The <strong>server</strong> (Gunicorn,
+uWSGI, mod_wsgi, or Python's own <code>wsgiref</code>) handles the socket, the
+parsing, the headers, the framing. Your function receives <code>environ</code> — a
+dictionary with keys like <code>REQUEST_METHOD</code>,
+<code>PATH_INFO</code>, <code>QUERY_STRING</code>, and every header prefixed with
+<code>HTTP_</code> — and calls <code>start_response</code> to set the status line and
+headers.</p>
+
+<p class="sidenote"><strong>Flask is a WSGI framework.</strong> When you write
+<code>@app.route("/hello")</code>, Flask builds the routing table and the handler
+calling convention on top of this contract. Django is the same — its
+<code>WSGIHandler</code> is the callable that Gunicorn invokes.</p>
+
+<p>You can run the application above right now, with zero installs, using the
+standard library:</p>
+
+<p class="filename">wsgi_demo.py</p>
+<pre class="wide"><code><span class="c-key">from</span> wsgiref.simple_server <span class="c-key">import</span> make_server
+
+<span class="c-key">def</span> <span class="c-fn">application</span>(environ, start_response):
+    method  = environ[<span class="c-str">"REQUEST_METHOD"</span>]
+    path    = environ[<span class="c-str">"PATH_INFO"</span>]
+    qs      = environ[<span class="c-str">"QUERY_STRING"</span>]
+    <span class="c-fn">print</span>(<span class="c-fn">f</span><span class="c-str">"{method} {path}?{qs}"</span>)
+
+    <span class="c-fn">start_response</span>(<span class="c-str">"200 OK"</span>, [(<span class="c-str">"Content-Type"</span>, <span class="c-str">"text/plain"</span>)])
+    <span class="c-key">return</span> [<span class="c-fn">f</span><span class="c-str">"You asked: {method} {path}?{qs}\n"</span>.<span class="c-fn">encode</span>()]
+
+server = <span class="c-fn">make_server</span>(<span class="c-str">"127.0.0.1"</span>, <span class="c-num">9000</span>, application)
+<span class="c-fn">print</span>(<span class="c-str">"WSGI listening on http://127.0.0.1:9000"</span>)
+server.<span class="c-fn">serve_forever</span>()</code></pre>
+
+<pre><code>$ python3 wsgi_demo.py
+$ curl http://127.0.0.1:9000/hello?name=world</code></pre>
+
+<div class="note">
+  <span class="note-label">Compare to your socket server</span>
+  <p>The WSGI version has no <code>socket</code> import, no <code>recv</code>,
+  no header splitting, no <code>Content-Length</code> arithmetic. That is exactly
+  the plumbing the contract is designed to absorb. What you wrote by hand in
+  <code>server.py</code> is what <code>wsgiref.simple_server</code> now does for
+  you — and Gunicorn does it with worker processes, graceful restarts, and proper
+  error handling.</p>
+</div>
+
+<h2>ASGI — the async contract</h2>
+
+<p>WSGI's contract is synchronous: your function runs, returns, done.
+That means it cannot handle WebSockets (which are long-lived connections) or
+HTTP/2 server push. <a href="https://asgi.readthedocs.io/en/latest/specs/main.html">ASGI</a>
+(v3.0, 2019) replaces it with an async callable:</p>
+
+<pre class="wide"><code><span class="c-key">async def</span> <span class="c-fn">application</span>(scope, receive, send):
+    <span class="c-str">"""scope: a dict describing the connection.
+    receive: await it to get the next event from the client.
+    send:    await it to push an event back."""</span>
+    <span class="c-key">assert</span> scope[<span class="c-str">"type"</span>] == <span class="c-str">"http"</span>
+    body = <span class="c-str">b"Hello from ASGI.\n"</span>
+    <span class="c-key">await</span> <span class="c-fn">send</span>({
+        <span class="c-str">"type"</span>: <span class="c-str">"http.response.start"</span>,
+        <span class="c-str">"status"</span>: <span class="c-num">200</span>,
+        <span class="c-str">"headers"</span>: [
+            [<span class="c-str">b"content-type"</span>, <span class="c-str">b"text/plain"</span>],
+        ],
+    })
+    <span class="c-key">await</span> <span class="c-fn">send</span>({
+        <span class="c-str">"type"</span>: <span class="c-str">"http.response.body"</span>,
+        <span class="c-str">"body"</span>: body,
+    })</code></pre>
+
+<p>Three differences from WSGI:</p>
+
+<ul>
+  <li><code>async def</code> — the function is a coroutine, run inside an event
+  loop (asyncio).</li>
+  <li><strong>Events, not return values.</strong> Instead of returning a body
+  iterable, you <code>await send()</code> with structured dicts. This allows
+  streaming, WebSockets, and anything that is not a single request → single
+  response.</li>
+  <li><code>scope["type"]</code> tells you the protocol — <code>"http"</code>,
+  <code>"websocket"</code>, or <code>"lifespan"</code>. One callable handles
+  all of them.</li>
+</ul>
+
+<div class="note note--key">
+  <span class="note-label">Where FastAPI sits</span>
+  <p><strong>FastAPI is an ASGI framework.</strong>
+  <a href="https://www.uvicorn.org/">Uvicorn</a> is the ASGI server — it does the
+  socket work. FastAPI is the application — it builds a routing table, validates
+  input with Pydantic, and calls your <code>@app.get("/hello")</code> function.
+  The <code>scope → receive → send</code> contract is the seam between them. When
+  you run <code>uvicorn main:app</code>, you are telling Uvicorn "call this ASGI
+  callable for every connection." That is the entire relationship.</p>
+</div>
+
+<h2>The map so far</h2>
+
+<p>Two lessons in, here is where every piece fits:</p>
+
+<pre class="wide"><code><span class="c-com">    ┌─────────────────────────────────────────────────────────────┐
+    │  Your application code    (@app.get, handlers, models)     │
+    ├─────────────────────────────────────────────────────────────┤
+    │  Framework (FastAPI/Flask/Django)                           │
+    │    routing, validation, middleware, error handling          │
+    ├─────────────────────────────────────────────────────────────┤
+    │  Gateway contract: WSGI or ASGI                            │
+    │    application(environ, start_response)   ← Lesson 2       │
+    │    application(scope, receive, send)                        │
+    ├─────────────────────────────────────────────────────────────┤
+    │  Server (Gunicorn / Uvicorn / wsgiref)                     │
+    │    socket, recv, parse, Content-Length     ← Lesson 2       │
+    ├─────────────────────────────────────────────────────────────┤
+    │  TCP / the operating system                ← Lesson 1       │
+    └─────────────────────────────────────────────────────────────┘</span></code></pre>
+
+<p>Lesson 3 fills in the top layer: FastAPI. By then you will know exactly
+which layer is doing which work, and you will be able to say that in an
+interview.</p>
+
+<h2>Check yourself</h2>
+
+<p>Close the code above. Answer from memory — getting one wrong now is worth
+more than getting all right by scrolling up.</p>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "Your server receives <code>POST /hello</code> but only <code>GET /hello</code> is in the routing table. What status code should it return?",
+    "answer": "405",
+    "accept": ["405 method not allowed", "method not allowed"],
+    "placeholder": "status code",
+    "why": "The path exists but not for that method. 404 would be wrong — the path is valid. And 405 must include an Allow header listing the methods that are accepted." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why does a 405 response require an <code>Allow</code> header?",
+    "options": ["So the client knows which methods work", "To prevent caching of the error", "Because the RFC requires a body on 4xx responses", "To trigger a redirect to the correct method"],
+    "answer": 0,
+    "why": "RFC 9110 §10.2.1: the Allow header tells the client what methods the target resource supports. Without it, the client cannot correct the request." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "HTTP header names are:",
+    "options": ["Case-insensitive", "Case-sensitive", "Case-sensitive for request headers, insensitive for response headers", "Only uppercase by convention"],
+    "answer": 0,
+    "why": "RFC 9110 §5.1 is explicit: field names are case-insensitive. That is why every server normalises them on arrival (lower-case, upper-case, whatever — pick once)." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "In WSGI (PEP 3333), what are the two arguments passed to the application callable?",
+    "answer": "environ, start_response",
+    "accept": ["environ and start_response", "environ start_response", "(environ, start_response)"],
+    "placeholder": "two arguments",
+    "why": "environ is a dict with the parsed request (REQUEST_METHOD, PATH_INFO, headers as HTTP_* keys). start_response is a callable you invoke to set the status and headers before returning the body." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "What is the relationship between Uvicorn and FastAPI?",
+    "options": [
+      "Uvicorn is the server; FastAPI is the ASGI application it calls",
+      "FastAPI contains Uvicorn as a submodule",
+      "They are alternative frameworks for the same task",
+      "Uvicorn replaces WSGI; FastAPI replaces ASGI"
+    ],
+    "answer": 0,
+    "why": "Uvicorn handles the socket and the HTTP parsing (the server layer). FastAPI is an ASGI-compliant callable (the application layer). 'uvicorn main:app' means: call this ASGI app for every connection." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "Without scrolling: what is WSGI? Say it in one sentence.",
+    "answer": "WSGI is a standard calling convention (PEP 3333) between a Python web server and a Python application: the server calls application(environ, start_response) for each request, passing the parsed request as a dict and receiving back an iterable of body chunks.",
+    "why": "If you can say this cleanly, you understand exactly what Flask and Django sit on top of — and what FastAPI replaced it with." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why can WSGI not handle WebSockets?",
+    "options": [
+      "Its contract is one request in, one response out — no long-lived two-way communication",
+      "It lacks an async keyword",
+      "It was deprecated before WebSockets were invented",
+      "WebSockets use UDP, which WSGI does not support"
+    ],
+    "answer": 0,
+    "why": "WSGI models exactly one pattern: receive a complete request, return a complete response, done. WebSockets are long-lived bidirectional connections that send and receive messages over time — that does not fit the call-and-return shape." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<h2>Read this next</h2>
+
+<div class="source">
+  <h4>Primary sources</h4>
+  <p><a href="https://peps.python.org/pep-3333/">PEP 3333 — Python Web Server
+  Gateway Interface v1.0.1</a></p>
+  <p>The full WSGI spec. Read the "Specification Overview" and "The
+  Application/Framework Side" sections — they are short and the code examples are
+  runnable. Skip the thread-support and middleware sections for now; they matter
+  later.</p>
+
+  <p><a href="https://asgi.readthedocs.io/en/latest/specs/main.html">ASGI
+  Specification v3.0</a></p>
+  <p>The async successor. Read "Overview" and "Applications". The key insight:
+  ASGI generalises to any protocol (HTTP, WebSocket, lifespan events) via the
+  <code>scope["type"]</code> dispatch.</p>
+
+  <p><a href="https://www.rfc-editor.org/rfc/rfc9110.html">RFC 9110 — HTTP
+  Semantics</a> §9 (Methods), §10.2.1 (Allow), §15 (Status Codes)</p>
+  <p>The normative reference for "what does 405 mean and what must the server
+  include?" These sections are readable and settle arguments that blog posts
+  leave ambiguous.</p>
+
+  <p><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Messages">MDN
+  — HTTP messages</a></p>
+  <p>The same reference from Lesson 1, now with more depth: request-target forms,
+  HTTP/2 pseudo-headers, and body framing. Fifteen minutes.</p>
+</div>
+
+<h2>Where this goes</h2>
+
+<p>You now know every layer between the wire and your application code.
+<strong>Lesson 3 introduces FastAPI</strong> — the framework this
+curriculum anchors on. You will build a real JSON API, and at every step you will
+be able to point at which layer is doing which work. That ability — to explain
+the stack, not just use it — is the difference between a junior developer who
+can build things and a junior developer who can debug them when they break.</p>
+
+<p class="sidenote"><strong>Keep <code>server.py</code>.</strong> It is now the
+"before" half of a from-scratch HTTP server with parsing, routing, and correct
+status codes. After Lesson 3 adds the "after" (FastAPI), the pair becomes a
+portfolio piece that demonstrates you understand what a framework does — far
+more distinctive than another todo app.</p>
+
+<div class="ask">
+  <p><strong>Ask me things.</strong> If the routing logic feels brittle, if you
+  want to know how Gunicorn manages workers, if the WSGI environ dict has a key
+  you don't understand, or if you want to see what Uvicorn's ASGI handshake
+  actually looks like — ask. Pasting the exact error or the exact curl output is
+  the fastest route to an answer.</p>
+  <p>Stuck more than thirty minutes?
+  <a href="https://www.pythondiscord.com/">Python Discord</a> is staffed and
+  beginner-safe. Full list in <a href="../RESOURCES.md">RESOURCES.md</a>.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0001-a-server-is-bytes-on-a-socket.html">← Lesson 01: Bytes on a socket</a>
+  <a href="0003-fastapi.html">Lesson 03: FastAPI →</a>
+</nav>
+
+</main>
+</body>
+</html>

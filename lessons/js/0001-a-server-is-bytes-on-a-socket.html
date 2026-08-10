@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JS Lesson 1 · A Server Is Bytes On A Socket</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../../assets/course.css">
+<link rel="stylesheet" href="../../assets/quiz.css">
+<script src="../../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · JS Lesson 01 ·
+    <a href="../../MISSION.md">Mission</a> ·
+    <a href="../../RESOURCES.md">Resources</a> ·
+    <a href="../../reference/http-message-anatomy.html">Reference: HTTP anatomy</a>
+  </p>
+  <h1>A Server Is Bytes On A Socket (JS)
+    <span class="sub">Node.js net module, raw sockets, no framework, and HTTP laid bare.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">Before you write JavaScript for the web, you must know what a server
+actually does. It is not an abstract cloud function, nor is it Express or Fastify.
+A server is a program that runs on a physical machine. It listens on a TCP port,
+reads bytes from a socket, and writes bytes back. Today you write that program by hand in JavaScript.</p>
+
+<p class="sidenote">In this lesson, you write a TCP client that fetches a webpage.
+You also write a TCP server that answers HTTP requests using Node.js's
+<code>net</code> module with zero dependencies and no framework.</p>
+<h2>The one idea</h2>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>An HTTP server is a <strong>TCP server</strong> that reads bytes representing
+  an HTTP request from a socket, and writes back bytes representing a valid HTTP response
+  before closing the connection.</p>
+</div>
+
+<h2>Step 1 · Be the client</h2>
+
+<p>A web browser is an HTTP client. It opens a socket to an IP address on port 80,
+writes a string of bytes, and reads the response. You can do the same task
+with Node.js's built-in <code>net</code> module.</p>
+<p>Create a directory for your code:</p>
+<pre class="wide"><code>$ mkdir lesson_1_js && cd lesson_1_js</code></pre>
+
+<p>Create <code>client.js</code> with this raw client:</p>
+
+<p class="filename">client.js</p>
+<pre class="wide"><code><span class="c-key">const</span> net = <span class="c-fn">require</span>(<span class="c-str">'net'</span>);
+
+<span class="c-com">// Open a TCP socket to example.com on port 80 (HTTP)</span>
+<span class="c-key">const</span> client = net.<span class="c-fn">createConnection</span>({ host: <span class="c-str">'example.com'</span>, port: <span class="c-num">80</span> }, () => {
+    <span class="c-fn">console</span>.<span class="c-fn">log</span>(<span class="c-str">'Connected to server!'</span>);
+    
+    <span class="c-com">// Write the HTTP request string. Lines must end with \r\n</span>
+    client.<span class="c-fn">write</span>(
+        <span class="c-str">'GET / HTTP/1.1\r\n'</span> +
+        <span class="c-str">'Host: example.com\r\n'</span> +
+        <span class="c-str">'Connection: close\r\n'</span> +
+        <span class="c-str">'\r\n'</span>
+    );
+});
+
+<span class="c-com">// Listen for bytes returning from the socket</span>
+client.<span class="c-fn">on</span>(<span class="c-str">'data'</span>, (data) => {
+    <span class="c-com">// data is a Buffer; toString() decodes it as UTF-8</span>
+    <span class="c-fn">console</span>.<span class="c-fn">log</span>(data.<span class="c-fn">toString</span>());
+});
+
+client.<span class="c-fn">on</span>(<span class="c-str">'end'</span>, () => {
+    <span class="c-fn">console</span>.<span class="c-fn">log</span>(<span class="c-str">'Connection closed by server.'</span>);
+});</code></pre>
+
+<p>Run it:</p>
+<pre class="wide"><code>$ node client.js</code></pre>
+
+<p>You should see <code>HTTP/1.1 200 OK</code>, headers like <code>Content-Type: text/html</code>,
+a blank line (<code>\r\n\r\n</code>), and the HTML body. You just performed HTTP by hand.</p>
+
+<h2>Step 2 · Be the server</h2>
+
+<p>Now you write the server side. The server listens on local port 8080.
+It accepts TCP connections, prints client data, and writes back an HTTP response.</p>
+<p class="filename">server.js</p>
+<pre class="wide"><code><span class="c-key">const</span> net = <span class="c-fn">require</span>(<span class="c-str">'net'</span>);
+
+<span class="c-key">const</span> server = net.<span class="c-fn">createServer</span>((socket) => {
+    <span class="c-fn">console</span>.<span class="c-fn">log</span>(<span class="c-str">'Client connected from:'</span>, socket.remoteAddress, socket.remotePort);
+
+    <span class="c-com">// Triggered when the client writes bytes to the socket</span>
+    socket.<span class="c-fn">on</span>(<span class="c-str">'data'</span>, (data) => {
+        <span class="c-fn">console</span>.<span class="c-fn">log</span>(<span class="c-str">'--- RECEIVED REQUEST ---'</span>);
+        <span class="c-fn">console</span>.<span class="c-fn">log</span>(data.<span class="c-fn">toString</span>());
+
+        <span class="c-com">// Construct a valid HTTP/1.1 response</span>
+        <span class="c-key">const</span> body = <span class="c-str">'Hello, JS world!\n'</span>;
+        <span class="c-key">const</span> response =
+            <span class="c-str">'HTTP/1.1 200 OK\r\n'</span> +
+            <span class="c-str">'Content-Type: text/plain; charset=utf-8\r\n'</span> +
+            <span class="c-str">`Content-Length: ${Buffer.byteLength(body)}\r\n`</span> +
+            <span class="c-str">'Connection: close\r\n'</span> +
+            <span class="c-str">'\r\n'</span> +
+            body;
+
+        <span class="c-com">// Write bytes back to the socket and close it</span>
+        socket.<span class="c-fn">write</span>(response, () => {
+            socket.<span class="c-fn">end</span>();
+        });
+    });
+});
+
+server.listen(<span class="c-num">8080</span>, <span class="c-str">'127.0.0.1'</span>, () => {
+    <span class="c-fn">console</span>.<span class="c-fn">log</span>(<span class="c-str">'Listening on http://127.0.0.1:8080'</span>);
+});</code></pre>
+
+<p>Start your server:</p>
+<pre class="wide"><code>$ node server.js</code></pre>
+
+<p>In a second terminal, send a request using <code>curl</code>:</p>
+<pre class="wide"><code>$ curl -i http://127.0.0.1:8080</code></pre>
+
+<p>Look at your server logs. The printed request is plain text — the exact string format you wrote in <code>client.js</code>. The browser or curl only wrote text bytes onto a TCP socket.</p>
+
+<div class="note">
+  <span class="note-label">Node.js Buffers vs Strings</span>
+  <p>In Node.js, network operations use <code>Buffer</code> instances (raw chunks of memory) rather than plain JavaScript strings. Call <code>Buffer.byteLength(body)</code> to get the count of <strong>bytes</strong>, not characters. In UTF-8, a character like <code>é</code> takes 2 bytes, but <code>"é".length</code> returns <code>1</code>. If you send character length in <code>Content-Length</code> instead of byte length, the client truncates the response or hangs.</p>
+</div>
+
+<h2>Step 3 · Break it on purpose</h2>
+
+<p>To understand HTTP framing, you must break it.</p>
+
+<h3>Experiment A · Delete the blank line</h3>
+<p>In <code>server.js</code>, change the response to remove the blank line between headers and body: replace <code>'\r\n\r\n' + body</code> with <code>'\r\n' + body</code>. Restart the server and run <code>curl -i http://127.0.0.1:8080</code>.</p>
+<p class="sidenote">Curl fails with an error like <code>curl: (56) Received HTTP/0.9 when not allowed</code> or <code>malformed response</code>. Because HTTP uses a blank line (<code>\r\n\r\n</code>) to separate headers from the body, the client parses body text as a header name and fails.</p>
+
+<h3>Experiment B · Delete Content-Length</h3>
+<p>Restore the blank line, but remove the <code>Content-Length</code> header. In <code>server.js</code>, comment out the <code>Content-Length</code> line, restart the server, and send a request with curl. What happens?</p>
+<p class="sidenote">Curl works because <code>socket.end()</code> closes the socket. Socket closure is the third legal HTTP framing strategy. However, if you keep the socket open for multiple requests, the client hangs forever. It waits for bytes that do not arrive because it does not know where the body ends.</p>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "What character sequence separates the HTTP headers from the request/response body?",
+    "options": ["\\n\\n", "\\r\\n\\r\\n", "\\r\\n", "\\t\\t"],
+    "answer": 1,
+    "why": "HTTP/1.1 uses a blank line consisting of a carriage return and line feed (\\r\\n\\r\\n) to delimit where headers end and the body begins. Without it, parsing fails." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "In Node.js net module, what class represents the raw bytes received from socket data events?",
+    "answer": "Buffer",
+    "accept": ["Buffer", "buffer"],
+    "placeholder": "class name",
+    "why": "Node.js represents raw binary data using the Buffer class. Sockets emit Buffer instances on the 'data' event." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why is Buffer.byteLength() preferred over string.length for Content-Length headers?",
+    "options": [
+      "JavaScript strings are not supported in socket.write",
+      "Content-Length must count bytes, and multi-byte UTF-8 characters occupy more bytes than characters",
+      "Buffer.byteLength is faster to compute",
+      "string.length is deprecated in Node.js"
+    ],
+    "answer": 1,
+    "why": "Content-Length defines the number of octets (bytes) in the message body. Multi-byte characters (like emoji or accented letters) take up more bytes than characters, causing truncations if string.length is used." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "What happens if a server sends a body, keeps the connection open, and omits the Content-Length header?",
+    "answer": "The client will hang indefinitely. Because the socket remains open and there is no Content-Length (or chunked encoding) header, the client has no framing boundary to know when the message body has fully arrived.",
+    "why": "This is a framing bug. The client has no way to determine the end of the payload unless one of the three framing rules (Content-Length, Transfer-Encoding: chunked, or socket close) is met." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<h2>Read this next</h2>
+
+<div class="source">
+  <h4>Primary sources</h4>
+  <p><a href="https://nodejs.org/api/net.html">Node.js Net Module Documentation</a></p>
+  <p>The standard reference for Node.js network programming. Read about <code>net.createServer</code> and the <code>net.Socket</code> class events ('data', 'end', 'close').</p>
+
+  <p><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Messages">MDN — HTTP Messages</a></p>
+  <p>Visual map of request and response anatomy. Pay attention to the start-line, headers block, and blank line delimiter.</p>
+</div>
+
+<nav class="lesson-nav">
+  <span>← no previous lesson</span>
+  <a href="0002-a-server-without-a-framework.html">JS Lesson 02: A Server Without A Framework →</a>
+</nav>
+
+</main>
+</body>
+</html>

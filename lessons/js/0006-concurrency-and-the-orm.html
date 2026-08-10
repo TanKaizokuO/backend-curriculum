@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JS Lesson 6 · Concurrency + the ORM</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../../assets/course.css">
+<link rel="stylesheet" href="../../assets/quiz.css">
+<script src="../../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · JS Lesson 06 ·
+    <a href="../../MISSION.md">Mission</a> ·
+    <a href="../../RESOURCES.md">Resources</a> ·
+    <a href="0005-why-is-this-slow.html">← JS Lesson 05</a>
+  </p>
+  <h1>Concurrency + the ORM (JS)
+    <span class="sub">A transaction protects you from a crash, not from another transaction.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">In JS Lesson 5, you measured query execution times using <code>EXPLAIN</code> and fixed sequential scans. Today you handle concurrent database updates in Node.js. Multiple web server instances or concurrent async handlers can read and overwrite the same database row at the same time. You will observe lost updates, apply three SQL concurrency patterns, and evaluate how Object-Relational Mapping (ORM) tools handle data consistency.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>Concurrent read-modify-write operations overwrite data silently. You must use single atomic SQL statements, explicit row locks, or isolation retry loops to prevent data loss.</p>
+</div>
+
+<h2>Step 0 · Add the visit counter column</h2>
+<p>Apply migration <code>0004_add_visit_count.sql</code> to add a <code>visit_count</code> column to the <code>bookmarks</code> table:</p>
+
+<pre class="wide"><code><span class="c-key">ALTER TABLE</span> bookmarks <span class="c-key">ADD COLUMN</span> visit_count <span class="c-key">INT NOT NULL DEFAULT</span> 0;</code></pre>
+
+<h2>Step 1 · Observe the lost update defect</h2>
+<p>When two asynchronous handlers read counter value <code>0</code> simultaneously, both calculate <code>0 + 1 = 1</code> in JavaScript memory. Both write <code>1</code> back to PostgreSQL. Two visits occurred, but the stored count increases by only 1.</p>
+
+<p class="filename">Naive read-modify-write in Node.js</p>
+<pre class="wide"><code><span class="c-key">const</span> { rows } = <span class="c-key">await</span> pool.<span class="c-fn">query</span>(<span class="c-str">'SELECT visit_count FROM bookmarks WHERE id = $1'</span>, [id]);
+<span class="c-key">const</span> count = parseInt(rows[<span class="c-num">0</span>].visit_count, <span class="c-num">10</span>);
+<span class="c-key">await</span> pool.<span class="c-fn">query</span>(<span class="c-str">'UPDATE bookmarks SET visit_count = $1 WHERE id = $2'</span>, [count + <span class="c-num">1</span>, id]);</code></pre>
+
+<p>Run <code>lost_update.js</code> with 20 workers executing 10 increments each (200 total increments):</p>
+
+<pre class="wide"><code>$ node lost_update.js
+Running concurrency benchmarks (20 workers x 10 increments = 200 total)...
+
+Strategy: 1. Naive (Read-Modify-Write in JS)
+  Expected count : 200
+  Final count    : 13
+  Lost updates   : 187
+  Elapsed time   : 141 ms</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">Silent data corruption</span>
+  <p>The application completed with exit code 0. PostgreSQL raised no errors. However, 187 updates were lost due to concurrent state overwrites.</p>
+</div>
+
+<h2>Step 2 · Fix 1 — Single atomic SQL statement</h2>
+<p>Perform calculation directly inside PostgreSQL using a single atomic update statement:</p>
+
+<pre class="wide"><code><span class="c-key">UPDATE</span> bookmarks <span class="c-key">SET</span> visit_count = visit_count + 1 <span class="c-key">WHERE</span> id = $1 <span class="c-key">RETURNING</span> visit_count;</code></pre>
+
+<p>PostgreSQL locks the targeted row during statement execution, preventing concurrent writes from overwriting intermediate values:</p>
+
+<pre class="wide"><code>Strategy: 2. Single Statement (Atomic UPDATE)
+  Expected count : 200
+  Final count    : 200
+  Lost updates   : 0
+  Elapsed time   : 121 ms</code></pre>
+
+<h2>Step 3 · Fix 2 — Pessimistic locking (SELECT FOR UPDATE)</h2>
+<p>If your application must execute business logic before saving, lock the row during selection using <code>FOR UPDATE</code>:</p>
+
+<pre class="wide"><code><span class="c-key">await</span> client.<span class="c-fn">query</span>(<span class="c-str">'BEGIN'</span>);
+<span class="c-key">const</span> { rows } = <span class="c-key">await</span> client.<span class="c-fn">query</span>(<span class="c-str">'SELECT visit_count FROM bookmarks WHERE id = $1 FOR UPDATE'</span>, [id]);
+<span class="c-key">const</span> count = parseInt(rows[<span class="c-num">0</span>].visit_count, <span class="c-num">10</span>);
+<span class="c-key">await</span> client.<span class="c-fn">query</span>(<span class="c-str">'UPDATE bookmarks SET visit_count = $1 WHERE id = $2'</span>, [count + <span class="c-num">1</span>, id]);
+<span class="c-key">await</span> client.<span class="c-fn">query</span>(<span class="c-str">'COMMIT'</span>);</code></pre>
+
+<pre class="wide"><code>Strategy: 3. SELECT FOR UPDATE (Pessimistic Lock)
+  Expected count : 200
+  Final count    : 200
+  Lost updates   : 0
+  Elapsed time   : 225 ms</code></pre>
+
+<h2>Step 4 · Fix 3 — Optimistic concurrency (REPEATABLE READ + retry loop)</h2>
+<p>Set isolation level to <code>REPEATABLE READ</code>. When concurrent modifications occur, PostgreSQL aborts conflicting transactions with error code <code>40001</code> (<code>serialization_failure</code>). Your Node.js code catches this error and retries:</p>
+
+<pre class="wide"><code>Strategy: 4. REPEATABLE READ (Optimistic Retry)
+  Expected count : 200
+  Final count    : 200
+  Lost updates   : 0
+  Elapsed time   : 568 ms
+  Total retries  : 600</code></pre>
+
+<h2>Step 5 · Evaluate ORM abstractions</h2>
+<p>Object-Relational Mapping libraries map database rows to JavaScript objects. Changing an object property (e.g. <code>bookmark.visitCount += 1</code>) and calling <code>save()</code> recreates the naive read-modify-write defect unless atomic updates or locking are explicitly specified.</p>
+
+<section class="quiz">
+  <h3>Check your understanding</h3>
+
+  <div class="quiz-question" data-answer="1">
+    <p class="question">1. Why does a standard database transaction not prevent lost updates in read-modify-write operations?</p>
+    <div class="options">
+      <label><input type="radio" name="q1" value="0"> Transactions only execute DDL commands like CREATE TABLE.</label>
+      <label><input type="radio" name="q1" value="1"> Under READ COMMITTED isolation, transactions read committed values independently, allowing subsequent writes to overwrite concurrent updates.</label>
+      <label><input type="radio" name="q1" value="2"> PostgreSQL disables table indexes during active transactions.</label>
+      <label><input type="radio" name="q1" value="3"> Express cancels open transactions after 100 milliseconds.</label>
+    </div>
+    <div class="explanation">
+      <p>Correct! READ COMMITTED guarantees queries see committed data, but does not block other transactions from modifying rows between your SELECT and UPDATE statements.</p>
+    </div>
+  </div>
+
+  <div class="quiz-question" data-answer="0">
+    <p class="question">2. Which approach fixes the lost update problem with minimum execution latency?</p>
+    <div class="options">
+      <label><input type="radio" name="q2" value="0"> Single atomic SQL statement (UPDATE ... SET x = x + 1).</label>
+      <label><input type="radio" name="q2" value="1"> Application-level array locks in Node.js memory.</label>
+      <label><input type="radio" name="q2" value="2"> REPEATABLE READ isolation without retry handlers.</label>
+      <label><input type="radio" name="q2" value="3"> Disabling connection pooling in pg module.</label>
+    </div>
+    <div class="explanation">
+      <p>Correct! Atomic updates process modifications entirely inside PostgreSQL in a single database round-trip without locks or retries.</p>
+    </div>
+  </div>
+
+  <div class="quiz-score"></div>
+</section>
+
+<h2>Read this next</h2>
+<div class="source">
+  <h4>Primary sources</h4>
+  <p><a href="https://www.postgresql.org/docs/current/transaction-iso.html">PostgreSQL Documentation — Transaction Isolation</a></p>
+  <p>Official PostgreSQL guide on transaction isolation levels, read phenomena, and serialization errors.</p>
+  <p><a href="https://www.postgresql.org/docs/current/explicit-locking.html">PostgreSQL Documentation — Explicit Locking</a></p>
+  <p>Reference guide on row-level locks, SELECT FOR UPDATE, and deadlock prevention.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0005-why-is-this-slow.html">← JS Lesson 05: Why is this slow?</a>
+  <a href="0007-deployment.html">JS Lesson 07: Deployment →</a>
+</nav>
+
+</main>
+</body>
+</html>

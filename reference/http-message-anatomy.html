@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference · HTTP Message Anatomy</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Reference ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../lessons/0001-a-server-is-bytes-on-a-socket.html">Lesson 01</a>
+  </p>
+  <h1>HTTP Message Anatomy
+    <span class="sub">Compressed reference. Normative claims cite
+    <a href="https://www.rfc-editor.org/rfc/rfc9110.html">RFC 9110</a> (HTTP Semantics,
+    June 2022, STD 97) by section.</span>
+  </h1>
+</header>
+
+<main>
+
+<h2>Message shape</h2>
+
+<p>Request and response are the same four-part structure. Only the first line differs.
+Every line terminates with <code>\r\n</code>.</p>
+
+<pre class="wide"><code><span class="c-com">REQUEST                              RESPONSE</span>
+GET /users/7?full=1 HTTP/1.1         HTTP/1.1 200 OK
+<span class="c-com">└method └target      └version        └version └code └reason</span>
+
+Host: api.example.com                Content-Type: application/json
+Accept: application/json             Content-Length: 27
+Authorization: Bearer eyJhbG...      Cache-Control: no-store
+<span class="c-com">└─ headers ────────────────┘         └─ headers ──────────────┘</span>
+                                     <span class="c-com">← blank line: THE separator →</span>
+
+<span class="c-com">└─ body (optional) ────────┘</span>        {"id": 7, "name": "Ada"}</code></pre>
+
+<div class="note note--key">
+  <span class="note-label">Three rules that cause most bugs</span>
+  <ul style="margin-bottom:0">
+    <li><strong>Line endings are CRLF</strong> (<code>\r\n</code>), never bare <code>\n</code>.</li>
+    <li><strong>The blank line ends the headers.</strong> Omit it and the client parses your body as headers.</li>
+    <li><strong>The body needs framing</strong> — see below. Omit it and the client hangs.</li>
+  </ul>
+</div>
+
+<h2>Body framing — the three legal options</h2>
+
+<p>TCP is a byte stream with no message boundaries. The receiver must be told where the
+body stops. There are exactly three ways, and you must use one.</p>
+
+<table>
+  <thead><tr><th>Mechanism</th><th>Looks like</th><th>Use when</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>Content-Length</code></td>
+      <td><code>Content-Length: 27</code></td>
+      <td>You know the size up front. Almost every JSON API response.</td>
+    </tr>
+    <tr>
+      <td>Chunked encoding</td>
+      <td><code>Transfer-Encoding: chunked</code>, then hex-length-prefixed chunks</td>
+      <td>Streaming, or the size is unknown when headers are sent.</td>
+    </tr>
+    <tr>
+      <td>Connection close</td>
+      <td><code>Connection: close</code>, then hang up</td>
+      <td>Legacy fallback. Responses only — a request cannot use it.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p class="sidenote">Give none of the three and the client blocks forever with no error.
+"The request just hangs" is nearly always a framing bug. Note the asymmetry: a client
+cannot signal end-of-body by closing, since it still needs the socket to read the reply —
+which is why an unframed request body gets <code>411 Length Required</code>.</p>
+
+<h2>Methods</h2>
+
+<p><strong>Safe</strong> = read-only in intent; automated tools may call it freely
+(§9.2.1). <strong>Idempotent</strong> = N identical requests have the same effect as one,
+so a client or proxy may retry after a dropped connection (§9.2.2).</p>
+
+<table>
+  <thead><tr><th>Method</th><th>Safe</th><th>Idempotent</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET</code></td><td>yes</td><td>yes</td><td>Retrieve the resource.</td></tr>
+    <tr><td><code>HEAD</code></td><td>yes</td><td>yes</td><td>Like GET, headers only, no body.</td></tr>
+    <tr><td><code>OPTIONS</code></td><td>yes</td><td>yes</td><td>Ask what is permitted. The CORS preflight.</td></tr>
+    <tr><td><code>TRACE</code></td><td>yes</td><td>yes</td><td>Loopback diagnostic. Usually disabled.</td></tr>
+    <tr><td><code>PUT</code></td><td>no</td><td><strong>yes</strong></td><td>Replace the resource entirely with the body.</td></tr>
+    <tr><td><code>DELETE</code></td><td>no</td><td><strong>yes</strong></td><td>Remove the resource.</td></tr>
+    <tr><td><code>POST</code></td><td>no</td><td>no</td><td>Process the body per resource-specific semantics.</td></tr>
+    <tr><td><code>PATCH</code></td><td>no</td><td>no</td><td>Partial modification. Defined in RFC 5789, not 9110.</td></tr>
+    <tr><td><code>CONNECT</code></td><td>no</td><td>no</td><td>Open a tunnel. How HTTPS traverses a proxy.</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <span class="note-label">Interview trap</span>
+  <p><strong>Idempotent is not the same as "no side effects."</strong> <code>DELETE</code>
+  changes the world, yet is idempotent: after the first call the resource is gone, and
+  repeats leave it gone. <code>POST /orders</code> is not, because each call creates
+  another order. This is exactly why a proxy <em>must not</em> auto-retry a POST (§9.2.2)
+  and why "retry on timeout" is safe for PUT but a duplicate-charge bug for POST.</p>
+</div>
+
+<h2>Status codes</h2>
+
+<p>Five classes (§15). The first digit is the whole contract — a client that understands
+only the class can still behave correctly.</p>
+
+<table>
+  <thead><tr><th>Class</th><th>Means</th><th>Whose fault</th></tr></thead>
+  <tbody>
+    <tr><td><code>1xx</code></td><td>Informational — interim, keep waiting</td><td>—</td></tr>
+    <tr><td><code>2xx</code></td><td>Success</td><td>—</td></tr>
+    <tr><td><code>3xx</code></td><td>Redirection — further action needed</td><td>—</td></tr>
+    <tr><td><code>4xx</code></td><td>Client error — do not repeat unmodified</td><td>The caller</td></tr>
+    <tr><td><code>5xx</code></td><td>Server error — the request looked fine</td><td>You</td></tr>
+  </tbody>
+</table>
+
+<h3>The ones you will actually send</h3>
+
+<table>
+  <thead><tr><th>Code</th><th>Name</th><th>Send it when</th></tr></thead>
+  <tbody>
+    <tr><td><code>200</code></td><td>OK</td><td>Success with a body.</td></tr>
+    <tr><td><code>201</code></td><td>Created</td><td>A resource now exists. Include a <code>Location</code> header.</td></tr>
+    <tr><td><code>204</code></td><td>No Content</td><td>Success, deliberately no body. Common for DELETE.</td></tr>
+    <tr><td><code>301</code></td><td>Moved Permanently</td><td>Permanent new URL. Caches and search engines will remember.</td></tr>
+    <tr><td><code>302</code></td><td>Found</td><td>Temporary redirect. Do not let it be cached as permanent.</td></tr>
+    <tr><td><code>304</code></td><td>Not Modified</td><td>Client's cached copy is still valid. No body.</td></tr>
+    <tr><td><code>400</code></td><td>Bad Request</td><td>Malformed — the server could not parse it at all.</td></tr>
+    <tr><td><code>401</code></td><td>Unauthorized</td><td><strong>Unauthenticated.</strong> Misnamed. MUST include <code>WWW-Authenticate</code>.</td></tr>
+    <tr><td><code>403</code></td><td>Forbidden</td><td>Authenticated, but not allowed. This is the real "unauthorized".</td></tr>
+    <tr><td><code>404</code></td><td>Not Found</td><td>No such resource — or you are hiding its existence deliberately.</td></tr>
+    <tr><td><code>405</code></td><td>Method Not Allowed</td><td>Path exists, verb does not. MUST include <code>Allow</code>.</td></tr>
+    <tr><td><code>409</code></td><td>Conflict</td><td>Clashes with current state. Duplicate key, stale version.</td></tr>
+    <tr><td><code>422</code></td><td>Unprocessable Content</td><td>Parsed fine, semantically invalid. FastAPI's validation default.</td></tr>
+    <tr><td><code>429</code></td><td>Too Many Requests</td><td>Rate limited. Add <code>Retry-After</code>. <em>RFC 6585, not 9110.</em></td></tr>
+    <tr><td><code>500</code></td><td>Internal Server Error</td><td>Your unhandled exception. Never leak the traceback.</td></tr>
+    <tr><td><code>502</code></td><td>Bad Gateway</td><td>Upstream gave you garbage. You are the proxy.</td></tr>
+    <tr><td><code>503</code></td><td>Service Unavailable</td><td>Overloaded or in maintenance. Add <code>Retry-After</code>.</td></tr>
+    <tr><td><code>504</code></td><td>Gateway Timeout</td><td>Upstream did not answer in time.</td></tr>
+  </tbody>
+</table>
+
+<p class="sidenote"><strong>401 vs 403</strong> is asked in interviews constantly.
+RFC 9110 §15.5.2: 401 means the request "lacks valid authentication credentials" — <em>who
+are you?</em> 403 means the server understood who you are and is refusing anyway —
+<em>I know, and no.</em> The name "Unauthorized" on 401 is a historical mistake; do not
+let it mislead you.</p>
+
+<h2>Headers worth memorising</h2>
+
+<table>
+  <thead><tr><th>Header</th><th>Direction</th><th>Does</th></tr></thead>
+  <tbody>
+    <tr><td><code>Host</code></td><td>request</td><td><strong>Mandatory in HTTP/1.1.</strong> Selects the site among many on one IP.</td></tr>
+    <tr><td><code>Content-Type</code></td><td>both</td><td>Media type of the body: <code>application/json</code>, <code>text/html; charset=utf-8</code>.</td></tr>
+    <tr><td><code>Content-Length</code></td><td>both</td><td>Body size in bytes. Framing.</td></tr>
+    <tr><td><code>Accept</code></td><td>request</td><td>What the client can handle. Basis of content negotiation.</td></tr>
+    <tr><td><code>Authorization</code></td><td>request</td><td>Credentials. <code>Bearer &lt;token&gt;</code> or <code>Basic &lt;base64&gt;</code>.</td></tr>
+    <tr><td><code>Set-Cookie</code> / <code>Cookie</code></td><td>resp / req</td><td>The state layer bolted onto a stateless protocol.</td></tr>
+    <tr><td><code>Cache-Control</code></td><td>both</td><td><code>no-store</code>, <code>max-age=60</code>, <code>private</code>. Governs every cache in the path.</td></tr>
+    <tr><td><code>ETag</code> / <code>If-None-Match</code></td><td>resp / req</td><td>Version tag; enables a cheap <code>304</code>.</td></tr>
+    <tr><td><code>Location</code></td><td>response</td><td>Where the thing went (3xx) or where it was created (201).</td></tr>
+    <tr><td><code>Retry-After</code></td><td>response</td><td>Seconds or a date. Pair with 429 and 503.</td></tr>
+  </tbody>
+</table>
+
+<h2>Python recipes</h2>
+
+<h4>Minimum viable response</h4>
+<pre class="wide"><code>body = <span class="c-str">b'{"ok": true}'</span>
+head = (
+    <span class="c-str">"HTTP/1.1 200 OK\r\n"</span>
+    <span class="c-str">"Content-Type: application/json\r\n"</span>
+    <span class="c-str">f"Content-Length: {len(body)}\r\n"</span>
+    <span class="c-str">"Connection: close\r\n"</span>
+    <span class="c-str">"\r\n"</span>
+).<span class="c-fn">encode</span>(<span class="c-str">"ascii"</span>)
+conn.<span class="c-fn">sendall</span>(head + body)</code></pre>
+
+<h4>Read until the headers end</h4>
+<p><code>recv()</code> returns whatever has arrived, not a whole message. Loop.</p>
+<pre class="wide"><code>buf = <span class="c-str">b""</span>
+<span class="c-key">while</span> <span class="c-str">b"\r\n\r\n"</span> <span class="c-key">not in</span> buf:
+    chunk = conn.<span class="c-fn">recv</span>(<span class="c-num">4096</span>)
+    <span class="c-key">if not</span> chunk:                 <span class="c-com"># peer hung up mid-request</span>
+        <span class="c-key">break</span>
+    buf += chunk
+head, _, rest = buf.<span class="c-fn">partition</span>(<span class="c-str">b"\r\n\r\n"</span>)</code></pre>
+
+<h4>Parse a start-line</h4>
+<pre class="wide"><code>start, *header_lines = head.<span class="c-fn">decode</span>(<span class="c-str">"latin-1"</span>).<span class="c-fn">split</span>(<span class="c-str">"\r\n"</span>)
+method, target, version = start.<span class="c-fn">split</span>(<span class="c-str">" "</span>)
+headers = {}
+<span class="c-key">for</span> line <span class="c-key">in</span> header_lines:
+    name, _, value = line.<span class="c-fn">partition</span>(<span class="c-str">":"</span>)
+    headers[name.<span class="c-fn">lower</span>()] = value.<span class="c-fn">strip</span>()   <span class="c-com"># names are case-insensitive</span></code></pre>
+
+<h2>curl flags</h2>
+
+<table>
+  <thead><tr><th>Flag</th><th>Does</th></tr></thead>
+  <tbody>
+    <tr><td><code>-i</code></td><td>Print response headers with the body.</td></tr>
+    <tr><td><code>-v</code></td><td>Print the request too. <code>&gt;</code> is sent, <code>&lt;</code> is received.</td></tr>
+    <tr><td><code>-X POST</code></td><td>Set the method.</td></tr>
+    <tr><td><code>-d '{"a":1}'</code></td><td>Send a body. Implies POST.</td></tr>
+    <tr><td><code>-H 'Content-Type: application/json'</code></td><td>Add a header.</td></tr>
+    <tr><td><code>-s</code></td><td>Silence the progress meter. Pair with <code>-S</code> to keep errors.</td></tr>
+    <tr><td><code>--http1.1</code></td><td>Pin the version when debugging protocol behaviour.</td></tr>
+  </tbody>
+</table>
+
+<p class="sidenote">In browser devtools, right-click any request → <strong>Copy as
+cURL</strong> to get a runnable command with every header and cookie. The fastest way to
+turn a page you can see into an API you can call — the technique in
+<a href="https://jvns.ca/blog/2022/03/10/how-to-use-undocumented-web-apis/">Julia Evans'
+guide to undocumented web APIs</a>.</p>
+
+<div class="ask">
+  <p><strong>This document should grow.</strong> When a lesson establishes something you
+  will need repeatedly, ask me to add it here. A reference you helped shape is one you
+  will actually reach for.</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="../lessons/0001-a-server-is-bytes-on-a-socket.html">← Lesson 01</a>
+  <a href="https://www.rfc-editor.org/rfc/rfc9110.html">RFC 9110 →</a>
+</nav>
+
+</main>
+</body>
+</html>
