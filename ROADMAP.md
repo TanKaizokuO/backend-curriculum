@@ -47,11 +47,11 @@ A beginner-friendly version and a DevOps beginner roadmap are linked separately.
 
 ## 5. More about Databases
 
-- [ ] ORMs
+- [x] ~~ORMs~~
 - [x] ~~Normalization~~
 - [x] ~~ACID~~
 - [x] ~~Transactions~~
-- [ ] Failure modes
+- [x] ~~Failure modes~~
 - [x] ~~Profiling performance~~
 - [x] ~~N+1 problem~~
 - [x] ~~Database indexes~~

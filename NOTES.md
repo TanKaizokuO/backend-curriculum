@@ -158,9 +158,9 @@ Scratchpad for teaching preferences and working state. Not a journal — see
   **Hazard:** `--reload` in an image gives three processes and a reloader as
   PID 1, watching files that never change. Verified through `/proc`, 66.45 MiB
   resident for one application.
-  **Open:** the learner has not deployed yet. The URL line in
-  `Code/Lesson_7_code/README.md` is a marked placeholder, not a claim. Ask for
-  the first deploy log next session.
+
+  **Next steps:** The learner has read Lesson 7. We are waiting for their deploy URL
+  to update `Code/Lesson_7_code/README.md`.
 
 ## Curriculum spine (working plan, revise freely)
 
@@ -175,17 +175,13 @@ The roadmap in `ROADMAP.md` is a checklist, not an order. Working sequence:
    UPDATE`, then SQLAlchemy 2.x over the same schema with `echo=True`~~ ✓
 7. ~~Deployment: twelve-factor config, Docker, a managed database, a release
    step, a health check, and the CV README~~ ✓
-8. **Next: the language decision.** The deploy is the trigger we agreed for the
-   TypeScript conversation. Ask before you plan Lesson 8 — the learner may want
-   auth in Python first, and both answers are reasonable
-9. Auth: sessions vs JWT, password hashing
-10. Testing + CI, then caching, observability, scaling
-
+8. **Language decision made:** The learner requested both. From Lesson 8 onward, every lesson MUST teach both Python/FastAPI and TypeScript/Node.js side-by-side.
+9. Auth: sessions vs JWT, password hashing (in both Python and TS).
+10. Testing + CI, then caching, observability, scaling (in both Python and TS).
 ## Open threads
 
-- **TypeScript entry point: the trigger has fired.** Lesson 7 ends with the
-  question, and Lesson 7's "Where this goes" section asks it directly. Do not
-  start Lesson 8 before the learner answers.
+- **Language decision resolved:** The learner chose to pursue both Python and TypeScript simultaneously. Future lessons will cover both stacks.
+- **Deployment verification.** Awaiting the live URL from the learner to update their README.
 - Find a code-review venue where the learner can get real feedback on project code.
   (Candidate: Code Review Stack Exchange — see RESOURCES.md.)
 - `GLOSSARY.md` now has twenty-one terms. Next candidates: dependency injection,

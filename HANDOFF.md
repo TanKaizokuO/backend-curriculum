@@ -29,8 +29,7 @@ Do not restate the mission back to the learner — they wrote it. Pick up and te
 | Lesson code | `Code/Lesson_1_code/`, `Code/Lesson_2_code/`, `Code/Lesson_4_code/` (schema migrations, `migrate.py`, DB-backed `main.py`, injection demo), `Code/Lesson_5_code/` (`seed.sql`, migration 0003, `main.py` with search + a deliberate N+1 endpoint, `n_plus_1.py`, `slow_link.py`), `Code/Lesson_6_code/` (migration 0004, `lost_update.py`, `orm_models.py`, `orm_n_plus_1.py`, `orm_increment.py`, `main.py` with the visit counter), `Code/Lesson_7_code/` (the deployable project: `config.py`, `main.py` with `/healthz`, `migrate.py`, `migrations/0001`–`0004`, `Dockerfile`, `.dockerignore`, `compose.yaml`, `.env.example`, `render.yaml`, `README.md`, and `naive/` for the four failures) |
 | Learning records | LR-0001 (language anchor: Python first) |
 | Glossary | `GLOSSARY.md` — twenty-one terms (Lesson 7 added config, container image, health check, release step) |
-| Next on the spine | **The language decision.** The deploy is the TypeScript trigger from LR-0001. Ask the learner before planning Lesson 8; auth in Python is the other reasonable answer. |
-
+| Next on the spine | **Dual-language curriculum.** The learner decided to learn both. From Lesson 8 onward, each lesson MUST teach both Python and TypeScript in the backend. Still awaiting the live URL to update the CV README. |
 ### Lesson 0001 covers
 
 Raw HTTP over a TCP socket, no framework. Structure: the one idea → request shape →
@@ -239,10 +238,7 @@ needs a paid instance type, so the correct design and the free-plan workaround d
 The lesson gives both, and tells the learner to say so in an interview. Free plan limits
 that matter: a web service spins down after 15 minutes idle and takes about a minute to
 return; a free database expires 30 days after creation, with no backups.
-
-**Not yet done by the learner: the deploy itself.** The live-URL line in
-`Code/Lesson_7_code/README.md` is a marked placeholder. It is not a claim, and it must
-not become one until the learner sends a real URL.
+**Learner Status:** The learner has completed Lesson 7 and requested that future lessons teach both Python and TypeScript simultaneously. We are waiting for them to paste the live deployment URL to finalize `Code/Lesson_7_code/README.md`.
 
 ### Built infrastructure
 
