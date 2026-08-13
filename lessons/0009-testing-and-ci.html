@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 9 · Testing and CI</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 09 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../GLOSSARY.md">Glossary</a> ·
+    <a href="../lesson_plan.md">Plan</a> ·
+    <a href="0008-authentication.html">← Lesson 08</a>
+  </p>
+  <h1>Testing and CI
+    <span class="sub">Python and TypeScript, one idea at a time.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">You wrote an API. Now you prove that it works. A test is a
+program that calls your API and checks the answer. It runs every time you
+change the code. If the code breaks the contract, the test fails.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>A test that cannot fail proves nothing. Test the contract, not the plumbing.</p>
+</div>
+
+<div class="note">
+  <span class="note-label">How the two languages sit together</span>
+  <p>The Python project is <code>Code/Lesson_9_code/</code>. The TypeScript
+  project is <code>Code/js/Lesson_9_code/</code>. Both test the authentication
+  system from Lesson 8. Both use a real PostgreSQL container. Both run in
+  GitHub Actions.</p>
+</div>
+
+<h2>Step 1 · The database must be real</h2>
+
+<p>Do not use a mock database. Do not use SQLite to test a PostgreSQL server.
+SQLite does not enforce the same rules. It ignores the time zone, and it
+allows concurrent writes in a different way. If you test with SQLite, your
+tests pass, but your server fails in production.</p>
+
+<p>Use a real PostgreSQL container. Start it before the tests run. The
+<code>docker-compose.test.yml</code> file gives you an isolated database
+on port 5432.</p>
+
+<p class="filename">docker-compose.test.yml</p>
+<pre class="wide"><code>services:
+  db-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpassword
+      POSTGRES_DB: testdb
+    ports:
+      - "5432:5432"</code></pre>
+
+<h2>Step 2 · Test the contract, not the plumbing</h2>
+
+<p>A unit test calls a function. An integration test calls the API over HTTP.
+Write integration tests first. The client needs only the HTTP response.</p>
+
+<p>When you test the HTTP response, you test the contract. If you change the
+database driver, the contract stays the same. The test still passes. If you
+use a mock database driver, the test breaks when you change the driver.</p>
+
+<h2>Step 3 · Python: pytest and httpx</h2>
+
+<p>Use <code>pytest</code> to run the tests. Use <code>httpx</code> to send
+requests to the FastAPI application. The <code>conftest.py</code> file holds
+the setup code. It connects to the test database and runs the migrations.</p>
+
+<p class="filename">Code/Lesson_9_code/conftest.py</p>
+<pre class="wide"><code><span class="c-key">import</span> os
+<span class="c-key">import</span> pytest
+<span class="c-key">from</span> fastapi.testclient <span class="c-key">import</span> TestClient
+<span class="c-key">import</span> runpy
+
+<span class="c-com"># Set test configuration before you import the app</span>
+os.environ[<span class="c-str">"DATABASE_URL"</span>] = <span class="c-str">"postgresql://testuser:testpassword@127.0.0.1:5432/testdb"</span>
+os.environ[<span class="c-str">"APP_ENV"</span>] = <span class="c-str">"development"</span>
+
+<span class="c-key">from</span> config <span class="c-key">import</span> settings
+<span class="c-key">from</span> main <span class="c-key">import</span> app
+
+<span class="c-fn">@pytest.fixture</span>(scope=<span class="c-str">"session"</span>, autouse=<span class="c-key">True</span>)
+<span class="c-key">def</span> <span class="c-fn">setup_test_db</span>():
+    <span class="c-key">import</span> psycopg
+    <span class="c-key">with</span> psycopg.connect(settings.dsn, autocommit=<span class="c-key">True</span>) <span class="c-key">as</span> conn:
+        conn.execute(<span class="c-str">"DROP SCHEMA public CASCADE"</span>)
+        conn.execute(<span class="c-str">"CREATE SCHEMA public"</span>)
+    runpy.run_path(<span class="c-str">"migrate.py"</span>)
+    <span class="c-key">yield</span>
+
+<span class="c-fn">@pytest.fixture</span>
+<span class="c-key">def</span> <span class="c-fn">client</span>():
+    <span class="c-key">with</span> TestClient(app) <span class="c-key">as</span> test_client:
+        <span class="c-key">yield</span> test_client</code></pre>
+
+<p>Now write the test. The test calls the API, reads the response, and uses
+<code>assert</code> to check the status code.</p>
+
+<p class="filename">Code/Lesson_9_code/test_auth.py</p>
+<pre class="wide"><code><span class="c-key">def</span> <span class="c-fn">test_login_wrong_password</span>(client: TestClient):
+    res = client.post(<span class="c-str">"/auth/login"</span>, json={
+        <span class="c-str">"email"</span>: <span class="c-str">"test@example.com"</span>,
+        <span class="c-str">"password"</span>: <span class="c-str">"wrong password"</span>
+    })
+    <span class="c-key">assert</span> res.status_code == <span class="c-num">401</span>
+    <span class="c-key">assert</span> res.json()[<span class="c-str">"detail"</span>] == <span class="c-str">"wrong email or password"</span></code></pre>
+
+<h2>Step 4 · TypeScript: vitest and supertest</h2>
+
+<p>Use <code>vitest</code> to run the tests. Use <code>supertest</code> to send
+requests to the Express application. The setup file drops the schema and runs
+the migrations.</p>
+
+<p class="filename">Code/js/Lesson_9_code/tests/setup.ts</p>
+<pre class="wide"><code><span class="c-key">import</span> { beforeAll } <span class="c-key">from</span> <span class="c-str">'vitest'</span>;
+<span class="c-key">import</span> { Client } <span class="c-key">from</span> <span class="c-str">'pg'</span>;
+<span class="c-key">import</span> { config } <span class="c-key">from</span> <span class="c-str">'../src/config.ts'</span>;
+
+<span class="c-fn">beforeAll</span>(<span class="c-key">async</span> () =&gt; {
+  <span class="c-key">const</span> client = <span class="c-key">new</span> <span class="c-fn">Client</span>({ connectionString: config.databaseUrl });
+  <span class="c-key">await</span> client.<span class="c-fn">connect</span>();
+  <span class="c-key">await</span> client.<span class="c-fn">query</span>(<span class="c-str">"DROP SCHEMA public CASCADE"</span>);
+  <span class="c-key">await</span> client.<span class="c-fn">query</span>(<span class="c-str">"CREATE SCHEMA public"</span>);
+  <span class="c-key">await</span> client.<span class="c-fn">end</span>();
+
+  <span class="c-key">await import</span>(<span class="c-str">'../src/migrate.ts'</span>);
+});</code></pre>
+
+<p>The test sends the request and checks the response.</p>
+
+<p class="filename">Code/js/Lesson_9_code/tests/auth.test.ts</p>
+<pre class="wide"><code><span class="c-key">import</span> { test, expect } <span class="c-key">from</span> <span class="c-str">'vitest'</span>;
+<span class="c-key">import</span> request <span class="c-key">from</span> <span class="c-str">'supertest'</span>;
+<span class="c-key">import</span> { app } <span class="c-key">from</span> <span class="c-str">'../src/server.js'</span>;
+
+<span class="c-fn">test</span>(<span class="c-str">'login with wrong password'</span>, <span class="c-key">async</span> () =&gt; {
+  <span class="c-key">const</span> res = <span class="c-key">await</span> <span class="c-fn">request</span>(app)
+    .<span class="c-fn">post</span>(<span class="c-str">'/auth/login'</span>)
+    .<span class="c-fn">send</span>({ email: <span class="c-str">'test@example.com'</span>, password: <span class="c-str">'wrong password'</span> });
+  
+  <span class="c-fn">expect</span>(res.status).<span class="c-fn">toBe</span>(<span class="c-num">401</span>);
+  <span class="c-fn">expect</span>(res.body.detail).<span class="c-fn">toBe</span>(<span class="c-str">'wrong email or password'</span>);
+});</code></pre>
+
+<h2>Step 5 · The observable failure</h2>
+
+<p>A test proves nothing until you see it fail. Open
+<code>Code/Lesson_9_code/main.py</code> or
+<code>Code/js/Lesson_9_code/src/server.ts</code>. Find the login route. Change
+the status code for a wrong password from 401 to 200. Run the test suite.</p>
+
+<pre class="wide"><code>$ pytest
+FAILED test_auth.py::test_login_wrong_password - assert 200 == 401
+
+$ npx vitest run
+FAIL  tests/auth.test.ts > login with wrong password
+AssertionError: expected 200 to be 401 // Object.is equality</code></pre>
+
+<p>The test failed. The contract broke, and the test caught it. Change the
+status code back to 401.</p>
+
+<h2>Step 6 · Continuous Integration</h2>
+
+<p>A test on your laptop does not protect the production server. You must run
+the tests in the cloud. A Continuous Integration (CI) service runs your tests
+on every push. If a test fails, the CI service rejects the code.</p>
+
+<p>GitHub Actions uses a YAML file. Put the file in
+<code>.github/workflows/ci.yml</code>. The file tells GitHub to start a
+PostgreSQL service, install the dependencies, and run the tests.</p>
+
+<p class="filename">Code/Lesson_9_code/.github/workflows/ci.yml</p>
+<pre class="wide"><code><span class="c-key">name:</span> CI
+
+<span class="c-key">on:</span>
+  <span class="c-key">push:</span>
+    <span class="c-key">branches:</span> [ <span class="c-str">"main"</span> ]
+
+<span class="c-key">jobs:</span>
+  <span class="c-key">test:</span>
+    <span class="c-key">runs-on:</span> ubuntu-latest
+    <span class="c-key">services:</span>
+      <span class="c-key">postgres:</span>
+        <span class="c-key">image:</span> postgres:16-alpine
+        <span class="c-key">env:</span>
+          <span class="c-key">POSTGRES_USER:</span> testuser
+          <span class="c-key">POSTGRES_PASSWORD:</span> testpassword
+          <span class="c-key">POSTGRES_DB:</span> testdb
+        <span class="c-key">ports:</span>
+          - <span class="c-num">5432</span>:<span class="c-num">5432</span>
+
+    <span class="c-key">env:</span>
+      <span class="c-key">DATABASE_URL:</span> postgresql://testuser:testpassword@127.0.0.1:5432/testdb
+      <span class="c-key">APP_ENV:</span> test
+
+    <span class="c-key">steps:</span>
+    - <span class="c-key">uses:</span> actions/checkout@v4
+    - <span class="c-key">name:</span> Set up Python
+      <span class="c-key">uses:</span> actions/setup-python@v5
+      <span class="c-key">with:</span>
+        <span class="c-key">python-version:</span> <span class="c-str">"3.12"</span>
+    - <span class="c-key">name:</span> Install dependencies
+      <span class="c-key">run:</span> pip install -r requirements.txt
+    - <span class="c-key">name:</span> Run tests
+      <span class="c-key">run:</span> pytest</code></pre>
+
+<p>The TypeScript workflow uses <code>actions/setup-node@v4</code> and
+<code>npm run test</code> instead.</p>
+
+<div class="note note--warn">
+  <span class="note-label">Never use a mock database in CI</span>
+  <p>The CI runner is a Linux machine. It can pull the PostgreSQL image. It can
+  run the real database. There is no reason to test against SQLite in the
+  cloud.</p>
+</div>
+
+<h2>Practice</h2>
+
+<ol class="steps">
+  <li><strong>Start the test database.</strong> Run <code>docker compose -f
+  docker-compose.test.yml up -d</code> in the Lesson 9 directory.</li>
+  <li><strong>Run the tests.</strong> Run <code>pytest</code> or <code>npm run
+  test</code>. Watch the tests pass.</li>
+  <li><strong>Break the application.</strong> Find the route that creates a
+  bookmark. Delete the code that checks if the user signed in.</li>
+  <li><strong>Run the tests again.</strong> Watch the authorization test fail.
+  The test expected a 401, but the API returned a 201.</li>
+  <li><strong>Fix the application.</strong> Put the check back.</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why must you use a PostgreSQL container for your tests instead of SQLite?",
+    "options": [
+      "SQLite does not enforce the same rules or time zones as PostgreSQL",
+      "SQLite is slower than a Docker container",
+      "Pytest does not support SQLite databases",
+      "SQLite requires a network connection to operate"
+    ],
+    "answer": 0,
+    "why": "SQLite has different constraints, types, and concurrency rules. If you test with SQLite, the test passes, but the code breaks against PostgreSQL in production." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "What does an integration test check?",
+    "options": [
+      "The HTTP response and the contract",
+      "The internal logic of a single function",
+      "The time it takes to build the container",
+      "The exact name of the database driver"
+    ],
+    "answer": 0,
+    "why": "An integration test acts like a client. It sends an HTTP request and checks the status code and body. It tests the contract, not the internal functions." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "What tool runs your tests automatically on every push?",
+    "answer": "Continuous Integration",
+    "accept": ["CI", "Continuous Integration", "GitHub Actions", "Actions"],
+    "why": "A CI service, like GitHub Actions, builds your code and runs your tests on every push. It protects the main branch from broken code." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<nav class="lesson-nav">
+  <a href="0008-authentication.html">← Lesson 08: Authentication</a>
+  <span>Lesson 10: Caching →</span>
+</nav>
+
+</main>
+</body>
+</html>

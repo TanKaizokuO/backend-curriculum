@@ -34,6 +34,8 @@ figure from memory.
 | 5 | ~~[Why is this slow?](./lessons/0005-why-is-this-slow.html)~~ | Ask the database what it did, and read the answer. | [`Code/Lesson_5_code/`](./Code/Lesson_5_code/) |
 | 6 | ~~[Concurrency and the ORM](./lessons/0006-concurrency-and-the-orm.html)~~ | A transaction protects you from a crash. It does not protect you from another transaction. | [`Code/Lesson_6_code/`](./Code/Lesson_6_code/) |
 | 7 | ~~[Deployment](./lessons/0007-deployment.html)~~ | A deploy is one image plus one set of environment variables. | [`Code/Lesson_7_code/`](./Code/Lesson_7_code/) |
+| 8 | ~~[Authentication](./lessons/0008-authentication.html)~~ | The server must never trust the client. It must only trust what it can verify. | [`Code/Lesson_8_code/`](./Code/Lesson_8_code/) (Python), [`Code/js/Lesson_8_code/`](./Code/js/Lesson_8_code/) (TypeScript) |
+| 9 | ~~[Testing and CI](./lessons/0009-testing-and-ci.html)~~ | A test that cannot fail proves nothing. Test the contract, not the plumbing. | [`Code/Lesson_9_code/`](./Code/Lesson_9_code/) (Python), [`Code/js/Lesson_9_code/`](./Code/js/Lesson_9_code/) (TypeScript) |
 
 What each finished lesson proved:
 
@@ -53,38 +55,21 @@ What each finished lesson proved:
 - **7** The deploy that looks like a network fault: the container logs
   `Application startup complete` and refuses every request from outside,
   because the process bound `127.0.0.1`.
+- **8** The breach: an unsigned JWT lets a user edit their own ID, and ten slow hashes block the event loop for 1.7 seconds.
+- **9** The test that fails: you change the status code from 401 to 200. CI fails the test on the pull request.
 
 ## Now
 
 | # | Lesson | The one idea | Code |
 | --- | --- | --- | --- |
-| 8 | [Authentication](./lessons/0008-authentication.html) | The server must never trust the client. It must only trust what it can verify. | [`Code/Lesson_8_code/`](./Code/Lesson_8_code/) (Python), [`Code/js/Lesson_8_code/`](./Code/js/Lesson_8_code/) (TypeScript) |
+| 10 | [Caching](./lessons/0010-caching.html) | A cache is a copy that can be wrong. Name the moment it goes stale before you add it. | [`Code/Lesson_10_code/`](./Code/Lesson_10_code/), [`Code/js/Lesson_10_code/`](./Code/js/Lesson_10_code/) |
 
-The lesson is written and the code runs. The learner has not worked through it
-yet, so the row stays here and not in *Done*. Lesson 8 covers:
-
-- Why a plain-text password column is a breach of every other site the user
-  uses, and why a fast hash (SHA-256) is almost as bad.
-- Password hashing with a slow function and a per-user salt: bcrypt or Argon2.
-- The observable failure: a token that the client can edit. You change the
-  payload of an unsigned token, and the server believes you.
-- Sessions against JSON Web Tokens. What each one costs, and what each one
-  cannot do.
-- Logout, expiry, and revocation. A signed token is valid until it expires,
-  and that is the whole problem.
-- Protecting the bookmarks routes with a dependency (Python) and with
-  middleware (TypeScript).
-
-Its three observable failures: a SHA-256 table that falls in 0.03 ms; an
-unsigned token that makes the attacker an administrator in three lines; and
-ten logins that push an unrelated `/healthz` from 3.5 ms to 1727.8 ms.
+The lesson is planned but not written.
 
 ## Next
 
 | # | Lesson | The one idea | Planned code |
 | --- | --- | --- | --- |
-| 9 | Testing and CI | A test that cannot fail proves nothing. Test the contract, not the plumbing. | `Code/Lesson_9_code/`, `Code/js/Lesson_9_code/` |
-| 10 | Caching | A cache is a copy that can be wrong. Name the moment it goes stale before you add it. | `Code/Lesson_10_code/`, `Code/js/Lesson_10_code/` |
 | 11 | Observability | You cannot debug what you cannot see. A log line, a metric, and a trace answer different questions. | `Code/Lesson_11_code/`, `Code/js/Lesson_11_code/` |
 | 12 | Scaling | Add a second instance and every assumption about local state breaks. | `Code/Lesson_12_code/`, `Code/js/Lesson_12_code/` |
 | 13 | Version control | A commit is a snapshot with a parent. History is a graph, not a list. | `Code/Lesson_13_code/`, `Code/js/Lesson_13_code/` |
@@ -106,10 +91,6 @@ ten logins that push an unrelated `/healthz` from 3.5 ms to 1727.8 ms.
 
 ### Details for planned lessons
 
-9. **Testing and CI.** `pytest` with `httpx` against `vitest` with
-   `supertest`. A real PostgreSQL container for the integration tests, not a
-   mock and not SQLite. Then GitHub Actions runs the suite and the migrations
-   on each push.
 10. **Caching.** HTTP caching first, because it is free: `ETag`,
     `Cache-Control`, and a `304`. Then Redis for the query that Lesson 5
     measured. The lesson measures the hit and the miss, and it shows a stale
