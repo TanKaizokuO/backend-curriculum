@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 10 · TypeScript Crash Course</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 10 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../GLOSSARY.md">Glossary</a> ·
+    <a href="../lesson_plan.md">Plan</a> ·
+    <a href="0009-testing-and-ci.html">← Lesson 09</a>
+  </p>
+  <h1>TypeScript Crash Course
+    <span class="sub">Add types to JavaScript to find errors before you run the program.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">You know JavaScript. But JavaScript does not check types before the program runs. TypeScript is JavaScript with static types. It finds errors while you write the code.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>Define the shape of your data. The compiler checks the shape for you.</p>
+</div>
+
+<h2>1. TypeScript Fundamentals</h2>
+
+<p>TypeScript is a superset of JavaScript. It adds type annotations to the language. You use the TypeScript compiler (<code>tsc</code>) to translate TypeScript code into standard JavaScript. You run the standard JavaScript with Node.js.</p>
+
+<p>You can write explicit type annotations. When you do not write them, the compiler uses type inference. It guesses the type from the value.</p>
+
+<p>You configure the compiler with a file. The name of the file is <code>tsconfig.json</code>.</p>
+
+<h2>2. Basic Types</h2>
+
+<p>You define basic types with these keywords:</p>
+<ul>
+  <li><code>string</code> for text.</li>
+  <li><code>number</code> for integers and floating-point numbers.</li>
+  <li><code>boolean</code> for true or false values.</li>
+  <li><code>null</code> and <code>undefined</code> for missing values.</li>
+</ul>
+
+<div class="note">
+  <span class="note-label">Warning</span>
+  <p>Do not use the <code>any</code> type. The <code>any</code> type disables the type checker. If you use it, the compiler cannot find errors.</p>
+</div>
+
+<p>Use the <code>unknown</code> type when you do not know the value. You must check the type before you use an <code>unknown</code> value. Use the <code>never</code> type for a function that throws an error and never returns. Use the <code>void</code> type for a function that returns nothing.</p>
+
+<p>You can use literal types. A literal type specifies an exact value.</p>
+
+<pre><code>let status: "active" | "inactive";
+status = "active";</code></pre>
+
+<p>You can use a type assertion. A type assertion tells the compiler the type of a value. Use the <code>as</code> keyword for a type assertion.</p>
+
+<h2>3. Arrays, Tuples, and Objects</h2>
+
+<p>You define an array of numbers with <code>number[]</code>. All elements in the array must be numbers.</p>
+
+<p>A tuple is an array with a fixed length and fixed types. You define a tuple with brackets.</p>
+
+<pre><code>let record: [number, string] = [1, "test"];</code></pre>
+
+<p>You define an object type with braces. You write the property names and their types.</p>
+
+<pre><code>let user: { id: number; name: string };</code></pre>
+
+<p>You make a property optional when you add a question mark. You make a property read-only when you add the <code>readonly</code> keyword. You cannot change a read-only property.</p>
+
+<p>Use an index signature when you do not know the property names. The index signature defines the type for all keys.</p>
+
+<pre><code>let scores: { [key: string]: number };</code></pre>
+
+<h2>4. Functions</h2>
+
+<p>You must specify the types for function parameters. You can specify the return type. The compiler can usually infer the return type.</p>
+
+<pre><code>function add(x: number, y: number): number {
+  return x + y;
+}</code></pre>
+
+<p>You make a parameter optional when you add a question mark. You can provide a default value for a parameter.</p>
+
+<p>You use rest parameters to collect multiple arguments into an array. You define the rest parameter as an array type.</p>
+
+<p>You can define a type for a function. You use an arrow syntax to define a function type. You use this to specify callback types.</p>
+
+<p>You can write overloaded functions. You write multiple signatures for the same function. The compiler checks the arguments against the signatures.</p>
+
+<h2>5. Interfaces and Type Aliases</h2>
+
+<p>You use an <code>interface</code> to name an object type. You use a <code>type</code> alias to name any type.</p>
+
+<pre><code>interface User {
+  id: number;
+  name: string;
+}
+
+type ID = string | number;</code></pre>
+
+<p>An interface can extend another interface. You use the <code>extends</code> keyword. A type alias can use the <code>&amp;</code> symbol to create an intersection type. Both methods combine types.</p>
+
+<p>An interface and a type alias have similar behavior. You use them to create reusable type definitions. Prefer an interface for object shapes. Prefer a type alias for unions.</p>
+
+<h2>6. Unions and Narrowing</h2>
+
+<p>You use the <code>|</code> symbol to create a union type. A union type means the value can be one of several types.</p>
+
+<p>You must narrow a union type before you use it. You write a type guard to narrow the type. The compiler analyzes your code and understands the narrower type.</p>
+
+<ul>
+  <li>Use <code>typeof</code> to check a basic type.</li>
+  <li>Use <code>instanceof</code> to check a class instance.</li>
+  <li>Use the <code>in</code> operator to check if a property exists in an object.</li>
+</ul>
+
+<p>You can write a custom type predicate. A custom type predicate is a function that returns a boolean. It tells the compiler the specific type of the argument.</p>
+
+<p>You can use a discriminated union. A discriminated union is a union of object types. Each object type has a common property. The common property is a literal type. You check the common property to narrow the type.</p>
+
+<h2>7. Enums and Literal Types</h2>
+
+<p>An enum names a set of values. You can define a numeric enum. The values are numbers. You can define a string enum. The values are strings.</p>
+
+<pre><code>enum Direction {
+  Up = "UP",
+  Down = "DOWN"
+}</code></pre>
+
+<p>You can write a <code>const enum</code>. The compiler replaces a <code>const enum</code> with the plain value. It does not generate an object in the standard JavaScript.</p>
+
+<p>You can usually use a union of literal types instead of an enum. Literal types are simpler and do not generate extra JavaScript code.</p>
+
+<h2>8. Generics</h2>
+
+<p>Generics help you write reusable code. You define a type parameter. You use the type parameter inside the function or class.</p>
+
+<pre><code>function identity&lt;T&gt;(arg: T): T {
+  return arg;
+}</code></pre>
+
+<p>You can write generic functions. You can write generic interfaces. You can write generic types.</p>
+
+<p>You can define generic constraints. You use the <code>extends</code> keyword to limit the type parameter. The compiler enforces the constraint.</p>
+
+<p>You can use multiple type parameters. You separate them with a comma.</p>
+
+<h2>9. Advanced Types</h2>
+
+<p>You use the <code>keyof</code> operator to get a union of the keys of a type. You use the <code>typeof</code> operator to get the type of a variable.</p>
+
+<p>You use an indexed access type to get the type of a specific property.</p>
+
+<pre><code>type UserType = User["name"];</code></pre>
+
+<p>You can write a conditional type. A conditional type uses a ternary operator format to choose a type.</p>
+
+<p>You can write a mapped type. A mapped type creates a new type. It iterates over the keys of an existing type.</p>
+
+<p>You can write a template literal type. A template literal type combines string literal types.</p>
+
+<h2>10. Built-in Utility Types</h2>
+
+<p>TypeScript provides utility types to transform existing types.</p>
+
+<ul>
+  <li><code>Partial&lt;T&gt;</code> makes all properties of T optional.</li>
+  <li><code>Required&lt;T&gt;</code> makes all properties of T required.</li>
+  <li><code>Readonly&lt;T&gt;</code> makes all properties of T read-only.</li>
+  <li><code>Pick&lt;T, K&gt;</code> creates a type with only the specified keys K from T.</li>
+  <li><code>Omit&lt;T, K&gt;</code> creates a type that removes the specified keys K from T.</li>
+  <li><code>Record&lt;K, T&gt;</code> creates an object type. The keys have type K. The values have type T.</li>
+  <li><code>Exclude&lt;T, U&gt;</code> removes the types in U from the union T.</li>
+  <li><code>Extract&lt;T, U&gt;</code> selects the types in U from the union T.</li>
+  <li><code>ReturnType&lt;T&gt;</code> gets the return type of a function type T.</li>
+  <li><code>Parameters&lt;T&gt;</code> gets the parameter types of a function type T as a tuple.</li>
+</ul>
+
+<h2>11. Classes and OOP</h2>
+
+<p>You define types for the properties of a class. You define types for the constructor parameters.</p>
+
+<p>You use access modifiers to control visibility. Use <code>public</code> for properties that anyone can access. Use <code>private</code> for properties that only the class can access. Use <code>protected</code> for properties that the class and its subclasses can access.</p>
+
+<p>You can make a property read-only. You use the <code>readonly</code> keyword.</p>
+
+<p>You can define an <code>abstract</code> class. An abstract class cannot be instantiated. Another class must extend it.</p>
+
+<p>A class can implement an interface. The compiler checks that the class matches the interface.</p>
+
+<h2>12. Modules</h2>
+
+<p>You use the <code>import</code> and <code>export</code> keywords to share code between files. You can use default exports. You can use named exports.</p>
+
+<p>You can use a type-only import. A type-only import starts with <code>import type</code>. The compiler removes a type-only import from the standard JavaScript.</p>
+
+<p>The compiler uses module resolution to find the imported files. You configure the module resolution in <code>tsconfig.json</code>. Organize your project into small files. Each file is a module.</p>
+
+<h2>13. TypeScript with the JavaScript Ecosystem</h2>
+
+<p>You use npm packages in a TypeScript project. Many packages use JavaScript. They do not have types.</p>
+
+<p>You install type definitions from the <code>@types</code> scope on npm. The DefinitelyTyped repository manages these definitions.</p>
+
+<pre><code>npm install @types/express</code></pre>
+
+<p>You can use TypeScript with Node.js and Express. You define types for the Express request and response objects.</p>
+
+<p>You must define types for environment variables. You extend the <code>ProcessEnv</code> interface in the global namespace.</p>
+
+<h2>14. Async TypeScript</h2>
+
+<p>You use a generic type to describe a promise. A promise that resolves to a string has the type <code>Promise&lt;string&gt;</code>.</p>
+
+<p>You use the <code>async</code> and <code>await</code> keywords for asynchronous code. An <code>async</code> function always returns a promise.</p>
+
+<p>You define types for your API responses. This helps you parse the JSON data safely.</p>
+
+<div class="note">
+  <span class="note-label">Caution</span>
+  <p>Catch errors explicitly. The error variable in a catch block has the <code>unknown</code> type. You must check its type before you use it.</p>
+</div>
+
+<h2>15. TypeScript and React</h2>
+
+<p>You define an interface for the properties of a React component. You define an interface for the state.</p>
+
+<p>You define types for DOM events. The type of a click event is <code>React.MouseEvent</code>.</p>
+
+<p>You use generics with React hooks. You pass the type parameter to <code>useState</code> and <code>useRef</code>.</p>
+
+<pre><code>const [count, setCount] = useState&lt;number&gt;(0);</code></pre>
+
+<p>You can write generic components. A generic component accepts a type parameter when you render it.</p>
+
+<h2>16. TypeScript Configuration</h2>
+
+<p>You manage the project with a <code>tsconfig.json</code> file.</p>
+
+<ul>
+  <li>Set the <code>strict</code> flag to <code>true</code>. This enables all strict type checks.</li>
+  <li>Set the <code>noImplicitAny</code> flag to <code>true</code>. The compiler rejects variables when it cannot infer the type.</li>
+  <li>Set the <code>strictNullChecks</code> flag to <code>true</code>. The compiler requires you to check for null values.</li>
+</ul>
+
+<p>You set the <code>target</code> property to choose the JavaScript version for the output. You set the <code>module</code> property to choose the module system.</p>
+
+<p>Set <code>esModuleInterop</code> to <code>true</code>. It improves compatibility with CommonJS modules.</p>
+
+<p>You can set <code>sourceMap</code> to <code>true</code>. The compiler creates source maps. Source maps connect the standard JavaScript to the TypeScript code. You use source maps for debugging.</p>
+
+<h2>17. Common Patterns and Pitfalls</h2>
+
+<p>Do not use the <code>any</code> type to silence the compiler. If you do not know the type, use <code>unknown</code> and narrow it later.</p>
+
+<p>Handle null and undefined explicitly. The type checker finds paths where a value might be missing.</p>
+
+<p>Do not use type assertions to force a type. Write proper type guards. Let the compiler infer the types.</p>
+
+<p>Do not build complex type definitions if simple types solve the problem. Keep the code readable.</p>
+
+<p>Read the compiler errors from top to bottom. The last line of the error usually contains the specific mismatch.</p>
+
+<h2>18. Practical Project: Build a TypeScript REST API</h2>
+
+<p>You build a REST API to combine these concepts. You set up the project with <code>tsc --init</code>. You configure the strict mode.</p>
+
+<p>You write interfaces for your data models. You define the types for the database records.</p>
+
+<p>You write a generic interface for the API response. The response contains a status code and a generic data payload.</p>
+
+<p>You define the request and response types for your Express route handlers. The compiler checks that you return the correct data structure.</p>
+
+<p>You write an asynchronous function to query the database. You type the return value as a promise. You catch the database errors. You check the error type and return an HTTP error.</p>
+
+<p>You define the environment variables for the database connection. The compiler ensures that you read the variables safely.</p>
+
+<p>You use a modular architecture. You separate the route definitions, the database queries, and the data models into different files.</p>
+
+</main>
+</body>
+</html>

@@ -395,7 +395,7 @@ app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ detail: 'internal error' });
 });
 
-export { app };
+export { app, pool };
 if (process.env.NODE_ENV !== 'test') {
   app.listen(config.port, '0.0.0.0', () => {
     console.log(`bookmarks api listening on http://0.0.0.0:${config.port}`);

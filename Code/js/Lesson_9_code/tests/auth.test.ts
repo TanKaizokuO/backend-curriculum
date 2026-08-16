@@ -16,10 +16,10 @@ test('register and login with cookie', async () => {
     .post('/auth/login')
     .send({ email: 'test@example.com', password: 'correct horse battery staple' });
   expect(res.status).toBe(200);
-  
+
   const cookies = res.headers['set-cookie'];
   expect(cookies).toBeDefined();
-  
+
   // Access protected route
   res = await request(app)
     .get('/auth/me')
@@ -29,6 +29,10 @@ test('register and login with cookie', async () => {
 });
 
 test('login with wrong password', async () => {
+  await request(app)
+    .post('/auth/register')
+    .send({ email: 'test@example.com', password: 'correct horse battery staple' });
+
   const res = await request(app)
     .post('/auth/login')
     .send({ email: 'test@example.com', password: 'wrong password' });

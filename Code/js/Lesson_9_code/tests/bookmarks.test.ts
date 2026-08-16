@@ -19,6 +19,11 @@ test('create and delete own bookmark', async () => {
     .set('Cookie', cookies!);
 });
 
+test('create bookmark requires auth', async () => {
+  const res = await request(app).post('/bookmarks').send({ url: 'https://example.com/1' });
+  expect(res.status).toBe(401);
+});
+
 test('cannot delete others bookmark', async () => {
   await request(app).post('/auth/register').send({ email: 'usera@example.com', password: 'password' });
   let resA = await request(app).post('/auth/token').send({ email: 'usera@example.com', password: 'password' });
