@@ -4,7 +4,8 @@ Cold-start briefing for a new chat. Read this first, then `MISSION.md`, then `NO
 This file is the *state of play*; `NOTES.md` is the working scratchpad and
 `learning-records/` holds decisions that must not be silently reversed.
 
-Last updated: **2026-08-10** (end of Session 8).
+Last updated: **2026-08-25** (end of Session 10, agent session — no learner reply captured this
+session; see Open threads).
 
 ---
 
@@ -23,15 +24,15 @@ Do not restate the mission back to the learner — they wrote it. Pick up and te
 
 | | |
 | --- | --- |
-| Sessions completed | 8 |
-| Lessons shipped | `0001-a-server-is-bytes-on-a-socket.html`, `0002-a-server-without-a-framework.html`, `0003-fastapi.html`, `0004-relational-modelling-and-sql.html`, `0005-why-is-this-slow.html`, `0006-concurrency-and-the-orm.html`, `0007-deployment.html`, `0008-authentication.html` (Python + TypeScript) |
+| Sessions completed | 10 |
+| Lessons shipped | `0001-a-server-is-bytes-on-a-socket.html`, `0002-a-server-without-a-framework.html`, `0003-fastapi.html`, `0004-relational-modelling-and-sql.html`, `0005-why-is-this-slow.html`, `0006-concurrency-and-the-orm.html`, `0007-deployment.html`, `0008-authentication.html`, `0009-testing-and-ci.html`, `0010-caching.html` (Python + TypeScript from Lesson 8 on) |
 | Course order | `lesson_plan.md` — the order, the one idea of each lesson, and what each one proved. Update it first when the plan changes. |
 | Reference docs | `reference/http-message-anatomy.html`, `reference/reading-a-query-plan.html` |
 | Reference PDFs | `reference-pdfs/` — ASGI spec, RFC 9110 Methods, PEP 3333 key points, HTTP Messages Reference (`HTTP_Messages_Reference.pdf`) |
-| Lesson code | `Code/Lesson_1_code/`, `Code/Lesson_2_code/`, `Code/Lesson_4_code/` (schema migrations, `migrate.py`, DB-backed `main.py`, injection demo), `Code/Lesson_5_code/` (`seed.sql`, migration 0003, `main.py` with search + a deliberate N+1 endpoint, `n_plus_1.py`, `slow_link.py`), `Code/Lesson_6_code/` (migration 0004, `lost_update.py`, `orm_models.py`, `orm_n_plus_1.py`, `orm_increment.py`, `main.py` with the visit counter), `Code/Lesson_7_code/` (the deployable project: `config.py`, `main.py` with `/healthz`, `migrate.py`, `migrations/0001`–`0004`, `Dockerfile`, `.dockerignore`, `compose.yaml`, `.env.example`, `render.yaml`, `README.md`, and `naive/` for the four failures), `Code/Lesson_8_code/` + `Code/js/Lesson_8_code/` (accounts, in both languages) |
+| Lesson code | `Code/Lesson_1_code/`, `Code/Lesson_2_code/`, `Code/Lesson_4_code/` (schema migrations, `migrate.py`, DB-backed `main.py`, injection demo), `Code/Lesson_5_code/` (`seed.sql`, migration 0003, `main.py` with search + a deliberate N+1 endpoint, `n_plus_1.py`, `slow_link.py`), `Code/Lesson_6_code/` (migration 0004, `lost_update.py`, `orm_models.py`, `orm_n_plus_1.py`, `orm_increment.py`, `main.py` with the visit counter), `Code/Lesson_7_code/` (the deployable project: `config.py`, `main.py` with `/healthz`, `migrate.py`, `migrations/0001`–`0004`, `Dockerfile`, `.dockerignore`, `compose.yaml`, `.env.example`, `render.yaml`, `README.md`, and `naive/` for the four failures), `Code/Lesson_8_code/` + `Code/js/Lesson_8_code/` (accounts, in both languages), `Code/Lesson_9_code/` + `Code/js/Lesson_9_code/` (tests + CI for the Lesson 8 auth routes), `Code/Lesson_10_code/` + `Code/js/Lesson_10_code/` (the Lesson 9 API plus an ETag route and a Redis-cached search route) |
 | Learning records | LR-0001 (language anchor: Python first), LR-0002 (both languages from Lesson 8) |
-| Glossary | `GLOSSARY.md` — twenty-six terms (Lesson 8 added authentication, authorisation, JSON Web Token, salt, session) |
-| Next on the spine | **Lesson 9: testing and CI**, in both languages. Test the Lesson 8 auth routes first, because a route that forgets its dependency looks healthy in a browser. |
+| Glossary | `GLOSSARY.md` — Lesson 9 did not add terms; Lesson 10 added cache, cache invalidation, ETag, stale read, TTL |
+| Next on the spine | **Lesson 11: observability**, in both languages. `lesson_plan.md`'s one idea: "You cannot debug what you cannot see. A log line, a metric, and a trace answer different questions." See `## Next lesson: spec` below. |
 
 ### Lesson 0001 covers
 
@@ -369,8 +370,23 @@ tests.
   `migrate.py`, so one database serves both stacks), and `src/hashSpeed.ts`,
   `src/forgeToken.ts`, `src/eventLoopBlock.ts`. No build step: Node runs the `.ts` files.
   `npm run typecheck` is the only type check. API on port **8009**; Python runs on 8008.
+- `Code/Lesson_9_code/` + `Code/js/Lesson_9_code/` — the Lesson 8 API with an integration
+  test suite. Python: `conftest.py` (drops and rebuilds the schema once per session, then
+  a `client` fixture per test), `test_auth.py`, `test_bookmarks.py`, `docker-compose.test.yml`
+  (Postgres only), `.github/workflows/ci.yml`. TypeScript: `tests/setup.ts`,
+  `tests/auth.test.ts`, `tests/bookmarks.test.ts` with `vitest` + `supertest`. Both suites
+  run against a real PostgreSQL container, never SQLite.
+- `Code/Lesson_10_code/` + `Code/js/Lesson_10_code/` — the Lesson 9 API plus two caches.
+  `GET /bookmarks/{id}` carries an `ETag` and `Cache-Control: max-age=30`, and answers
+  `304` on a matching `If-None-Match`. `GET /bookmarks/search` (the Lesson 5 prefix search,
+  re-added here) is cached in Redis with a 30 s TTL. `cache_bench.py` / `cacheBench.ts`
+  measure a real miss against a real hit and demonstrate a stale read: a row inserted
+  directly with `psql`, bypassing the API, does not appear in a cached search until the
+  TTL expires. Both `docker-compose.test.yml` files and both `ci.yml` workflows now start
+  a `redis:7-alpine` service alongside Postgres, though the test suites themselves do not
+  touch Redis.
 - `lesson_plan.md` — the order of the course: what is done, what each finished lesson
-  proved, what Lesson 8 covers, and four planned lessons with their one idea.
+  proved, and eighteen planned lessons (11–28) with their one idea.
 
 ---
 
@@ -398,7 +414,7 @@ tests.
    tenses, sentences of 20–25 words maximum, no -ing constructions, no idiom. This
    applies to lessons, reference cards, glossary entries, and summaries — not to code,
    SQL, or terminal output. Lessons 1–5 predate the rule; convert them when they are
-   next edited. Lessons 6, 7 and 8 follow it.
+   next edited. Lessons 6 through 10 follow it.
 9. **Ignore `summaries/` directory.** The `summaries/` folder contains generated summaries for Lessons 1, 2, and 3. Future agents must totally ignore this directory.
 
 ---
@@ -435,41 +451,62 @@ tests.
   (`-v pg-bookmarks-data:/var/lib/postgresql/data`); the Lesson 4 `docker run` line has no
   volume, so a container recreation silently loses the data. Lesson 4's text was left
   as-is; mention the volume flag when it next comes up.
+- **Lessons 9 and 10 shipped with no learner reply in session.** Sessions 9 and 10 were
+  agent-run, working from `lesson_plan.md`'s existing spec and the pattern of Lessons 1–8,
+  with no message from the learner confirming direction or reviewing the result. Ask
+  concretely before Lesson 11: did they read `0009-testing-and-ci.html` and
+  `0010-caching.html`, did they run the test suites and `cache_bench.py` /
+  `cacheBench.ts` themselves, and does the two-language format still work for them at
+  ten lessons in.
+- **Redis is now a third piece of dev infrastructure.** Lesson 10 needs a running
+  `redis-bookmarks` container (`docker run -d --name redis-bookmarks -p 6379:6379
+  redis:7-alpine`) alongside `pg-bookmarks`. Mention this the first time Lesson 10 comes
+  up in conversation, the same way the Lesson 4 Docker note does for Postgres.
+- **`lesson_plan.md`'s "Now" section is gone.** Lessons ship straight into "Done" the
+  session they are finished; there is no longer a separate table for "written but not
+  reviewed." If the learner wants a review gate before a lesson counts as done, add one
+  back and say so here.
 
 ---
 
 ## Next lesson: spec
 
-### Lesson 0009 — testing and CI, in both languages
+### Lesson 0011 — observability, in both languages
 
-- **The observable failure to open with.** Delete `Depends(current_user)` from
-  `POST /bookmarks`, or drop `requireUser` from the Express route. The server starts, the
-  browser looks normal, and a stranger writes to the database. Then write the one test
-  that catches it: call the route with no credential, expect 401. That test runs in
-  milliseconds and it would have caught a real breach.
-- **The mechanism before the library.** Show what a test runner does: collect, run,
-  assert, report. Then use `pytest` with `httpx.ASGITransport`, and `vitest` with
-  `supertest`.
-- **A real database, not a mock and not SQLite.** Lesson 4 already gives the reason.
-  Start a PostgreSQL container for the suite, run `migrate.py` against it, and roll back
-  each test in a transaction. Measure the suite time both ways.
-- **What to test, and what not to.** Test the contract: status codes, the ownership 403,
-  the 401 with no credential, the duplicate 409, and the identical message for an unknown
-  email. Do not test that FastAPI routes or that bcrypt hashes.
-- **The fixture problem that Lesson 8 creates.** bcrypt at cost 12 costs 190 ms for each
-  login, so a suite with 40 logins takes 8 seconds. Lower the cost in the test
-  environment through `BCRYPT_ROUNDS`, and say why that is safe.
-- **CI.** One GitHub Actions workflow with a `services: postgres` block. It runs the
-  migrations, then the Python suite, then `npm run typecheck` and the TypeScript suite.
-  A red check on a pull request is the artifact.
-- **The artifact.** A badge and a `tests/` directory in the repository, plus a line in
-  the CV README that names the number of tests and the suite time.
-- Sources: fetch and date them. Candidates: the pytest documentation, `httpx` async
-  testing, the FastAPI testing chapter, Vitest, `supertest`, and the GitHub Actions
-  documentation for service containers.
+From `lesson_plan.md`'s one idea: "You cannot debug what you cannot see. A log line, a
+metric, and a trace answer different questions."
+
+- **The observable failure to open with.** Something breaks in production with no stack
+  trace the learner can see locally — for example a slow `/bookmarks/search` under load,
+  or a 500 with a message that never reaches the terminal. Plain `print`/`console.log`
+  cannot answer "how often," "how slow," or "which request." Name which question each of
+  the three tools answers before building any of them.
+- **Structured logs first.** Replace ad hoc prints with one JSON line per request:
+  timestamp, level, a request id, method, path, status, duration. Generate the request id
+  at the top of the request (middleware in both stacks) and thread it through every log
+  line for that request, so a grep on one id reconstructs the whole request's story.
+- **Then `/metrics`.** A counter (requests total, by route and status) and a histogram
+  (request duration). Use `prometheus_client` in Python and `prom-client` in TypeScript,
+  the same pattern as Lesson 10's two-cache split: one idea, then Python, then TypeScript.
+  Scrape it once with `curl localhost:8000/metrics` and read the output raw before adding
+  Grafana or any dashboard.
+- **Then a trace.** One trace across the API and the database for a single request:
+  a span for the HTTP handler, a child span for the SQL query. OpenTelemetry SDK in both
+  languages, exported to console or a local Jaeger container — pick whichever keeps the
+  lesson runnable offline, and say why in the lesson.
+- **The observable payoff.** Reproduce the Lesson 10 stale-read scenario, or the Lesson 5
+  slow query, but this time diagnose it from the log line, the metric, and the trace alone
+  — without reading the source first. That is the proof the tooling works.
+- **What not to build.** No external SaaS observability vendor, no long retention story,
+  no alerting. This lesson is the three primitives, not a production observability stack.
+- Sources: fetch and date them. Candidates: the OpenTelemetry Python and JS getting-started
+  guides, the `prometheus_client` and `prom-client` READMEs, and the Twelve-Factor App
+  logs factor (already cited for Lesson 7's config factor; confirm the URL still resolves).
 
 ### Carry-over rules
 
-Lesson 9 extends the Lesson 8 projects; it does not fork them. Keep the transcripts real,
-keep the numbers measured, and keep both languages in one page unless the learner asks
-for a split.
+Lesson 11 extends the Lesson 10 projects; it does not fork them. Keep the transcripts
+real, keep the numbers measured, and keep both languages in one page unless the learner
+asks for a split. Start the dev containers (`pg-bookmarks`, `redis-bookmarks`) before
+writing any benchmark script, and run every script for real before quoting its output in
+the lesson — do not recall a number from a previous session.
