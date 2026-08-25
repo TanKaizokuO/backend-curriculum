@@ -1,38 +1,14 @@
-# Handoff
+# Log
 
-Cold-start briefing for a new chat. Read this first, then `MISSION.md`, then `NOTES.md`.
-This file is the *state of play*; `NOTES.md` is the working scratchpad and
-`learning-records/` holds decisions that must not be silently reversed.
-
-Last updated: **2026-08-25** (end of Session 10, agent session — no learner reply captured this
-session; see Open threads).
-
----
-
-## Your role
-
-You are the teacher for this workspace. The learner is a fluent Python programmer who has
-never built a server and is working toward a backend/full-stack job at ~14–15 hrs/week.
-Lessons are self-contained dark-mode HTML files in `lessons/`, built on the shared assets.
-From Lesson 8 each lesson teaches Python **and** TypeScript in one file.
-
-Do not restate the mission back to the learner — they wrote it. Pick up and teach.
+Append-only history: what each lesson covered, what was verified before it
+shipped, and the teaching hooks worth reusing. An entry is written once, when
+a lesson ships, and is not revised afterward — only a new lesson's entry is
+appended below the last one. For live state — where things stand right now,
+conventions, open threads, and what ships next — see `STATE.md`.
 
 ---
 
-## Where things stand
-
-| | |
-| --- | --- |
-| Sessions completed | 10 |
-| Lessons shipped | `0001-a-server-is-bytes-on-a-socket.html`, `0002-a-server-without-a-framework.html`, `0003-fastapi.html`, `0004-relational-modelling-and-sql.html`, `0005-why-is-this-slow.html`, `0006-concurrency-and-the-orm.html`, `0007-deployment.html`, `0008-authentication.html`, `0009-testing-and-ci.html`, `0010-caching.html` (Python + TypeScript from Lesson 8 on) |
-| Course order | `lesson_plan.md` — the order, the one idea of each lesson, and what each one proved. Update it first when the plan changes. |
-| Reference docs | `reference/http-message-anatomy.html`, `reference/reading-a-query-plan.html` |
-| Reference PDFs | `reference-pdfs/` — ASGI spec, RFC 9110 Methods, PEP 3333 key points, HTTP Messages Reference (`HTTP_Messages_Reference.pdf`) |
-| Lesson code | `Code/Lesson_1_code/`, `Code/Lesson_2_code/`, `Code/Lesson_4_code/` (schema migrations, `migrate.py`, DB-backed `main.py`, injection demo), `Code/Lesson_5_code/` (`seed.sql`, migration 0003, `main.py` with search + a deliberate N+1 endpoint, `n_plus_1.py`, `slow_link.py`), `Code/Lesson_6_code/` (migration 0004, `lost_update.py`, `orm_models.py`, `orm_n_plus_1.py`, `orm_increment.py`, `main.py` with the visit counter), `Code/Lesson_7_code/` (the deployable project: `config.py`, `main.py` with `/healthz`, `migrate.py`, `migrations/0001`–`0004`, `Dockerfile`, `.dockerignore`, `compose.yaml`, `.env.example`, `render.yaml`, `README.md`, and `naive/` for the four failures), `Code/Lesson_8_code/` + `Code/js/Lesson_8_code/` (accounts, in both languages), `Code/Lesson_9_code/` + `Code/js/Lesson_9_code/` (tests + CI for the Lesson 8 auth routes), `Code/Lesson_10_code/` + `Code/js/Lesson_10_code/` (the Lesson 9 API plus an ETag route and a Redis-cached search route) |
-| Learning records | LR-0001 (language anchor: Python first), LR-0002 (both languages from Lesson 8) |
-| Glossary | `GLOSSARY.md` — Lesson 9 did not add terms; Lesson 10 added cache, cache invalidation, ETag, stale read, TTL |
-| Next on the spine | **Lesson 11: observability**, in both languages. `lesson_plan.md`'s one idea: "You cannot debug what you cannot see. A log line, a metric, and a trace answer different questions." See `## Next lesson: spec` below. |
+## Lessons taught
 
 ### Lesson 0001 covers
 
@@ -304,8 +280,97 @@ style choice.
 `"200002"` in TypeScript and `200001` in Python, while `users.id` (an `integer`) arrives
 as a number in both. The lesson carries this as a sidenote. Expect it in Lesson 9's
 tests.
+### Lesson 0011 covers
 
-### Built infrastructure
+Observability, in both languages, extending the Lesson 10 API. Structure: the one idea
+(you cannot debug what you cannot see) → **observable failure**: five concurrent
+identical search requests produce five byte-identical `uvicorn` access-log lines, with no
+duration, no cache result, and no way to match a response back to a line → structured
+JSON logs: `contextvars.ContextVar` for a per-request id (Python), `AsyncLocalStorage`
+(TypeScript), one `log_event()`/`logEvent()` call per request → the same five requests,
+now individually named and timed, with the slow one (11.87 ms against 1.98–3.95 ms)
+revealed as the cache miss → `prometheus_client` / `prom-client`: a `Counter`
+(`http_requests_total`) and a `Histogram` (`http_request_duration_seconds`), plus
+`bookmark_search_cache_total`, served from `GET /metrics` → a `note--warn` on route-template
+cardinality (`request.scope["route"]` / `req.route`, read only after routing, never the
+raw path) → OpenTelemetry: `TracerProvider` + `SimpleSpanProcessor(ConsoleSpanExporter())`,
+one `http_request` span per request, a child `pg_query` span only on a cache miss, proven
+nested by a shared `trace_id` and a matching `parent_id`/`span_id` pair → **the payoff**:
+`diagnose.py` / `diagnose.ts` reproduce Lesson 10's stale read, and the lesson diagnoses it
+from the log line, the metric, and the missing trace span alone, with `main.py` never
+reopened → eight practice steps, one of which breaks span nesting on purpose by removing
+`context.with(...)` and asks the learner to observe two unrelated `traceId` values before
+putting it back → six quiz questions → OpenTelemetry Python/Node getting-started guides,
+Prometheus exposition format, `prometheus_client`/`prom-client`, Python `contextvars`,
+Node `async_context`, and twelve-factor XI (Logs) as sources.
+
+**Everything in this lesson was executed before shipping**: PostgreSQL 17.10 (Docker),
+Redis 7 (Docker), Python 3.12 with `opentelemetry-sdk` 1.44.0 and `prometheus-client`
+0.26.0, FastAPI 0.141.1; Node 24.19 with `@opentelemetry/sdk-trace-node` 1.30.1 and
+`prom-client` 15.1.3, Express 4.21. Every log line, span, and metric sample quoted in the
+lesson is real output from `Code/Lesson_11_code/` and `Code/js/Lesson_11_code/`, captured
+against a shared `redis-bookmarks` container so the Python and TypeScript demos land in
+the same cache. `pytest` (6 passed) and `vitest` (6 passed) both pass against the
+instrumented servers.
+
+**Bug caught and fixed before shipping, worth reusing as a teaching moment.** The first
+version of the TypeScript middleware called `tracer.startSpan('http_request')` without
+entering it into the active context. Every `pg_query` child span opened inside a route
+handler then started its own, unrelated trace — same `traceId` mismatch a learner will hit
+the first time they wire tracing into Express by hand. The fix,
+`context.with(trace.setSpan(context.active(), span), () => next())`, is now Practice
+step 6 and a `note--warn` in the lesson: break the nesting on purpose, see the two
+`traceId` values, then understand why the wrapper is required. Python's equivalent
+(`with tracer.start_as_current_span(...) as span:`) never has this failure mode, because
+the context manager both starts and activates the span in one call — worth naming as the
+reason Python's version needed no such warning.
+
+**Tooling hazard, worth reusing.** A copied `.venv/` directory (from `cp -r
+Lesson_10_code Lesson_11_code`) leaves `pip`/`uvicorn` shebangs pointing at the *old*
+project's interpreter. `pip install` then reports packages "already satisfied" from the
+wrong venv and the new venv silently stays empty. Delete and recreate `.venv` after
+copying a lesson directory, or install with `.venv/bin/python -m pip install ...`, which
+ignores the stale shebang.
+
+**Scenario reuse, on purpose.** The payoff diagnosis reuses Lesson 10's exact stale-read
+scenario — same cache key shape, same 30 s TTL, same direct-SQL bypass — so the learner's
+conclusion from Lesson 10 (the response is 200 and the answer is wrong) becomes the
+premise Lesson 11 diagnoses with new tools, instead of a new failure to learn from
+scratch.
+
+### Lesson 0012 covers
+
+Scaling the API to two instances, in both languages. Structure: the one idea (add
+a second instance and every assumption about local state breaks) → the
+round-robin TCP proxy (`round_robin_proxy.py` and `src/roundRobinProxy.ts`) →
+**observable failure 1**: an in-memory rate limiter allows 11 attempts across
+two instances when the limit is 5 → the fix: an atomic Redis counter
+(`INCR` + `EXPIRE`), proven to block correctly at 6 attempts across the proxy →
+**observable failure 2**: oversubscribed database connection pools (max 10+10 against a database capacity of 15)
+produce a "slow failure" under burst load, hanging callers for 10–14 seconds while
+every request eventually succeeds → the fix: right-sized pools (max 7+7) with a
+short timeout (3s) produce honest backpressure, failing fast with a 503 and
+`Retry-After` header → **observable failure 3**: reading from a read replica
+immediately after a primary write yields a stale answer, proven by pausing WAL
+replay on the replica container during the bench script → four practice steps
+→ six retrieval-practice questions.
+
+**Everything in this lesson was executed before shipping** against PostgreSQL 17.10
+(Docker), Redis 7-alpine (Docker), Python 3.12, Node 24.19. Every bench run
+number and HTTP transcript is real output from a live test.
+
+**Teaching hook worth reusing — Node vs Python raw failure modes.** Python's
+`psycopg_pool` queues callers automatically, resulting in the 14-second
+hang during oversubscription. Node's `pg.Pool` lacks a queue timeout and fails
+instantly with Postgres's raw `53300: too many clients already` error when
+the connection is refused. The lesson does not hide this divergence; it adds a
+manual timeout wrapper to the TypeScript side and explicitly calls out the
+difference in a note, proving that libraries wrap the same primitive differently.
+
+---
+
+## Built infrastructure
+
 
 - `assets/course.css` — Tufte-influenced shared stylesheet. **All theming is tokens in
   `:root`.** Dark by default; `@media print` resets the full palette to light.
@@ -385,128 +450,14 @@ tests.
   TTL expires. Both `docker-compose.test.yml` files and both `ci.yml` workflows now start
   a `redis:7-alpine` service alongside Postgres, though the test suites themselves do not
   touch Redis.
+- `Code/Lesson_11_code/` + `Code/js/Lesson_11_code/` — the Lesson 10 API, observed.
+  `observability.py` / `observability.ts` (request id, `log_event`/`logEvent`, the
+  Prometheus `Counter`/`Histogram`/cache-result metrics, the OpenTelemetry
+  `TracerProvider` with a console exporter), `GET /metrics` added to `main.py` /
+  `server.ts`, a `pg_query` child span wrapped around the search endpoint's database
+  call, and `diagnose.py` / `diagnose.ts` (reproduces the Lesson 10 stale read and
+  prints only the client side of the payoff — the server's own terminal carries the
+  log lines and spans the lesson diagnoses from).
 - `lesson_plan.md` — the order of the course: what is done, what each finished lesson
-  proved, and eighteen planned lessons (11–28) with their one idea.
+  proved, and seventeen planned lessons (12–28) with their one idea.
 
----
-
-## Conventions that must hold
-
-1. **All HTML is dark mode** (`AGENTS.md`). Theme from `:root` tokens in `course.css`;
-   never override per lesson, never inline styles.
-2. **Raw mechanism before the abstraction.** This learner can already code. Show the
-   socket before the framework, the SQL before the ORM. Hiding machinery wastes their
-   main advantage.
-3. **Every lesson ends in something demonstrable.** The goal is employment; a lesson that
-   produces no artifact is a lesson that produces no CV line.
-4. **Sources are verified, not recalled.** `RESOURCES.md` entries were fetched. Anything
-   new gets fetched before it is cited, and dated.
-5. **Both languages, from Lesson 8** (LR-0002). Python + FastAPI stays the anchor
-   (LR-0001); TypeScript now rides beside it in the same file. Do not drop either, and do
-   not split Lesson 8 into two pages without asking the learner first.
-6. **Record decisions, not diary.** A new `learning-records/NNNN-*.md` only when a choice
-   constrains future lessons and the evidence is non-obvious.
-7. **`lessons/js/` is frozen.** It holds a condensed port of Lessons 1 to 7. Do not add
-   Lesson 8 or later files to it. New TypeScript teaching goes in the main lesson page,
-   and new TypeScript code goes in `Code/js/Lesson_N_code/`.
-8. **All lesson prose follows ASD-STE100 Simplified Technical English** (`AGENTS.md`).
-   One meaning for each word, one part of speech for each word, active voice, simple
-   tenses, sentences of 20–25 words maximum, no -ing constructions, no idiom. This
-   applies to lessons, reference cards, glossary entries, and summaries — not to code,
-   SQL, or terminal output. Lessons 1–5 predate the rule; convert them when they are
-   next edited. Lessons 6 through 10 follow it.
-9. **Ignore `summaries/` directory.** The `summaries/` folder contains generated summaries for Lessons 1, 2, and 3. Future agents must totally ignore this directory.
-
----
-
-## Open threads
-
-- **Learner ran Lesson 1 code.** Confirmed: both `client.py` and `server.py`.
-- **`GLOSSARY.md` updated.** Twenty-six terms total. New from Lesson 8: authentication,
-  authorisation, JSON Web Token, salt, session. Note this workspace promotes terms at
-  lesson time, before the learner has demonstrated them — check usage next session and
-  revise anything that did not land.
-- **Code-review venue.** Code Review Stack Exchange is now *raised* — it is named in
-  Lesson 5's closing `.ask` block, alongside r/PostgreSQL for plan questions. Ask next
-  session whether they posted, and offer to read the post before it goes up.
-- **Location / in-person community** — never asked. `RESOURCES.md` lists it as a gap.
-- **The language question is answered.** The learner asked for both. LR-0002 records it,
-  and Lesson 8 is the first lesson in both. Ask once whether the two languages in one
-  page helped or crowded it; a split into a Python half and a TypeScript half is cheap.
-- **Bookmarks API** — the learner's `bookmarks-api/main.py` is still the in-memory
-  version, and it has a latent bug: the path is `/bookmarks/{id}` while the handler takes
-  `bookmark_id`, and `request` is unannotated. Walk them through migrating it to the
-  Lesson 4 shape rather than handing over the finished file.
-- **HTTP Messages PDF** — reminder delivered in Lesson 4's opening note; Session 5 did not
-  get to ask (no learner reply in session). Still open — ask.
-- **Learner has not replied in-session since Lesson 4, except on process.** Lessons 4 to
-  8 were shipped without confirmation that the practice was done. Ask concretely before
-  Lesson 9: did they run `hash_speed.py` and `event_loop_block.py`, and did they delete
-  the two deliberately wrong routes?
-- **No live URL, and that is settled.** Render asks for a credit card, so the learner
-  skipped the cloud deploy. `Code/Lesson_7_code/README.md` says the service is
-  container-ready and proved with Docker Compose. Do not ask again, and never invent
-  a URL. A free platform that takes no card is worth one search if the learner raises it.
-- **Docker note.** The `pg-bookmarks` container is now created with a named volume
-  (`-v pg-bookmarks-data:/var/lib/postgresql/data`); the Lesson 4 `docker run` line has no
-  volume, so a container recreation silently loses the data. Lesson 4's text was left
-  as-is; mention the volume flag when it next comes up.
-- **Lessons 9 and 10 shipped with no learner reply in session.** Sessions 9 and 10 were
-  agent-run, working from `lesson_plan.md`'s existing spec and the pattern of Lessons 1–8,
-  with no message from the learner confirming direction or reviewing the result. Ask
-  concretely before Lesson 11: did they read `0009-testing-and-ci.html` and
-  `0010-caching.html`, did they run the test suites and `cache_bench.py` /
-  `cacheBench.ts` themselves, and does the two-language format still work for them at
-  ten lessons in.
-- **Redis is now a third piece of dev infrastructure.** Lesson 10 needs a running
-  `redis-bookmarks` container (`docker run -d --name redis-bookmarks -p 6379:6379
-  redis:7-alpine`) alongside `pg-bookmarks`. Mention this the first time Lesson 10 comes
-  up in conversation, the same way the Lesson 4 Docker note does for Postgres.
-- **`lesson_plan.md`'s "Now" section is gone.** Lessons ship straight into "Done" the
-  session they are finished; there is no longer a separate table for "written but not
-  reviewed." If the learner wants a review gate before a lesson counts as done, add one
-  back and say so here.
-
----
-
-## Next lesson: spec
-
-### Lesson 0011 — observability, in both languages
-
-From `lesson_plan.md`'s one idea: "You cannot debug what you cannot see. A log line, a
-metric, and a trace answer different questions."
-
-- **The observable failure to open with.** Something breaks in production with no stack
-  trace the learner can see locally — for example a slow `/bookmarks/search` under load,
-  or a 500 with a message that never reaches the terminal. Plain `print`/`console.log`
-  cannot answer "how often," "how slow," or "which request." Name which question each of
-  the three tools answers before building any of them.
-- **Structured logs first.** Replace ad hoc prints with one JSON line per request:
-  timestamp, level, a request id, method, path, status, duration. Generate the request id
-  at the top of the request (middleware in both stacks) and thread it through every log
-  line for that request, so a grep on one id reconstructs the whole request's story.
-- **Then `/metrics`.** A counter (requests total, by route and status) and a histogram
-  (request duration). Use `prometheus_client` in Python and `prom-client` in TypeScript,
-  the same pattern as Lesson 10's two-cache split: one idea, then Python, then TypeScript.
-  Scrape it once with `curl localhost:8000/metrics` and read the output raw before adding
-  Grafana or any dashboard.
-- **Then a trace.** One trace across the API and the database for a single request:
-  a span for the HTTP handler, a child span for the SQL query. OpenTelemetry SDK in both
-  languages, exported to console or a local Jaeger container — pick whichever keeps the
-  lesson runnable offline, and say why in the lesson.
-- **The observable payoff.** Reproduce the Lesson 10 stale-read scenario, or the Lesson 5
-  slow query, but this time diagnose it from the log line, the metric, and the trace alone
-  — without reading the source first. That is the proof the tooling works.
-- **What not to build.** No external SaaS observability vendor, no long retention story,
-  no alerting. This lesson is the three primitives, not a production observability stack.
-- Sources: fetch and date them. Candidates: the OpenTelemetry Python and JS getting-started
-  guides, the `prometheus_client` and `prom-client` READMEs, and the Twelve-Factor App
-  logs factor (already cited for Lesson 7's config factor; confirm the URL still resolves).
-
-### Carry-over rules
-
-Lesson 11 extends the Lesson 10 projects; it does not fork them. Keep the transcripts
-real, keep the numbers measured, and keep both languages in one page unless the learner
-asks for a split. Start the dev containers (`pg-bookmarks`, `redis-bookmarks`) before
-writing any benchmark script, and run every script for real before quoting its output in
-the lesson — do not recall a number from a previous session.

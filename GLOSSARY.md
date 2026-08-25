@@ -8,6 +8,11 @@ the precise sense that matters for this curriculum.
 
 ## A
 
+**Atomic** (Lesson 12) — An operation that completes fully or not at all,
+appearing instantaneous to every other process. Redis's `INCR` is atomic: two
+concurrent increments of a key holding `4` always yield `5` and `6`, never
+two `5`s. This is why a shared Redis counter prevents the *lost update* that
+a naive read-modify-write causes.
 **Atomicity** (Lesson 4) — The *A* in ACID: a transaction either applies
 completely or not at all. Demonstrated concretely — a successful `INSERT`
 followed by a failing one makes PostgreSQL answer the subsequent `COMMIT` with
@@ -28,6 +33,11 @@ credential; a `403` does not, because the same credential fails again.
 
 ## C
 
+**Connection pool** (Lesson 4) — A cache of open database connections. Opening
+a TCP connection and negotiating TLS/authentication takes tens of milliseconds;
+a pool does this once at startup and hands out ready connections in
+microseconds. When demand exceeds `max_size`, callers queue. Node.js `pg.Pool`
+lacks a queue timeout, forcing callers to wait forever or write a manual timeout.
 **Cache** (Lesson 10) — A copy of an answer, kept somewhere faster than the
 place that computed it, so a later request can skip the work. A cache can be
 wrong: the source changes, and the copy does not. Name the moment a copy goes
@@ -38,6 +48,13 @@ no longer matches the source, either by deleting the entry on a write or by
 giving the entry a *TTL* so it expires on its own. A TTL is simpler: no write
 path needs to know which cache keys its change affects. The cost is a stale
 read for up to one TTL after every write.
+
+**Cardinality** (Lesson 11) — The number of distinct label combinations a
+metric can take, and so the number of separate time series it creates. A
+label built from a route template, `/bookmarks/{id}`, stays bounded at one
+series per route. A label built from the raw path, with the id inside it,
+adds a new series for every id ever requested and never stops growing —
+the mistake a metric label must avoid.
 
 **Config** (Lesson 7) — Everything that varies between deploys: connection
 strings, credentials, and per-deploy values such as the canonical hostname.
@@ -56,6 +73,11 @@ secret written in one layer stays readable through `docker image history` even
 after a later layer removes it. And layers are cached in order, so a
 `Dockerfile` copies `requirements.txt` and installs before it copies the
 source, otherwise every code edit reinstalls every dependency.
+
+**Counter** (Lesson 11) — A metric that only goes up, and resets to zero
+when the process restarts. Answers "how often": `http_requests_total`
+counts every request, labelled by method, route, and status code.
+Contrast *histogram*.
 
 ## E
 
@@ -81,6 +103,12 @@ dependency that actually breaks — `SELECT 1` on the connection pool — and
 answers `503` when it fails, so an instance that cannot reach its database
 never receives a request. Keep it cheap; it runs forever. Render treats any
 `2xx` or `3xx` within five seconds as healthy.
+
+**Histogram** (Lesson 11) — A metric built from several counters plus a
+running sum, sorting every observed value into buckets by upper bound.
+Answers "how slow, and in which bucket", for example how many requests to
+one route finished in under 25 ms. Contrast *counter*, which only answers
+"how often".
 
 ## I
 
@@ -124,6 +152,12 @@ take the accepted algorithm from your own list, never from the header
 (`alg: none`), and keep the life short.
 
 ## L
+
+**Load balancer** (Lesson 12) — A reverse proxy that accepts a connection from
+a client, picks one backend instance from a list, opens a connection to it, and
+copies bytes back and forth. A minimal proxy simply alternates (round robin);
+a production balancer adds health checks, TLS termination, and retries.
+Load balancing is what makes *local state* break.
 
 **Lost update** (Lesson 6) — Two transactions read the same row, each computes
 a new value in application code, and each writes it back. The second write
@@ -197,6 +231,26 @@ checks.
 
 ## R
 
+**Rate limiting** (Lesson 12) — Rejecting requests to cap how often a client
+can call an endpoint in a given window, usually to stop brute-force attacks or
+manage overload. An in-memory rate limiter silently multiplies its limit across
+multiple instances behind a *load balancer*; a correct distributed limiter uses
+*atomic* operations against a shared store like Redis.
+
+**Read replica** (Lesson 12) — A second database that accepts a continuous
+stream of changes (WAL) from the primary database and serves read-only queries.
+Because WAL transfer and replay take time, a replica can fall behind (*replication
+lag*). Reading from a replica immediately after writing to the primary causes a
+*stale read*.
+
+**Request id** (Lesson 11) — A short random value generated once, at the top
+of a request, and carried through every log line and response header for
+that request. Python threads it through `contextvars.ContextVar`; Node
+threads it through `AsyncLocalStorage` — both solve the same problem: many
+requests run interleaved in one process, so a plain variable would leak one
+request's id into another's log line. `grep` on one id reconstructs one
+request's whole story.
+
 **Release step** (Lesson 7) — The command that runs between the build and the
 run stage, and only there: schema migrations, an asset upload, a cache warm.
 It runs once, on its own instance, and it must finish before the new version
@@ -207,6 +261,12 @@ calls this the `preDeployCommand`. The step must be idempotent, because the
 platform may run it twice.
 
 ## S
+
+**Scaling** (Lesson 12) — Adding capacity to handle more traffic. *Vertical*
+scaling means buying a bigger machine. *Horizontal* scaling means running a
+second instance of the application on another machine. Horizontal scaling
+forces all *local state* into a shared data store, because an instance no
+longer knows about the traffic hitting its siblings.
 
 **Safe method** (Lesson 1, reference card) — A request method that does not
 modify server state. GET and HEAD are safe. Safety means a cache can serve them
@@ -225,6 +285,13 @@ one opaque id in a cookie. The id carries no facts; every fact stays in the
 cryptographic generator (`secrets.token_hex`, `crypto.randomBytes`), never
 with `random` or `Math.random()`.
 
+**Span** (Lesson 11) — One timed operation inside a *trace*: a start time, an
+end time, a name, and a set of attributes. `tracer.start_as_current_span(...)`
+opens one around the HTTP handler; a nested call opens a child span around
+the database round trip. Printed to the console with `ConsoleSpanExporter`
+in this curriculum; a production deploy exports the same spans over OTLP to
+Jaeger or a vendor instead, with no other code change.
+
 **Stale read** (Lesson 10) — An answer served from a cache after the source it
 copied has changed. A write that bypasses the cache, direct `SQL` against
 the database in this curriculum, makes the next cached read stale until the
@@ -236,7 +303,22 @@ is the *request line*: `METHOD target HTTP/version`. For a response it is the
 *status line*: `HTTP/version status-code reason-phrase`. Everything after it
 until the blank line is headers.
 
+**Structured log** (Lesson 11) — One JSON object per log line, instead of a
+free-text sentence. A JSON line is a line a program can parse and search by
+field; a sentence built with an f-string is a line only a human can read.
+Every field in this curriculum's log line is named, never embedded in
+prose: `{"request_id": ..., "method": ..., "status": ..., "duration_ms": ...}`.
+See *request id*.
+
 ## T
+
+**Trace** (Lesson 11) — A tree of *spans* that share one `trace_id`,
+showing where the time inside one request went. The outer span covers the
+whole request; a child span's `parent_id` equals the outer span's own
+`span_id`, and that field is what makes it a child instead of a second,
+unrelated event. A cache hit that never opens a database span is itself
+evidence — the absence of a child span shows the request never reached the
+database. See *span*.
 
 **TTL** (Lesson 10) — Time to live: the number of seconds a cache entry stays
 valid before the cache deletes it on its own. A short TTL bounds how stale a

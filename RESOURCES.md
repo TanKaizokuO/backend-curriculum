@@ -94,6 +94,25 @@ Scope skeleton: [`ROADMAP.md`](./ROADMAP.md) — local scope checklist. **Use it
 - [Uvicorn — Settings](https://github.com/Kludex/uvicorn/blob/master/docs/settings.md)
   v0.52.1, verified 2026-08-10 from the repository source; `uvicorn.org` did not resolve from this machine on that date. The authority on `--host`, `--port`, `--proxy-headers` (enabled by default), and `--forwarded-allow-ips` (defaults to `127.0.0.1`; the literal `'*'` trusts everything).
 
+### Observability
+
+- [OpenTelemetry — Getting Started, Python](https://opentelemetry.io/docs/languages/python/getting-started/)
+  Verified 2026-08-25. The source of this curriculum's console span JSON shape: `trace_id`, `span_id`, `parent_id`, `attributes`, `resource`. Read for the shape of a printed span, not the auto-instrumentation agent — Lesson 11 wires the SDK by hand.
+- [OpenTelemetry — Getting Started, Node.js](https://opentelemetry.io/docs/languages/js/getting-started/nodejs/)
+  Verified 2026-08-25. The `NodeTracerProvider` + `ConsoleSpanExporter` pattern this curriculum uses. Notes that OpenTelemetry's own Node logging SDK is still under development — a reason this curriculum writes structured logs by hand instead.
+- [Prometheus — Exposition Formats](https://prometheus.io/docs/instrumenting/exposition_formats/)
+  Verified 2026-08-25. The text format `/metrics` actually returns: `HELP`/`TYPE` comments, one sample per line, and the `_bucket`/`_sum`/`_count` convention a histogram expands into. Read this before trusting any dashboard that draws from it.
+- [prometheus/client_python — README](https://github.com/prometheus/client_python)
+  Verified 2026-08-25. `prometheus-client` 0.26.0, pinned in `Code/Lesson_11_code/requirements.txt`. `Counter` and `Histogram` are the two types this curriculum uses; `generate_latest()` is the whole `/metrics` handler.
+- [prom-client — npm package page](https://www.npmjs.com/package/prom-client)
+  Verified 2026-08-25. `prom-client` 15.1.3, pinned in `Code/js/Lesson_11_code/package.json`. ⚠️ The upstream GitHub repository has renamed itself to `prometheus/client_js` and now publishes new releases as `@prometheus-io/client`; the `prom-client` name on npm is still the current, actively downloaded package at this version and is what this curriculum installs.
+- [Python — `contextvars`](https://docs.python.org/3/library/contextvars.html)
+  Verified 2026-08-25. `ContextVar.get()`/`.set()`/`.reset()`, and why `asyncio` needs it instead of a plain module-level variable: many requests run interleaved in one process. The source for Lesson 11's request id.
+- [Node.js — Asynchronous context tracking](https://nodejs.org/api/async_context.html)
+  Verified 2026-08-25 against Node 26.7.0 docs; behaviour checked against Node 24.19 LTS, installed on this machine. `AsyncLocalStorage`, Node's equivalent of `contextvars`. The worked example in the docs is the same request-id-through-a-server shape Lesson 11 builds.
+- [The Twelve-Factor App — XI. Logs](https://12factor.net/logs)
+  Verified 2026-08-25 (already cited above for factor III and V). "A twelve-factor app never concerns itself with routing or storage of its own output stream" — the reason this curriculum's `log_event()` writes to `stdout` and nothing collects, rotates, or ships it itself.
+
 ### Authentication & TypeScript
 
 - [OWASP — Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)

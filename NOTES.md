@@ -73,7 +73,7 @@ Scratchpad for teaching preferences and working state. Not a journal — see
   Everything ran against PostgreSQL 17.10 in Docker with psycopg 3.3.4 /
   FastAPI 0.141.1 on 200 000 seeded rows; every plan and timing in the lesson
   is real output.
-  **Scope call:** the Lesson 5 spec in HANDOFF also listed isolation levels and
+  **Scope call:** the Lesson 5 spec in LOG.md also listed isolation levels and
   the ORM. Both were moved to Lesson 6. Indexes + N+1 is already one coherent
   skill (measure → diagnose → fix → prove); concurrency is a different
   question and would have doubled the working-memory load.
@@ -123,7 +123,7 @@ Scratchpad for teaching preferences and working state. Not a journal — see
   `FOR UPDATE` lock blocked every writer to bookmark 1 and hung a 300-request
   load test for the full timeout. Diagnose with `pg_stat_activity`
   (`wait_event_type = 'Lock'`), then `pg_terminate_backend(pid)`. Written up in
-  `HANDOFF.md`.
+  `LOG.md`.
 
 - **Session 7 (2026-08-10):** Shipped Lesson 0007 (deployment — twelve-factor
   config, one image with no secret, a release step, a real health check, a

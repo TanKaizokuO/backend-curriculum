@@ -182,10 +182,10 @@ A beginner-friendly version and a DevOps beginner roadmap are linked separately.
 
 ## 22. Observability
 
-- [ ] Instrumentation
-- [ ] Monitoring
-- [ ] Telemetry
-- [ ] Metrics, logging, and other observable items that help debug and resolve issues when things go wrong
+- [x] ~~Instrumentation~~
+- [x] ~~Monitoring~~
+- [x] ~~Telemetry~~
+- [x] ~~Metrics, logging, and other observable items that help debug and resolve issues when things go wrong~~
 
 ## 23. Related Tracks Referenced
 

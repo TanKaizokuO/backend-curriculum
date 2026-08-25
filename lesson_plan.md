@@ -37,6 +37,8 @@ figure from memory.
 | 8 | ~~[Authentication](./lessons/0008-authentication.html)~~ | The server must never trust the client. It must only trust what it can verify. | [`Code/Lesson_8_code/`](./Code/Lesson_8_code/) (Python), [`Code/js/Lesson_8_code/`](./Code/js/Lesson_8_code/) (TypeScript) |
 | 9 | ~~[Testing and CI](./lessons/0009-testing-and-ci.html)~~ | A test that cannot fail proves nothing. Test the contract, not the plumbing. | [`Code/Lesson_9_code/`](./Code/Lesson_9_code/) (Python), [`Code/js/Lesson_9_code/`](./Code/js/Lesson_9_code/) (TypeScript) |
 | 10 | ~~[Caching](./lessons/0010-caching.html)~~ | A cache is a copy that can be wrong. Name the moment it goes stale before you add it. | [`Code/Lesson_10_code/`](./Code/Lesson_10_code/) (Python), [`Code/js/Lesson_10_code/`](./Code/js/Lesson_10_code/) (TypeScript) |
+| 11 | ~~[Observability](./lessons/0011-observability.html)~~ | You cannot debug what you cannot see. A log line, a metric, and a trace answer different questions. | [`Code/Lesson_11_code/`](./Code/Lesson_11_code/) (Python), [`Code/js/Lesson_11_code/`](./Code/js/Lesson_11_code/) (TypeScript) |
+| 12 | ~~[Scaling](./lessons/0012-scaling.html)~~ | Add a second instance and every assumption about local state breaks. | [`Code/Lesson_12_code/`](./Code/Lesson_12_code/) (Python), [`Code/js/Lesson_12_code/`](./Code/js/Lesson_12_code/) (TypeScript) |
 
 What each finished lesson proved:
 
@@ -63,13 +65,21 @@ What each finished lesson proved:
   the answer is wrong. Measured: 3.131 ms average database read against
   1.251 ms average Redis read in Python, 15.296 ms against 3.301 ms in
   TypeScript.
-
+- **11** The observable failure with three answers, none from the source: a
+  stale cache read, diagnosed from a log line, a `bookmark_search_cache_total`
+  metric, and a missing `pg_query` trace span, in that order, with `main.py`
+  never opened. Measured: the one request that missed the cache took 11.87 ms
+  against 1.98–3.95 ms for the four that hit it.
+- **12** The silently doubled limit: an in-memory rate limiter breaks across two
+  instances. Measured: 11 attempts allowed under a limit of 5. Second failure:
+  an oversubscribed database connection pool hangs callers. Measured: 10 seconds
+  median wait versus 3 seconds with right-sized pools that fail fast via 503s.
+  Third failure: a paused read replica serves stale reads indefinitely until
+  resumed. Measured: 3-6 ms baseline replication lag on localhost.
 ## Next
 
 | # | Lesson | The one idea | Planned code |
 | --- | --- | --- | --- |
-| 11 | Observability | You cannot debug what you cannot see. A log line, a metric, and a trace answer different questions. | `Code/Lesson_11_code/`, `Code/js/Lesson_11_code/` |
-| 12 | Scaling | Add a second instance and every assumption about local state breaks. | `Code/Lesson_12_code/`, `Code/js/Lesson_12_code/` |
 | 13 | Version control | A commit is a snapshot with a parent. History is a graph, not a list. | `Code/Lesson_13_code/`, `Code/js/Lesson_13_code/` |
 | 14 | How a request finds your server | A name becomes an address through caches you do not control. | `Code/Lesson_14_code/`, `Code/js/Lesson_14_code/` |
 | 15 | The edge: reverse proxy and TLS | The process that answers port 443 is not your application. | `Code/Lesson_15_code/`, `Code/js/Lesson_15_code/` |
@@ -89,12 +99,6 @@ What each finished lesson proved:
 
 ### Details for planned lessons
 
-11. **Observability.** Structured JSON logs with a request id, then
-    `/metrics` with a counter and a histogram, then a trace across the API and
-    the database.
-12. **Scaling.** Two API instances behind one proxy. The lesson breaks
-    in-memory state on purpose, then fixes it. Read replicas, connection
-    limits, and backpressure.
 13. **Version control.** Covers roadmap section 3. Branches, merge against
     rebase, the index, `reflog`, and pull requests/reviews. The observable
     failure: two branches edit the same handler, a force-push removes an

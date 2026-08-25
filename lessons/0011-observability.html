@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 11 · Observability</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 11 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../GLOSSARY.md">Glossary</a> ·
+    <a href="../lesson_plan.md">Plan</a> ·
+    <a href="0010-caching.html">← Lesson 10</a>
+  </p>
+  <h1>Observability
+    <span class="sub">Python and TypeScript, one idea at a time.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">You cannot debug what you cannot see. A print statement
+answers one question: did this line run. It does not answer how often, how
+slow, or which request. This lesson builds the three tools that do: a log
+line, a metric, and a trace.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>You cannot debug what you cannot see. A log line, a metric, and a
+  trace answer different questions.</p>
+</div>
+
+<div class="note">
+  <span class="note-label">How the two languages sit together</span>
+  <p>The Python project is <code>Code/Lesson_11_code/</code>. The
+  TypeScript project is <code>Code/js/Lesson_11_code/</code>. Both extend
+  the bookmarks API from Lesson 10. <code>observability.py</code> and
+  <code>observability.ts</code> hold the new wiring; every route file
+  imports it and calls it.</p>
+</div>
+
+<h2>Step 1 · The observable failure: five requests, one line</h2>
+
+<p>Start the Lesson 10 API, unchanged. Send five requests for the same
+search, at the same time, from five separate terminals. Read the server's
+own log.</p>
+
+<p class="filename">$ for i in 1 2 3 4 5; do curl -s -o /dev/null "localhost:8000/bookmarks/search?q=Observability+opening+demo" &amp; done; wait</p>
+<pre class="wide"><code>INFO:     127.0.0.1:45138 - "GET /bookmarks/search?q=Observability+opening+demo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45148 - "GET /bookmarks/search?q=Observability+opening+demo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45156 - "GET /bookmarks/search?q=Observability+opening+demo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45170 - "GET /bookmarks/search?q=Observability+opening+demo HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45176 - "GET /bookmarks/search?q=Observability+opening+demo HTTP/1.1" 200 OK</code></pre>
+
+<p>Five lines. Every line is the same text, apart from a client port
+number nobody asked for. Three questions have no answer here:</p>
+
+<ul>
+  <li>How long did each request take? The log names no duration.</li>
+  <li>Which of the five requests, if any, hit the database? The log names
+  no cache result.</li>
+  <li>Which client received which response? The port number is not a
+  request id. It does not appear in the response, so a caller who reports
+  "my search was slow" cannot point back to one of these five lines.</li>
+</ul>
+
+<p>The rest of this lesson answers all three questions, for every
+request, from now on.</p>
+
+<h2>Step 2 · A log line answers "what happened, for this one request"</h2>
+
+<p>A structured log line is one JSON object per request, not a sentence.
+A JSON line is a line a program can parse; a sentence built with an
+f-string is a line only a human can parse, and only by reading it. Give
+every request an id at the top, and read that id back at the bottom.</p>
+
+<p class="filename">Code/Lesson_11_code/observability.py</p>
+<pre class="wide"><code><span class="c-key">import</span> contextvars
+
+request_id_var: contextvars.ContextVar[<span class="c-key">str</span>] = contextvars.ContextVar(
+    <span class="c-str">"request_id"</span>, default=<span class="c-str">"-"</span>
+)
+
+
+<span class="c-key">def</span> <span class="c-fn">new_request_id</span>() -&gt; <span class="c-key">str</span>:
+    <span class="c-key">return</span> uuid.uuid4().hex[:<span class="c-num">16</span>]
+
+
+<span class="c-key">def</span> <span class="c-fn">log_event</span>(**fields) -&gt; <span class="c-key">None</span>:
+    <span class="c-com"># One JSON line. `fields` is the whole message — no free text to grep by luck.</span>
+    record = {<span class="c-str">"ts"</span>: round(time.time(), <span class="c-num">3</span>), <span class="c-str">"request_id"</span>: request_id_var.get(), **fields}
+    logger.info(json.dumps(record, default=<span class="c-key">str</span>))</code></pre>
+
+<p><code>contextvars.ContextVar</code> is Python's answer to a problem
+`async def` creates: many requests run inside the same process, interleaved
+at every <code>await</code>, so a plain module-level variable would leak one
+request's id into another's log line. A context variable holds one value
+per running task, not one value per process.</p>
+
+<p>A middleware sets the id once, at the top of every request, and reads
+it back at the bottom to write the log line.</p>
+
+<p class="filename">Code/Lesson_11_code/main.py</p>
+<pre class="wide"><code><span class="c-fn">@app.middleware</span>(<span class="c-str">"http"</span>)
+<span class="c-key">async def</span> <span class="c-fn">observe_request</span>(request: Request, call_next):
+    token = request_id_var.set(new_request_id())
+    start = time.perf_counter()
+    response = <span class="c-key">await</span> call_next(request)
+    duration_s = time.perf_counter() - start
+    route = request.scope.get(<span class="c-str">"route"</span>)
+    route_path = route.path <span class="c-key">if</span> route <span class="c-key">else</span> request.url.path
+
+    response.headers[<span class="c-str">"X-Request-Id"</span>] = request_id_var.get()
+    log_event(
+        level=<span class="c-str">"info"</span>,
+        method=request.method,
+        path=route_path,
+        status=response.status_code,
+        duration_ms=round(duration_s * <span class="c-num">1000</span>, <span class="c-num">2</span>),
+    )
+    request_id_var.reset(token)
+    <span class="c-key">return</span> response</code></pre>
+
+<p>Run the same five concurrent requests again, against this server.</p>
+
+<pre class="wide"><code>$ curl -s -D - -o /dev/null "localhost:8000/bookmarks/search?q=Observability+opening+demo" | grep -i x-request-id
+x-request-id: 230df1c5a2414aca
+x-request-id: cb63a1e59a3e491b
+x-request-id: fa6e1a04a55c4863
+x-request-id: 8b6efc84ce2b4c52
+x-request-id: 26f31e3b5fe54950</code></pre>
+
+<p>The server's own log now names each of the five separately, with a
+duration:</p>
+
+<pre class="wide"><code>{"ts": 1787677251.438, "request_id": "230df1c5a2414aca", "level": "info", "method": "GET", "path": "/bookmarks/search", "status": 200, "duration_ms": 11.87}
+{"ts": 1787677251.443, "request_id": "fa6e1a04a55c4863", "level": "info", "method": "GET", "path": "/bookmarks/search", "status": 200, "duration_ms": 2.51}
+{"ts": 1787677251.465, "request_id": "cb63a1e59a3e491b", "level": "info", "method": "GET", "path": "/bookmarks/search", "status": 200, "duration_ms": 2.86}
+{"ts": 1787677251.479, "request_id": "8b6efc84ce2b4c52", "level": "info", "method": "GET", "path": "/bookmarks/search", "status": 200, "duration_ms": 2.86}
+{"ts": 1787677251.501, "request_id": "26f31e3b5fe54950", "level": "info", "method": "GET", "path": "/bookmarks/search", "status": 200, "duration_ms": 3.95}</code></pre>
+
+<p>The client that received <code>230df1c5a2414aca</code> can now match
+its own response to this exact line. That line took 11.87 ms, almost four
+times the other four. One question from Step 1 is already answered: this
+was the request that reached the database. The other four found an
+answer already in the cache, written by whichever request finished
+first.</p>
+
+<div class="note note--warn">
+  <span class="note-label">Read the route after routing, not before</span>
+  <p><code>request.scope["route"]</code> exists only once Starlette has
+  matched a route, so the middleware reads it after <code>call_next</code>,
+  not before. Group <code>/bookmarks/17</code> and <code>/bookmarks/42</code>
+  under the route template <code>/bookmarks/{bookmark_id}</code>, not
+  under each id. The next section explains why this choice matters for a
+  metric, not only for a log line.</p>
+</div>
+
+<h2>Step 3 · TypeScript: the same request id</h2>
+
+<p>Python threads the id through <code>contextvars</code>. Node has no
+built-in equivalent to Python's <code>async def</code> task, so it uses
+<code>AsyncLocalStorage</code>, which solves the same problem: one stored
+value per chain of <code>await</code> calls, not one per process.</p>
+
+<p class="filename">Code/js/Lesson_11_code/src/observability.ts</p>
+<pre class="wide"><code><span class="c-key">import</span> { AsyncLocalStorage } <span class="c-key">from</span> <span class="c-str">'node:async_hooks'</span>;
+
+<span class="c-key">export</span> <span class="c-key">const</span> requestIdStorage = <span class="c-key">new</span> AsyncLocalStorage&lt;<span class="c-key">string</span>&gt;();
+
+<span class="c-key">export</span> <span class="c-key">function</span> <span class="c-fn">logEvent</span>(fields: Record&lt;<span class="c-key">string</span>, <span class="c-key">unknown</span>&gt;): <span class="c-key">void</span> {
+  <span class="c-key">const</span> record = {
+    ts: Math.round(Date.now() / <span class="c-num">10</span>) / <span class="c-num">100</span>,
+    request_id: requestIdStorage.getStore() ?? <span class="c-str">'-'</span>,
+    ...fields,
+  };
+  process.stdout.write(<span class="c-str">`${JSON.stringify(record)}\n`</span>);
+}</code></pre>
+
+<p class="filename">Code/js/Lesson_11_code/src/server.ts</p>
+<pre class="wide"><code><span class="c-fn">app</span>.<span class="c-fn">use</span>((req: Request, res: Response, next: NextFunction) =&gt; {
+  <span class="c-key">const</span> requestId = randomUUID().replaceAll(<span class="c-str">'-'</span>, <span class="c-str">''</span>).slice(<span class="c-num">0</span>, <span class="c-num">16</span>);
+  requestIdStorage.run(requestId, () =&gt; {
+    <span class="c-key">const</span> start = performance.now();
+    res.setHeader(<span class="c-str">'X-Request-Id'</span>, requestId);
+    res.on(<span class="c-str">'finish'</span>, () =&gt; {
+      <span class="c-key">const</span> durationS = (performance.now() - start) / <span class="c-num">1000</span>;
+      <span class="c-key">const</span> routePath = req.route ? <span class="c-str">`${req.baseUrl}${req.route.path}`</span> : req.path;
+      requestCount.labels(req.method, routePath, String(res.statusCode)).inc();
+      requestLatency.labels(req.method, routePath).observe(durationS);
+      logEvent({
+        level: <span class="c-str">'info'</span>,
+        method: req.method,
+        path: routePath,
+        status: res.statusCode,
+        duration_ms: Math.round(durationS * <span class="c-num">1000</span> * <span class="c-num">100</span>) / <span class="c-num">100</span>,
+      });
+    });
+    next();
+  });
+});</code></pre>
+
+<p>Same shape as the Python version, in Node's vocabulary:
+<code>req.route</code> only exists once Express has matched a route,
+so <code>res.on('finish', ...)</code> reads it after the handler ran, not
+before.</p>
+
+<h2>Step 4 · A metric answers "how often, and how slow"</h2>
+
+<p>A log line describes one request. A metric describes every request,
+without keeping one line per request forever. A counter only goes up; a
+histogram sorts every observed duration into buckets, so you can ask "how
+many requests took under 25 ms" without reading a single log line.</p>
+
+<p class="filename">Code/Lesson_11_code/observability.py</p>
+<pre class="wide"><code><span class="c-key">from</span> prometheus_client <span class="c-key">import</span> CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+
+REQUEST_COUNT = Counter(
+    <span class="c-str">"http_requests_total"</span>,
+    <span class="c-str">"HTTP requests, by method, route, and status code."</span>,
+    [<span class="c-str">"method"</span>, <span class="c-str">"route"</span>, <span class="c-str">"status"</span>],
+)
+
+REQUEST_LATENCY = Histogram(
+    <span class="c-str">"http_request_duration_seconds"</span>,
+    <span class="c-str">"HTTP request duration in seconds, by method and route."</span>,
+    [<span class="c-str">"method"</span>, <span class="c-str">"route"</span>],
+)
+
+CACHE_RESULT = Counter(
+    <span class="c-str">"bookmark_search_cache_total"</span>,
+    <span class="c-str">"Search cache lookups, by result."</span>,
+    [<span class="c-str">"result"</span>],  <span class="c-com"># hit | miss</span>
+)</code></pre>
+
+<p class="filename">Code/Lesson_11_code/main.py</p>
+<pre class="wide"><code><span class="c-fn">@app.get</span>(<span class="c-str">"/metrics"</span>)
+<span class="c-key">async def</span> <span class="c-fn">metrics</span>():
+    <span class="c-key">return</span> Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)</code></pre>
+
+<p>Every route template gets its own label value, never a raw id. This is
+why Step 2's warning matters: a metric with one label value per bookmark
+id would grow one time series for every row ever requested, and never stop
+growing. A route template is bounded — one series per route, for the life
+of the process.</p>
+
+<p>Run the five concurrent requests from Step 1 again, then read the
+metric directly.</p>
+
+<pre class="wide"><code>$ curl -s localhost:8000/metrics | grep -v _created
+# HELP http_requests_total HTTP requests, by method, route, and status code.
+# TYPE http_requests_total counter
+http_requests_total{method="GET",route="/bookmarks/search",status="200"} 5.0
+# HELP http_request_duration_seconds HTTP request duration in seconds, by method and route.
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{le="0.005",method="GET",route="/bookmarks/search"} 4.0
+http_request_duration_seconds_bucket{le="0.01",method="GET",route="/bookmarks/search"} 4.0
+http_request_duration_seconds_bucket{le="0.025",method="GET",route="/bookmarks/search"} 5.0
+http_request_duration_seconds_count{method="GET",route="/bookmarks/search"} 5.0
+http_request_duration_seconds_sum{method="GET",route="/bookmarks/search"} 0.02405306899891002
+# HELP bookmark_search_cache_total Search cache lookups, by result.
+# TYPE bookmark_search_cache_total counter
+bookmark_search_cache_total{result="miss"} 1.0
+bookmark_search_cache_total{result="hit"} 4.0</code></pre>
+
+<p>Four of the five requests finished in under 5 ms; one took between
+10 ms and 25 ms — the same request Step 2 already named. The cache
+counter agrees: one miss, four hits. No dashboard was open. This is the
+raw text a dashboard draws from — read it directly before you trust a
+graph.</p>
+
+<h2>Step 5 · TypeScript: the same metrics</h2>
+
+<p class="filename">Code/js/Lesson_11_code/src/observability.ts</p>
+<pre class="wide"><code><span class="c-key">import</span> { Counter, Histogram, Registry } <span class="c-key">from</span> <span class="c-str">'prom-client'</span>;
+
+<span class="c-key">export</span> <span class="c-key">const</span> registry = <span class="c-key">new</span> Registry();
+
+<span class="c-key">export</span> <span class="c-key">const</span> requestCount = <span class="c-key">new</span> Counter({
+  name: <span class="c-str">'http_requests_total'</span>,
+  help: <span class="c-str">'HTTP requests, by method, route, and status code.'</span>,
+  labelNames: [<span class="c-str">'method'</span>, <span class="c-str">'route'</span>, <span class="c-str">'status'</span>] <span class="c-key">as</span> <span class="c-key">const</span>,
+  registers: [registry],
+});
+
+<span class="c-key">export</span> <span class="c-key">const</span> requestLatency = <span class="c-key">new</span> Histogram({
+  name: <span class="c-str">'http_request_duration_seconds'</span>,
+  help: <span class="c-str">'HTTP request duration in seconds, by method and route.'</span>,
+  labelNames: [<span class="c-str">'method'</span>, <span class="c-str">'route'</span>] <span class="c-key">as</span> <span class="c-key">const</span>,
+  registers: [registry],
+});</code></pre>
+
+<p class="filename">Code/js/Lesson_11_code/src/server.ts</p>
+<pre class="wide"><code><span class="c-fn">app</span>.<span class="c-fn">get</span>(<span class="c-str">'/metrics'</span>, (_req: Request, res: Response) =&gt; {
+  res.<span class="c-fn">set</span>(<span class="c-str">'Content-Type'</span>, registry.contentType);
+  registry.<span class="c-fn">metrics</span>().<span class="c-fn">then</span>((body) =&gt; res.<span class="c-fn">send</span>(body));
+});</code></pre>
+
+<p><code>prom-client</code> is the same shape as <code>prometheus_client</code>:
+a <code>Counter</code> and a <code>Histogram</code>, registered once, read
+through one endpoint. Both libraries also add process metrics — memory,
+open file descriptors, garbage-collector pauses — with no extra code; they
+appear in the same <code>curl</code> output, unlabelled by route.</p>
+
+<h2>Step 6 · A trace answers "where did the time go, inside this one request"</h2>
+
+<p>A log line and a metric both treat one request as one event. A search
+request in this API does two things in sequence: it asks Redis, and, on a
+miss, it asks PostgreSQL. Neither the log line nor the metric says which
+part took the time. A trace does: one span for the whole request, a child
+span for the database call.</p>
+
+<p class="filename">Code/Lesson_11_code/observability.py</p>
+<pre class="wide"><code><span class="c-key">from</span> opentelemetry <span class="c-key">import</span> trace
+<span class="c-key">from</span> opentelemetry.sdk.resources <span class="c-key">import</span> Resource
+<span class="c-key">from</span> opentelemetry.sdk.trace <span class="c-key">import</span> TracerProvider
+<span class="c-key">from</span> opentelemetry.sdk.trace.export <span class="c-key">import</span> ConsoleSpanExporter, SimpleSpanProcessor
+
+provider = TracerProvider(resource=Resource.create({<span class="c-str">"service.name"</span>: <span class="c-str">"bookmarks-api"</span>}))
+provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+trace.set_tracer_provider(provider)
+tracer = trace.get_tracer(<span class="c-str">"bookmarks"</span>)</code></pre>
+
+<p><code>SimpleSpanProcessor</code> prints a span the instant it ends, to
+the terminal running <code>uvicorn</code>. A production deploy swaps in an
+OTLP exporter that ships spans to Jaeger or a vendor, on a batch timer
+instead of one at a time — everything else in this file stays the same.
+Console output keeps this lesson runnable with no extra container.</p>
+
+<p class="filename">Code/Lesson_11_code/main.py</p>
+<pre class="wide"><code><span class="c-key">with</span> tracer.start_as_current_span(<span class="c-str">"pg_query"</span>) <span class="c-key">as</span> span:
+    span.set_attribute(<span class="c-str">"db.system"</span>, <span class="c-str">"postgresql"</span>)
+    span.set_attribute(<span class="c-str">"db.statement"</span>, SEARCH_SQL.strip())
+    <span class="c-key">async with</span> app.state.pool.connection() <span class="c-key">as</span> conn:
+        cur = <span class="c-key">await</span> conn.cursor(row_factory=dict_row).execute(
+            SEARCH_SQL, (<span class="c-str">f"{q}%"</span>, limit, skip)
+        )
+        rows = <span class="c-key">await</span> cur.fetchall()
+    span.set_attribute(<span class="c-str">"db.rows_returned"</span>, len(rows))</code></pre>
+
+<p>This span only opens on a cache miss — a cache hit never runs the
+block above. Request a fresh search once and read the two spans it
+printed, oldest first.</p>
+
+<pre class="wide"><code>{
+  "name": "pg_query",
+  "context": { "trace_id": "0x2b30e3332906e30d3593e880459f0605", "span_id": "0x08de5f2f3150b441" },
+  "parent_id": "0x2c5c3f6a988a7505",
+  "attributes": {
+    "db.system": "postgresql",
+    "db.statement": "SELECT id, url, title\n      FROM bookmarks\n     WHERE title LIKE %s\n     ORDER BY id\n     LIMIT %s OFFSET %s",
+    "db.rows_returned": 10
+  }
+}
+{
+  "name": "http_request",
+  "context": { "trace_id": "0x2b30e3332906e30d3593e880459f0605", "span_id": "0x2c5c3f6a988a7505" },
+  "parent_id": null,
+  "attributes": { "http.method": "GET", "http.route": "/bookmarks/search", "http.status_code": 200 }
+}</code></pre>
+
+<p>Both spans share one <code>trace_id</code>. <code>pg_query</code>'s
+<code>parent_id</code> is <code>http_request</code>'s own
+<code>span_id</code> — that one field is what makes it a child, not a
+second, unrelated event. Read a trace outside in: the outer span is the
+whole request; the inner span is the part of it that talked to
+PostgreSQL. Whatever time the outer span reports and the inner span does
+not account for happened somewhere else — in this handler's own Python,
+or waiting on Redis.</p>
+
+<h2>Step 7 · TypeScript: the same trace</h2>
+
+<p class="filename">Code/js/Lesson_11_code/src/observability.ts</p>
+<pre class="wide"><code><span class="c-key">import</span> { trace } <span class="c-key">from</span> <span class="c-str">'@opentelemetry/api'</span>;
+<span class="c-key">import</span> { Resource } <span class="c-key">from</span> <span class="c-str">'@opentelemetry/resources'</span>;
+<span class="c-key">import</span> { NodeTracerProvider } <span class="c-key">from</span> <span class="c-str">'@opentelemetry/sdk-trace-node'</span>;
+<span class="c-key">import</span> { ConsoleSpanExporter, SimpleSpanProcessor } <span class="c-key">from</span> <span class="c-str">'@opentelemetry/sdk-trace-base'</span>;
+
+<span class="c-key">const</span> provider = <span class="c-key">new</span> NodeTracerProvider({
+  resource: <span class="c-key">new</span> Resource({ <span class="c-str">'service.name'</span>: <span class="c-str">'bookmarks-api-ts'</span> }),
+});
+provider.<span class="c-fn">addSpanProcessor</span>(<span class="c-key">new</span> SimpleSpanProcessor(<span class="c-key">new</span> ConsoleSpanExporter()));
+provider.<span class="c-fn">register</span>();
+
+<span class="c-key">export</span> <span class="c-key">const</span> tracer = trace.<span class="c-fn">getTracer</span>(<span class="c-str">'bookmarks'</span>);</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">Starting a span does not activate it</span>
+  <p>The first version of this middleware called
+  <code>tracer.startSpan('http_request')</code> and never entered it into
+  the active context. Every child span opened inside the request handler
+  then started its own, unrelated trace — same symptom as Python without
+  <code>ContextVar</code>: the wiring runs, and the nesting silently never
+  happens. The fix is <code>context.with(trace.setSpan(context.active(),
+  span), () =&gt; next())</code>: it makes <code>span</code> the active span
+  for everything <code>next()</code> goes on to run, so a later
+  <code>tracer.startActiveSpan('pg_query', ...)</code> finds it and
+  attaches as a child. Read a trace you did not check for nesting with
+  suspicion — a flat trace is not evidence that nothing has children,
+  only that nothing was told to.</p>
+</div>
+
+<p class="filename">Code/js/Lesson_11_code/src/server.ts</p>
+<pre class="wide"><code><span class="c-key">const</span> rows = <span class="c-key">await</span> tracer.<span class="c-fn">startActiveSpan</span>(<span class="c-str">'pg_query'</span>, <span class="c-key">async</span> (span) =&gt; {
+  span.<span class="c-fn">setAttribute</span>(<span class="c-str">'db.system'</span>, <span class="c-str">'postgresql'</span>);
+  span.<span class="c-fn">setAttribute</span>(<span class="c-str">'db.statement'</span>, SEARCH_SQL.<span class="c-fn">trim</span>());
+  <span class="c-key">const</span> result = <span class="c-key">await</span> pool.<span class="c-fn">query</span>(SEARCH_SQL, [<span class="c-str">`${q}%`</span>, limit, skip]);
+  span.<span class="c-fn">setAttribute</span>(<span class="c-str">'db.rows_returned'</span>, result.rows.length);
+  span.<span class="c-fn">end</span>();
+  <span class="c-key">return</span> result.rows;
+});</code></pre>
+
+<pre class="wide"><code>{
+  traceId: 'c689b89d600724fbe2a9a888602615c5',
+  parentId: '5318234cdb421fcd',
+  name: 'pg_query',
+  id: '369a8568f699f540',
+  attributes: { 'db.system': 'postgresql', 'db.rows_returned': 10 }
+}
+{
+  traceId: 'c689b89d600724fbe2a9a888602615c5',
+  parentId: undefined,
+  name: 'http_request',
+  id: '5318234cdb421fcd',
+  attributes: { 'http.method': 'GET', 'http.route': '/bookmarks/search', 'http.status_code': 200 }
+}</code></pre>
+
+<p>Same shape as the Python evidence: one <code>traceId</code>, and
+<code>pg_query</code>'s <code>parentId</code> equals <code>http_request</code>'s
+<code>id</code>.</p>
+
+<h2>Step 8 · The observable payoff: diagnose a stale read with no source open</h2>
+
+<p>Lesson 10 showed a stale read by printing what each request returned.
+This time, diagnose the same failure from the log line, the metric, and
+the trace alone — the three tools this lesson just built, read from a
+second terminal, without opening <code>main.py</code>.</p>
+
+<p class="filename">Code/Lesson_11_code/diagnose.py</p>
+<pre class="wide"><code>$ python diagnose.py
+--- 1. a query nobody has run yet: cache miss ------------------
+step 1: GET /bookmarks/search?q='Observability demo' -&gt; 200, source=database, rows=0, request-id=ea07ea66749a43b8
+
+--- 2. the same query again: cache hit -------------------------
+step 2: GET /bookmarks/search?q='Observability demo' -&gt; 200, source=cache, rows=0, request-id=cbf7eaf3b1e049fb
+
+--- 3. a row inserted straight into Postgres, bypassing the API -
+row inserted with a direct psycopg connection, no HTTP request made
+
+--- 4. the same query, inside the TTL: is it fresh? ------------
+step 4: GET /bookmarks/search?q='Observability demo' -&gt; 200, source=cache, rows=0, request-id=5349a3c23fd146f5
+
+Waiting 31s for the cache entry to expire...
+
+--- 5. the same query, after the TTL: is it fresh now? ---------
+step 5: GET /bookmarks/search?q='Observability demo' -&gt; 200, source=database, rows=1, request-id=0f88a0900e294a87</code></pre>
+
+<p>Now read the server's own terminal for the same five steps, and only
+that.</p>
+
+<pre class="wide"><code>{"request_id": "ea07ea66749a43b8", "event": "search_cache", "result": "miss", ...}   # pg_query span opened
+{"request_id": "cbf7eaf3b1e049fb", "event": "search_cache", "result": "hit", ...}    # no pg_query span
+{"request_id": "5349a3c23fd146f5", "event": "search_cache", "result": "hit", ...}    # no pg_query span
+{"request_id": "0f88a0900e294a87", "event": "search_cache", "result": "miss", ...}   # pg_query span opened, db.rows_returned: 1</code></pre>
+
+<p>Line by line, without reading <code>main.py</code> once:</p>
+
+<ol>
+  <li>Request <code>ea07ea66...</code> misses the cache and opens a
+  <code>pg_query</code> span. The database has not seen the row yet, so
+  it returns nothing.</li>
+  <li>Request <code>cbf7eaf3...</code> hits the cache. No
+  <code>pg_query</code> span opens — this request never asked
+  PostgreSQL anything.</li>
+  <li>Between steps 2 and 4, a row is inserted directly with SQL. No
+  request logs this; it did not go through the API.</li>
+  <li>Request <code>5349a3c2...</code> hits the cache again, still
+  inside the 30 s TTL. No <code>pg_query</code> span. Three independent
+  signals now agree that this response never touched the database: the
+  log line says <code>hit</code>, <code>bookmark_search_cache_total</code>
+  did not move for the miss label, and the trace has no
+  <code>pg_query</code> span. Yet the row from step 3 exists in
+  PostgreSQL right now.</li>
+  <li>Request <code>0f88a090...</code>, after the TTL, misses the cache,
+  opens a <code>pg_query</code> span, and reports
+  <code>db.rows_returned: 1</code>. The row was there the whole time; the
+  cache was the only thing that did not know.</li>
+</ol>
+
+<p>This is the same conclusion Lesson 10 reached by printing response
+bodies. Here it comes from three tools built for exactly this question,
+against a server whose source was never opened — the position you are
+actually in against a deployed service.</p>
+
+<p>The TypeScript run reaches the identical shape, against
+<code>diagnose.ts</code> and <code>server.ts</code>:</p>
+
+<pre class="wide"><code>$ node src/diagnose.ts
+--- 1. a query nobody has run yet: cache miss ------------------
+step 1: ... source=database, rows=0, request-id=28865e6837594412
+
+--- 4. the same query, inside the TTL: is it fresh? ------------
+step 4: ... source=cache, rows=0, request-id=cfee2b30fb2a455f
+
+--- 5. the same query, after the TTL: is it fresh now? ---------
+step 5: ... source=database, rows=1, request-id=ba9a945d52dc497e</code></pre>
+
+<pre class="wide"><code>{"request_id":"28865e6837594412","event":"search_cache","result":"miss", ...}   # pg_query span opened
+{"request_id":"cfee2b30fb2a455f","event":"search_cache","result":"hit", ...}    # no pg_query span
+{"request_id":"ba9a945d52dc497e","event":"search_cache","result":"miss", ...}   # pg_query span opened, db.rows_returned: 1</code></pre>
+
+<div class="note">
+  <span class="note-label">What this lesson does not cover</span>
+  <p>No SaaS observability vendor, no long retention policy, no alerting
+  rule. Those are real decisions a team makes once it already has the
+  three primitives this lesson built. Learn the primitives first; a
+  vendor dashboard is a view onto the same log lines, metrics, and spans,
+  not a different kind of tool.</p>
+</div>
+
+<h2>Practice</h2>
+
+<ol class="steps">
+  <li><strong>Start the dependencies.</strong> <code>pg-bookmarks</code>
+  on port 55432, and <code>docker run -d --name redis-bookmarks -p
+  6379:6379 redis:7-alpine</code>.</li>
+  <li><strong>Start the API.</strong> Run <code>uvicorn main:app --port
+  8000</code> or <code>node src/server.ts</code>.</li>
+  <li><strong>Fire the five-request demo yourself.</strong> Use a query
+  you have not searched before, so the first request is a genuine miss.
+  Confirm one <code>X-Request-Id</code> matches one slow log line.</li>
+  <li><strong>Read <code>/metrics</code> raw.</strong> Run <code>curl
+  localhost:8000/metrics</code> before you ever open Grafana or Prometheus
+  itself. Find your own five requests in the histogram buckets.</li>
+  <li><strong>Run the diagnosis program.</strong> Run <code>python
+  diagnose.py</code> or <code>node src/diagnose.ts</code>. Watch the
+  server's terminal, not this program's own output, while it runs.</li>
+  <li><strong>Break the nesting on purpose.</strong> In the TypeScript
+  project, remove the <code>context.with(...)</code> wrapper around
+  <code>next()</code> and replace it with a plain call to
+  <code>next()</code>. Request a fresh search and confirm the
+  <code>pg_query</code> and <code>http_request</code> spans now print
+  with two different <code>traceId</code> values. Put the wrapper back.</li>
+  <li><strong>Stop Redis.</strong> Run <code>docker stop
+  redis-bookmarks</code>, then request <code>/bookmarks/search</code>
+  again. Read the error in the log line, the status code in the metric,
+  and the span's status. Start Redis again before you continue.</li>
+  <li><strong>Widen the request id.</strong> Add
+  <code>request_id</code> as a label on
+  <code>bookmark_search_cache_total</code> and explain, in one sentence,
+  why this change is a mistake in production even though it compiles and
+  runs.</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Five identical curl requests hit the same endpoint. The plain uvicorn access log prints five identical lines. What is missing that a structured log line adds?",
+    "options": [
+      "A request id and a duration for each request",
+      "The HTTP method",
+      "The response status code",
+      "The client's IP address"
+    ],
+    "answer": 0,
+    "why": "The plain access log already shows the method, path, and status. It names no id to match a response to a line, and no duration, so 'how slow' and 'which one' both go unanswered." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why does the request-id middleware use contextvars.ContextVar instead of a plain module-level variable?",
+    "options": [
+      "Many requests run interleaved inside one process; a plain variable would leak one request's id into another's log line",
+      "ContextVar is faster than a normal variable",
+      "FastAPI requires ContextVar for all middleware",
+      "A plain variable cannot hold a string"
+    ],
+    "answer": 0,
+    "why": "async def handlers interleave at every await. A ContextVar holds one value per running task, so concurrent requests never see each other's id." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "A metric labels http_requests_total by the exact request path, including the bookmark id, instead of the route template. What goes wrong?",
+    "options": [
+      "The metric grows one time series per id ever requested, and never stops growing",
+      "Prometheus rejects the metric at scrape time",
+      "The counter starts counting backwards",
+      "Nothing goes wrong; it is a valid design choice"
+    ],
+    "answer": 0,
+    "why": "A route template like /bookmarks/{id} bounds the label to one series per route. The raw path adds a new series for every id, forever, which is exactly the cardinality problem a metric must avoid." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "In a trace, a pg_query span's parent_id equals the http_request span's own span_id. What does that field prove?",
+    "options": [
+      "The database call happened inside the HTTP request, as its child",
+      "The two spans ran in two different processes",
+      "The database call happened before the request started",
+      "The trace failed to record correctly"
+    ],
+    "answer": 0,
+    "why": "A shared trace_id groups spans into one trace; the parent_id field is what makes one span a child of another, showing exactly where inside the outer span the inner one ran." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "In the diagnosis program, a cache hit produces a log line saying 'hit' and no trace span at all, for the same request. What database object did this request never touch?",
+    "answer": "PostgreSQL",
+    "accept": ["PostgreSQL", "Postgres", "the database"],
+    "why": "A pg_query span opens only on a cache miss. Its absence, alongside the log line and the unmoved miss counter, is itself the evidence: this request answered from Redis alone." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "What kind of metric only goes up, and resets to zero when the process restarts?",
+    "answer": "Counter",
+    "accept": ["Counter", "a counter"],
+    "why": "A Counter answers 'how often'. A Histogram, built from several counters plus a sum, answers 'how slow, and in which bucket'." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<nav class="lesson-nav">
+  <a href="0010-caching.html">← Lesson 10: Caching</a>
+  <a href="0012-scaling.html">Lesson 12: Scaling →</a>
+</nav>
+
+</main>
+</body>
+</html>

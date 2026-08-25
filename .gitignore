@@ -38,6 +38,10 @@ build/
 *~
 .claude/
 
+# Agent harness / unrelated local material
+.omp/
+NodeJs/
+
 # Logs & Databases
 *.log
 *.sqlite

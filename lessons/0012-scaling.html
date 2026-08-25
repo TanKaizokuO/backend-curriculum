@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 12 · Scaling</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 12 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../GLOSSARY.md">Glossary</a> ·
+    <a href="../lesson_plan.md">Plan</a> ·
+    <a href="0011-observability.html">← Lesson 11</a>
+  </p>
+  <h1>Scaling
+    <span class="sub">Python and TypeScript, one idea at a time.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">When one process cannot answer fast enough, you start a
+second process and split the traffic. The moment you do, every assumption
+about local state breaks. Your memory is no longer the truth.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>Add a second instance and every assumption about local state breaks.</p>
+</div>
+
+<div class="note">
+  <span class="note-label">How the two languages sit together</span>
+  <p>The Python project is <code>Code/Lesson_12_code/</code>. The
+  TypeScript project is <code>Code/js/Lesson_12_code/</code>. Both run two
+  API instances behind a round-robin proxy to prove what breaks.</p>
+</div>
+
+<h2>Step 1 · The load balancer</h2>
+
+<p>Lesson 2 built a routing table by hand to show how a framework works.
+This is the same mechanism for a load balancer. Before you configure a real
+one like Nginx or Envoy, look at the raw mechanism. A reverse proxy accepts a
+connection from the client, picks a backend from a list, opens a connection
+to that backend, and copies bytes between the two.</p>
+
+<p class="filename">Code/Lesson_12_code/round_robin_proxy.py</p>
+<pre class="wide"><code><span class="c-key">async def</span> <span class="c-fn">handle</span>(client_reader, client_writer):
+    host, port = <span class="c-fn">next</span>(_next_backend)
+    backend_reader, backend_writer = <span class="c-key">await</span> asyncio.open_connection(host, port)
+    <span class="c-key">await</span> asyncio.gather(
+        <span class="c-fn">pump</span>(client_reader, backend_writer),
+        <span class="c-fn">pump</span>(backend_reader, client_writer),
+    )</code></pre>
+
+<p>This proxy picks the next backend in a cycle for each new connection. It
+does no TLS termination, no health checks, and no retries — Lesson 15
+adds those. This minimal proxy is enough to prove the failure mode of
+local state.</p>
+
+<h2>Step 2 · The observable failure: the local rate limit</h2>
+
+<p>To stop a brute-force attack against passwords, you limit how many times
+an IP address can attempt a login. The simplest way is a dictionary in memory
+that counts attempts.</p>
+
+<p class="filename">Code/Lesson_12_code/rate_limit.py</p>
+<pre class="wide"><code>_local_attempts: <span class="c-key">dict</span>[<span class="c-key">str</span>, <span class="c-key">list</span>[<span class="c-key">float</span>]] = {}
+
+<span class="c-key">def</span> <span class="c-fn">local_limiter</span>(client_ip: <span class="c-key">str</span>) -&gt; <span class="c-key">bool</span>:
+    <span class="c-com">"""Return True if the request may proceed."""</span>
+    now = time.monotonic()
+    window_start = now - LOGIN_ATTEMPT_WINDOW_SECONDS
+    attempts = [t <span class="c-key">for</span> t <span class="c-key">in</span> _local_attempts.get(client_ip, []) <span class="c-key">if</span> t &gt; window_start]
+    attempts.append(now)
+    _local_attempts[client_ip] = attempts
+    <span class="c-key">return</span> <span class="c-fn">len</span>(attempts) &lt;= LOGIN_ATTEMPT_LIMIT</code></pre>
+
+<p>This looks correct, and against one instance, it is. Run the bench script
+against port 8020 directly. It asks for 14 logins, and the sixth attempt
+hits the limit and fails.</p>
+
+<pre class="wide"><code>$ python bench_rate_limit.py --base-url http://127.0.0.1:8020
+attempt  1 -&gt; 200
+attempt  2 -&gt; 200
+attempt  3 -&gt; 200
+attempt  4 -&gt; 200
+attempt  5 -&gt; 200
+attempt  6 -&gt; 429
+...
+first 429 at attempt 6</code></pre>
+
+<p>Now start a second API instance on port 8021 and point the bench script at
+the proxy on port 8022. The proxy sends the first request to 8020, the second
+to 8021, and so on. The limit is 5 attempts, but the script reaches attempt
+10 before it fails.</p>
+
+<pre class="wide"><code>$ python bench_rate_limit.py --base-url http://127.0.0.1:8022
+attempt  1 -&gt; 200
+attempt  2 -&gt; 200
+...
+attempt  9 -&gt; 200
+attempt 10 -&gt; 200
+attempt 11 -&gt; 429
+
+first 429 at attempt 11</code></pre>
+
+<p>The limit doubled silently. The <code>_local_attempts</code> dictionary lives
+inside the process memory. The instance on 8020 counts 5 attempts, and the
+instance on 8021 counts a completely separate 5 attempts. N instances
+multiply your limit by N.</p>
+
+<h2>Step 3 · The fix: shared state</h2>
+
+<p>If you want a limit of 5, every instance must read from the same counter.
+Lesson 10 added Redis to cache search results. Redis also supports atomic
+counters.</p>
+
+<p class="filename">Code/Lesson_12_code/rate_limit.py</p>
+<pre class="wide"><code><span class="c-key">async def</span> <span class="c-fn">redis_limiter</span>(redis: Redis, client_ip: <span class="c-key">str</span>) -&gt; <span class="c-key">bool</span>:
+    key = <span class="c-str">f"login_attempts:{client_ip}"</span>
+    count = <span class="c-key">await</span> redis.incr(key)
+    <span class="c-key">if</span> count == <span class="c-num">1</span>:
+        <span class="c-key">await</span> redis.expire(key, LOGIN_ATTEMPT_WINDOW_SECONDS)
+    <span class="c-key">return</span> count &lt;= LOGIN_ATTEMPT_LIMIT</code></pre>
+
+<p><code>INCR</code> on a missing key creates it at 1 and increments it
+atomically. Two instances that execute this at the exact same millisecond
+get a distinct, correct next count — one gets 5, the other gets 6.
+Switch both instances to the <code>redis</code> backend and the proxy bench
+shows the correct failure at attempt 6.</p>
+
+<pre class="wide"><code>$ RATE_LIMIT_BACKEND=redis uvicorn main:app --port 8020
+$ RATE_LIMIT_BACKEND=redis uvicorn main:app --port 8021
+$ python bench_rate_limit.py --flush --base-url http://127.0.0.1:8022
+...
+attempt  5 -&gt; 200
+attempt  6 -&gt; 429
+---headers on the 6th---
+HTTP/1.1 429 Too Many Requests
+retry-after: 60
+
+{"detail":"too many login attempts, try again later"}</code></pre>
+
+<h2>Step 4 · TypeScript: the same fix</h2>
+
+<p>The TypeScript twin behaves identically. A local <code>Map</code> breaks
+across multiple instances. The Redis counter fixes it. The only difference is
+the interface type to satisfy the compiler without pulling in every bundled
+Redis module.</p>
+
+<p class="filename">Code/js/Lesson_12_code/src/rateLimit.ts</p>
+<pre class="wide"><code><span class="c-key">interface</span> <span class="c-fn">AtomicCounterStore</span> {
+  <span class="c-fn">incr</span>(key: <span class="c-key">string</span>): <span class="c-fn">Promise</span>&lt;<span class="c-key">number</span>&gt;;
+  <span class="c-fn">expire</span>(key: <span class="c-key">string</span>, seconds: <span class="c-key">number</span>): <span class="c-fn">Promise</span>&lt;<span class="c-key">boolean</span>&gt;;
+}
+
+<span class="c-key">export async function</span> <span class="c-fn">redisLimiter</span>(redis: AtomicCounterStore, clientIp: <span class="c-key">string</span>): <span class="c-fn">Promise</span>&lt;<span class="c-key">boolean</span>&gt; {
+  <span class="c-key">const</span> key = <span class="c-str">`login_attempts:${clientIp}`</span>;
+  <span class="c-key">const</span> count = <span class="c-key">await</span> redis.<span class="c-fn">incr</span>(key);
+  <span class="c-key">if</span> (count === <span class="c-num">1</span>) {
+    <span class="c-key">await</span> redis.<span class="c-fn">expire</span>(key, LOGIN_ATTEMPT_WINDOW_SECONDS);
+  }
+  <span class="c-key">return</span> count &lt;= LOGIN_ATTEMPT_LIMIT;
+}</code></pre>
+
+<h2>Step 5 · Connection limits and backpressure</h2>
+
+<p>The database has a hard limit on how many clients it accepts at once,
+named <code>max_connections</code>. Two instances that each size their own
+connection pool without regard to that ceiling can ask for more connections
+than the database will ever hand out.</p>
+
+<p>The Python <code>psycopg_pool</code> waits in a queue when the pool is
+empty. If the queue timeout is long (30 seconds), an oversubscribed
+database causes requests to queue until they eventually succeed, but very
+slowly. Under a spike of 100 requests to a database with 15 available
+connections, the bench program shows the result:</p>
+
+<pre class="wide"><code>=== BROKEN (max_size=10 each, timeout=30s) — spike load ===
+100 requests across 2 instances
+status counts: {'200': 100}
+wall time: 10.12s
+latency  : min 1.24s  p50 6.08s  p90 8.92s  max 10.12s</code></pre>
+
+<p>Every request succeeded, but the median request took 6 seconds. This is
+slow failure, which looks like success to the load balancer but looks broken
+to the user.</p>
+
+<p>The fix is backpressure: a pool sized strictly smaller than the database
+limit, and a short timeout (3 seconds). Requests that cannot get a connection
+fail fast.</p>
+
+<pre class="wide"><code>=== FIXED (max_size=7 each, timeout=3s) — spike load ===
+100 requests across 2 instances
+status counts: {'200': 22, '503': 78}
+wall time: 4.10s
+latency  : min 1.25s  p50 3.07s  p90 3.08s  max 4.09s</code></pre>
+
+<p>Most requests failed, but they failed in 3 seconds instead of hanging for
+10, and they returned a <code>503 Service Unavailable</code> with a
+<code>Retry-After</code> header. This is honest backpressure.</p>
+
+<div class="note">
+  <span class="note-label">Node.js pools fail differently</span>
+  <p>The <code>pg.Pool</code> in Node.js has no built-in queue timeout. It
+  fails immediately when the database refuses the connection. In the
+  TypeScript project, the broken config failed 25% of requests instantly
+  with a raw Postgres <code>53300</code> error, rather than hanging. The
+  TypeScript code wraps the pool in a custom timeout to match Python's
+  queue-wait behavior, but the raw connection refusal still happens first
+  when oversubscribed.</p>
+</div>
+
+<h2>Step 6 · Read replicas and replication lag</h2>
+
+<p>Scaling reads means adding a second database that receives a stream of
+changes from the primary database. The application sends writes (<code>INSERT</code>,
+<code>UPDATE</code>) to the primary, and reads (<code>SELECT</code>) to the replica.</p>
+
+<p>But the replica is a copy, and a copy can fall behind. If you write to
+the primary and immediately read from the replica, you may get a stale
+answer. The bench program pauses WAL replay on the replica to simulate this.</p>
+
+<pre class="wide"><code>$ python replica_lag_bench.py
+--- 2. a paused replica is a stale replica ----------------------
+paused WAL replay on the replica
+inserted bookmark 18 on the primary
+replica sees it while paused: False  &lt;- stale read
+resumed WAL replay
+replica sees it now: True  &lt;- caught up</code></pre>
+
+<p>Do not write code that assumes replication is instant. If a user edits
+their own profile, the redirect must read from the primary, or they will
+see their old profile and think the save failed.</p>
+
+<h2>Practice</h2>
+
+<ol class="steps">
+  <li><strong>Start the proxy and the instances.</strong> Follow the readme
+  in <code>Code/Lesson_12_code</code> to start the proxy and the two API
+  instances.</li>
+  <li><strong>Run the rate limit bench.</strong> Observe the 429 arrive at
+  attempt 11 instead of 6.</li>
+  <li><strong>Switch to Redis.</strong> Stop the instances, set
+  <code>RATE_LIMIT_BACKEND=redis</code>, and restart them. Confirm the limit
+  now triggers at attempt 6.</li>
+  <li><strong>Observe pool exhaustion.</strong> Run the pool backpressure
+  bench against the small database. Read the exact 503 error message from the
+  FastAPI and Express servers.</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "You set an in-memory rate limit to 10 requests per minute. You deploy three instances of the application behind a round-robin load balancer. What is the effective rate limit for one IP address?",
+    "options": [
+      "10 requests per minute",
+      "30 requests per minute",
+      "3 requests per minute",
+      "It depends on the database connection pool"
+    ],
+    "answer": 1,
+    "why": "Each of the three instances holds its own dictionary that counts up to 10 independently. The load balancer splits the traffic evenly, so the IP reaches 30 attempts before every instance blocks it." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why does the Redis limiter use the INCR command instead of reading the count, adding one, and saving it?",
+    "options": [
+      "INCR is an atomic operation on the server side",
+      "INCR automatically sets the TTL",
+      "INCR uses less network bandwidth",
+      "Redis does not support read-modify-write loops"
+    ],
+    "answer": 0,
+    "why": "A read-modify-write loop loses updates exactly like the concurrent increment in Lesson 6. INCR executes atomically on the Redis server, guaranteeing every concurrent request gets a unique, correct count." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "What HTTP status code should an API return when its database connection pool is exhausted?",
+    "answer": "503",
+    "accept": ["503", "503 Service Unavailable"],
+    "why": "503 means the server is currently unable to handle the request due to temporary overloading. It signals to the client (and the proxy) that they should retry later, especially if paired with a Retry-After header." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "When a client asks for a connection and the pool is full, what does the pool do?",
+    "answer": "queue",
+    "accept": ["queue", "waits", "blocks", "queues it"],
+    "why": "The pool places the caller in a queue to wait for a connection to be returned. If the wait exceeds the configured timeout, it raises an error. Node.js's native pg.Pool lacks this queue timeout, so the lesson had to wrap it in a custom Promise.race." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "What happens if two application instances each configure a pool max_size of 20, but the database max_connections is 30?",
+    "options": [
+      "The database queues the extra 10 connections until slots free up",
+      "The database refuses the 31st connection outright with an error",
+      "The application pools communicate to balance the load",
+      "The database kills idle connections to make room"
+    ],
+    "answer": 1,
+    "why": "The database has a hard ceiling and refuses connections past it (SQLSTATE 53300). Pools do not coordinate with each other. If total pool sizes exceed database capacity, you must put an external pooler like PgBouncer between them." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "Why must a redirect after a user profile update read from the primary database, not the read replica?",
+    "answer": "Because the replica may be lagging. If the redirect reads from the replica before the WAL replay catches up, the user sees their old data and thinks the update failed.",
+    "why": "Replication is fast but not instant. Read-your-own-writes consistency requires routing the immediate subsequent read to the primary." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<nav class="lesson-nav">
+  <a href="0011-observability.html">← Lesson 11: Observability</a>
+  <span>Lesson 13: Version control →</span>
+</nav>
+
+</main>
+</body>
+</html>
