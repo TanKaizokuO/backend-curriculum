@@ -16,9 +16,9 @@ A beginner-friendly version and a DevOps beginner roadmap are linked separately.
 
 - [ ] How does the internet work?
 - [x] ~~What is HTTP?~~
-- [ ] What is a domain name?
+- [x] ~~What is a domain name?~~
 - [ ] What is hosting?
-- [ ] DNS and how it works
+- [x] ~~DNS and how it works~~
 - [ ] Browsers and how they work
 
 ## 2. Pick a Language

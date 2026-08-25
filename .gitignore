@@ -53,6 +53,10 @@ Code/Lesson_13_code/repo/
 Code/Lesson_13_code/origin.git/
 Code/js/Lesson_13_code/repo/
 
+# Lesson 14 resolver cache (recreated by demo.sh on every run)
+Code/Lesson_14_code/resolver_cache.json
+Code/js/Lesson_14_code/src/resolverCache.json
+
 # OS & System
 .DS_Store
 Thumbs.db

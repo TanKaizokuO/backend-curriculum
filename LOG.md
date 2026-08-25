@@ -401,6 +401,46 @@ the same shape as Lesson 3's incomplete `Allow` header and Lesson 12's doubled r
 limit — the abstraction (a force-push "just works") leaks, and the learner can only
 see the leak because Step 1 built commits by hand first.
 
+
+### Lesson 0014 covers
+
+How a request finds your server: DNS. Structure: the one idea (a name becomes an
+address through caches you do not control) → **raw mechanism**: `dns_query.py` /
+`dnsQuery.ts` build the twelve-byte header and length-prefixed labels of a DNS
+query by hand and parse the reply, before naming `dig` and
+`socket.getaddrinfo` as the tools that hide the same packet → record types
+A, AAAA, CNAME, MX, TXT, each queried against a real domain → the walk from
+root to TLD to authoritative server, one `dig` call per hop, each server
+answering `recursion requested but not available` → the recursive resolver
+as the one server that performs that walk and caches the result →
+**observable failure**: `toy_dns_server.py` / `toyDnsServer.ts` (a one-record
+authoritative server for `bookmarks-api.local`, rereading `zone.json` on
+every query) and `caching_resolver.py` / `cachingResolver.ts` (a stub
+resolver with a TTL-keyed cache) show a record changing on the authoritative
+server while the cached answer stays wrong until the TTL expires → `curl
+--resolve` makes the boundary explicit: the address DNS returns is what
+Lesson 1's socket actually connects to → five practice steps → six
+retrieval-practice questions.
+
+**Every transcript in this lesson is real output**, captured by running
+`Code/Lesson_14_code/demo.sh` and `Code/js/Lesson_14_code/demo.sh` against
+real public DNS infrastructure (root server `198.41.0.4`, `.com` TLD server
+`192.5.6.30`, `example.com`'s own authoritative servers) and against the
+toy authoritative server and stub resolver built for this lesson. No record,
+hash, or timing quoted in the lesson is invented.
+
+**Teaching hook worth reusing — the record is correct the instant it
+changes; the answer is not.** The toy authoritative server answers the new
+IP on the very query after the operator edits `zone.json`. The stub
+resolver keeps returning the old IP for the rest of the TTL regardless,
+because nothing tells it the record changed — it only checks again once
+the TTL it already has runs out. This is the same leak-in-the-abstraction
+shape as Lesson 3's incomplete `Allow` header, Lesson 12's doubled rate
+limit, and Lesson 13's local-only reflog: the fix Lesson 14 argues for
+(a short TTL before a migration, not faith in instant propagation) only
+makes sense once the learner has watched the gap happen on a TTL short
+enough to see with a `sleep`.
+
 ---
 
 ## Built infrastructure
@@ -504,6 +544,13 @@ see the leak because Step 1 built commits by hand first.
   Python version, a bare remote) from scratch on every run and prints every transcript
   quoted in the lesson: the blob/tree/commit walkthrough, the merge and rebase
   conflicts, the index diff, and the force-push/reflog rescue.
+- `Code/Lesson_14_code/` + `Code/js/Lesson_14_code/` — the Lesson 12 API carried
+  forward unchanged, plus `dns_query.py` / `dnsQuery.ts` (raw DNS query, no
+  library), `toy_dns_server.py` / `toyDnsServer.ts` (one-record authoritative
+  server reading `zone.json` fresh on every query), and `caching_resolver.py` /
+  `cachingResolver.ts` (a stub resolver with a TTL-keyed cache). `demo.sh` in
+  each directory is the whole lesson, runnable, needing only a network
+  connection and no database.
 - `lesson_plan.md` — the order of the course: what is done, what each finished lesson
-  proved, and fifteen planned lessons (14–28) with their one idea.
+  proved, and fourteen planned lessons (15–28) with their one idea.
 

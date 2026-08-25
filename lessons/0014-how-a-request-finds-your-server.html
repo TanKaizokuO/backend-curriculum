@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 14 · How a request finds your server</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 14 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../GLOSSARY.md">Glossary</a> ·
+    <a href="../lesson_plan.md">Plan</a> ·
+    <a href="0013-version-control.html">← Lesson 13</a>
+  </p>
+  <h1>How a request finds your server
+    <span class="sub">A name becomes an address through caches you do not control.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">Every request in this course so far started with a socket
+already open to a known IP address. A real client never gets an IP address
+first. It gets a name — <code>bookmarks-api.example.com</code> — and it must
+turn that name into an address before it can open a socket at all. That
+step is DNS, and it happens outside your server, in servers and caches you
+do not own.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>A name becomes an address through caches you do not control.</p>
+</div>
+
+<div class="note">
+  <span class="note-label">How the two languages sit together</span>
+  <p>DNS is a packet format on UDP, not a language feature, so the raw
+  mechanism ports directly: <code>dns_query.py</code> and
+  <code>dnsQuery.ts</code> build the same header and parse the same answer.
+  Read the Python steps first. The TypeScript section at the end is
+  recognition, not new material.</p>
+</div>
+
+<h2>Step 1 · A name is not an address</h2>
+
+<p>Lesson 1 opened a TCP socket straight to an IP address typed by hand.
+Every lesson since has run against <code>127.0.0.1</code> or a container on
+the same machine, so the address was already known. A real client starts
+from a name, not an address, and asks a separate system to convert one into
+the other: the <strong>Domain Name System</strong>, DNS.</p>
+
+<p>The tool for this is normally <code>dig</code>, and the library for this
+is normally <code>socket.getaddrinfo</code>. Both hide the same packet.
+Build the packet by hand once, the way Lesson 1 built an HTTP request by
+hand, and the rest of the lesson has nothing left to take on faith.</p>
+
+<h2>Step 2 · The query, by hand</h2>
+
+<p>A DNS message starts with a fixed twelve-byte header, then a question.
+The header names a random <strong>id</strong> — echoed back in the answer,
+so the client can match a reply to its own request — and counts of how many
+questions, answers, and other records follow.</p>
+
+<p class="filename">Code/Lesson_14_code/dns_query.py</p>
+<pre class="wide"><code><span class="c-key">def</span> <span class="c-fn">build_query</span>(name: <span class="c-key">str</span>, qtype: <span class="c-key">int</span>) -&gt; <span class="c-key">bytes</span>:
+    query_id = random.randint(<span class="c-num">0</span>, <span class="c-num">0xFFFF</span>)
+    flags = <span class="c-num">0x0100</span>  <span class="c-com"># RD=1: "please recurse for me"</span>
+    header = struct.pack(<span class="c-str">"&gt;HHHHHH"</span>, query_id, flags, <span class="c-num">1</span>, <span class="c-num">0</span>, <span class="c-num">0</span>, <span class="c-num">0</span>)
+    question = encode_name(name) + struct.pack(<span class="c-str">"&gt;HH"</span>, qtype, <span class="c-num">1</span>)  <span class="c-com"># class IN</span>
+    <span class="c-key">return</span> header + question</code></pre>
+
+<p>A name in the question is not a string. It is a sequence of
+length-prefixed labels: <code>example.com</code> becomes one byte holding
+<code>7</code>, the bytes <code>example</code>, one byte holding
+<code>3</code>, the bytes <code>com</code>, and a final zero byte. The
+length before each label is why one label cannot exceed 63 bytes and a
+full name cannot exceed 255.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> python3 dns_query.py example.com A
+id=0xdb65 rcode=0 answers=2
+example.com.	241	IN	A	172.66.147.243
+example.com.	241	IN	A	104.20.23.154</code></pre>
+
+<p>The reply repeats the id, so the client can tell this answer belongs to
+this question. <code>rcode=0</code> means no error. Each answer line names
+the record: the domain, a number of seconds, the class (<code>IN</code>,
+for Internet — the only class in use today), the record type, and the
+value. The number is the <strong>TTL</strong>, and Step 6 depends on it.</p>
+
+<h2>Step 3 · Record types answer different questions</h2>
+
+<p>A domain can hold more than one kind of record, and each type answers a
+different question. The same script, run against real domains, shows four
+more.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> python3 dns_query.py example.com AAAA
+id=0x15d5 rcode=0 answers=2
+example.com.	103	IN	AAAA	2606:4700:10::6814:179a
+example.com.	103	IN	AAAA	2606:4700:10::ac42:93f3
+
+<span class="c-key">$</span> python3 dns_query.py www.github.com CNAME
+id=0x98f0 rcode=0 answers=1
+www.github.com.	3600	IN	CNAME	github.com
+
+<span class="c-key">$</span> python3 dns_query.py google.com MX
+id=0x0c99 rcode=0 answers=1
+google.com.	8	IN	MX	10 smtp.google.com
+
+<span class="c-key">$</span> python3 dns_query.py example.com TXT
+id=0x9ded rcode=0 answers=2
+example.com.	219	IN	TXT	v=spf1 -all
+example.com.	219	IN	TXT	_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9</code></pre>
+
+<ul>
+  <li><strong>A</strong> maps a name to an IPv4 address. <strong>AAAA</strong>
+  does the same for IPv6. A name can hold more than one of each; a resolver
+  picks one, and Step 6's cache remembers only the ones it picked.</li>
+  <li><strong>CNAME</strong> maps a name to another name, not an address.
+  <code>www.github.com</code> holds no address of its own — a client must
+  resolve <code>github.com</code> next to finish the job. A name with a
+  CNAME record may hold no other record type at that name.</li>
+  <li><strong>MX</strong> names the mail server for a domain, plus a
+  preference number. A lower number is tried first.</li>
+  <li><strong>TXT</strong> holds arbitrary text. Domain owners use it to
+  prove control of the domain to a third party, or to publish a mail
+  policy such as <code>v=spf1</code>, without adding a new record type for
+  every new purpose.</li>
+</ul>
+
+<h2>Step 4 · The walk from root to authoritative</h2>
+
+<p>The query in Step 2 went to one resolver and got a final answer. That
+resolver did not know the answer in advance. It walked a chain of servers,
+each one narrower than the last, and this lesson's copy of that walk uses
+one <code>dig</code> call per step so each server's answer is visible on
+its own.</p>
+
+<p>A <strong>root server</strong> knows nothing about
+<code>example.com</code>. It knows which servers handle every top-level
+domain — <code>.com</code>, <code>.org</code>, and the rest — and nothing
+more.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> dig @198.41.0.4 example.com A +noall +authority
+com.			172800	IN	NS	l.gtld-servers.net.
+com.			172800	IN	NS	j.gtld-servers.net.
+com.			172800	IN	NS	h.gtld-servers.net.
+<span class="c-com"># … 10 more .com servers, not shown</span></code></pre>
+
+<p>A <strong>TLD server</strong> — one of the <code>.com</code> servers
+just named — knows nothing about the record itself. It knows which servers
+are <strong>authoritative</strong> for <code>example.com</code>: the ones
+the domain's owner actually configured.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> dig @192.5.6.30 example.com A +noall +authority
+example.com.		172800	IN	NS	hera.ns.cloudflare.com.
+example.com.		172800	IN	NS	elliott.ns.cloudflare.com.</code></pre>
+
+<p>The authoritative server holds the actual record and answers it
+directly.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> dig @108.162.192.162 example.com A +noall +answer
+example.com.		300	IN	A	104.20.23.154
+example.com.		300	IN	A	172.66.147.243</code></pre>
+
+<p>The address matches Step 2's answer, because Step 2's resolver did this
+exact walk on its behalf. Root, TLD, and authoritative servers each
+answered without recursing further — <code>dig</code> against any of them
+directly reports <code>WARNING: recursion requested but not available</code>
+— because none of the three is meant to serve a client. A client talks to
+one more kind of server instead, covered next.</p>
+
+<h2>Step 5 · The recursive resolver does the walk for you</h2>
+
+<p>Step 2's single query never touched a root or TLD server directly. It
+went to a <strong>recursive resolver</strong> — usually the one your
+operating system or your ISP hands you by default, or a public one such as
+<code>1.1.1.1</code> — and that resolver ran the whole three-step walk on
+your behalf, then cached the result.</p>
+
+<p>This is why the second query for the same name comes back faster than
+the first, and why it is safe to ask the same resolver thousands of times a
+day: the walk in Step 4 runs once, and every later request within the TTL
+reads the cached answer instead.</p>
+
+<h2>Step 6 · TTL — the observable failure</h2>
+
+<p>The <strong>TTL</strong> is the number of seconds a resolver may keep an
+answer before asking again. A short TTL means a change to the record
+reaches every client fast, at the cost of asking the authoritative server
+more often. A long TTL — a real DNS provider might set 86400 seconds, a
+full day, on a record that rarely changes — means fewer queries, at the
+cost of every cache serving the old answer for up to that long after the
+record changes.</p>
+
+<p>Build the smallest version of both sides to see this happen in seconds
+instead of a day. <code>toy_dns_server.py</code> is a one-record
+authoritative server; it rereads <code>zone.json</code> on every query, the
+way an operator's change reaches a real authoritative server the moment it
+saves. <code>caching_resolver.py</code> is a stub resolver with its own
+TTL-keyed cache — the same shape as Step 5's resolver, small enough to read
+in one sitting.</p>
+
+<p class="filename">Code/Lesson_14_code/caching_resolver.py</p>
+<pre class="wide"><code><span class="c-key">def</span> <span class="c-fn">resolve</span>(name: <span class="c-key">str</span>) -&gt; <span class="c-key">str</span>:
+    cache = load_cache()
+    now = time.time()
+    entry = cache.get(name)
+    <span class="c-key">if</span> entry <span class="c-key">and</span> entry[<span class="c-str">"expires_at"</span>] &gt; now:
+        <span class="c-key">return</span> entry[<span class="c-str">"ip"</span>]  <span class="c-com"># cache hit — no packet sent</span>
+    ip, ttl = query_authoritative(name)
+    cache[name] = {<span class="c-str">"ip"</span>: ip, <span class="c-str">"expires_at"</span>: now + ttl}
+    save_cache(cache)
+    <span class="c-key">return</span> ip</code></pre>
+
+<pre class="wide"><code><span class="c-key">$</span> <span class="c-com"># zone.json: bookmarks-api.local -&gt; 10.0.0.5, ttl=5</span>
+<span class="c-key">$</span> python3 caching_resolver.py bookmarks-api.local
+cache miss: queried authoritative, bookmarks-api.local -&gt; 10.0.0.5 (ttl=5s)
+
+<span class="c-key">$</span> python3 caching_resolver.py bookmarks-api.local
+cache hit: bookmarks-api.local -&gt; 10.0.0.5 (5.0s left on TTL)
+
+<span class="c-key">$</span> <span class="c-com"># operator changes zone.json: bookmarks-api.local -&gt; 10.0.0.9</span>
+<span class="c-key">$</span> python3 caching_resolver.py bookmarks-api.local
+cache hit: bookmarks-api.local -&gt; 10.0.0.5 (4.9s left on TTL)   <span class="c-com"># stale — the fix is live, the answer is not</span>
+
+<span class="c-key">$</span> sleep 6
+<span class="c-key">$</span> python3 caching_resolver.py bookmarks-api.local
+cache miss: queried authoritative, bookmarks-api.local -&gt; 10.0.0.9 (ttl=5s)   <span class="c-com"># fresh</span></code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">The record is correct the instant it changes. The answer is not.</span>
+  <p>The authoritative server in this transcript answered
+  <code>10.0.0.9</code> on the very query right after the change. The
+  resolver still returned <code>10.0.0.5</code> for the next 4.9 seconds,
+  because its cached entry had not expired. Scale the TTL from 5 seconds to
+  86400, and a caller changing an <code>A</code> record can wait a full day
+  for every cache in the world to notice. A migration that depends on DNS
+  switching instantly is a migration that will fail for some fraction of
+  users for as long as the old TTL allows.</p>
+</div>
+
+<h2>Step 7 · The address, not the name, is what opens the socket</h2>
+
+<p>Lesson 1's socket connected straight to an IP address. Every step above
+exists to produce exactly that address before the socket in Lesson 1 opens.
+<code>curl --resolve</code> makes the boundary explicit: give it a name, a
+port, and an address, and it skips its own name lookup and connects to the
+address supplied — the same address <code>caching_resolver.py</code> just
+returned.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> python3 caching_resolver.py bookmarks-api.local
+cache miss: queried authoritative, bookmarks-api.local -&gt; 127.0.0.1 (ttl=5s)
+
+<span class="c-key">$</span> curl --resolve bookmarks-api.local:8020:127.0.0.1 http://bookmarks-api.local:8020/healthz
+200</code></pre>
+
+<p>Nothing about the request itself changed. Lesson 12's API never learns
+that its caller found it by name instead of by a hardcoded address — DNS
+finishes its job before the TCP handshake in Lesson 1 even starts.</p>
+
+<h2>TypeScript: the same packet, the same failure</h2>
+
+<p>The packet format does not depend on the language reading it.
+<code>dnsQuery.ts</code> builds the identical header and question over
+Node's <code>dgram</code> socket in place of Python's; <code>toyDnsServer.ts</code>
+and <code>cachingResolver.ts</code> reproduce Step 6 exactly.</p>
+
+<p class="filename">Code/js/Lesson_14_code/src/dnsQuery.ts</p>
+<pre class="wide"><code><span class="c-key">function</span> <span class="c-fn">buildQuery</span>(name: <span class="c-key">string</span>, qtype: <span class="c-key">number</span>): Buffer {
+  <span class="c-key">const</span> id = Math.<span class="c-fn">floor</span>(Math.<span class="c-fn">random</span>() * <span class="c-num">0xffff</span>);
+  <span class="c-key">const</span> header = Buffer.<span class="c-fn">alloc</span>(<span class="c-num">12</span>);
+  header.<span class="c-fn">writeUInt16BE</span>(id, <span class="c-num">0</span>);
+  header.<span class="c-fn">writeUInt16BE</span>(<span class="c-num">0x0100</span>, <span class="c-num">2</span>); <span class="c-com">// RD = 1</span>
+  header.<span class="c-fn">writeUInt16BE</span>(<span class="c-num">1</span>, <span class="c-num">4</span>); <span class="c-com">// 1 question</span>
+  <span class="c-com">// … the same length-prefixed labels as dns_query.py, then type + class</span>
+}</code></pre>
+
+<pre class="wide"><code><span class="c-key">$</span> node dnsQuery.ts example.com A
+id=0x75a7 rcode=0 answers=2
+example.com.	218	IN	A	104.20.23.154
+example.com.	218	IN	A	172.66.147.243</code></pre>
+
+<pre class="wide"><code><span class="c-key">$</span> <span class="c-com"># zone.json: bookmarks-api.local -&gt; 10.0.0.5, ttl=5</span>
+<span class="c-key">$</span> node cachingResolver.ts bookmarks-api.local
+cache miss: queried authoritative, bookmarks-api.local -&gt; 10.0.0.5 (ttl=5s)
+<span class="c-key">$</span> node cachingResolver.ts bookmarks-api.local
+cache hit: bookmarks-api.local -&gt; 10.0.0.5 (4.9s left on TTL)
+
+<span class="c-key">$</span> <span class="c-com"># operator changes zone.json: bookmarks-api.local -&gt; 10.0.0.9</span>
+<span class="c-key">$</span> node cachingResolver.ts bookmarks-api.local
+cache hit: bookmarks-api.local -&gt; 10.0.0.5 (4.8s left on TTL)   <span class="c-com"># stale, same as Python</span>
+<span class="c-key">$</span> sleep 6
+<span class="c-key">$</span> node cachingResolver.ts bookmarks-api.local
+cache miss: queried authoritative, bookmarks-api.local -&gt; 10.0.0.9 (ttl=5s)   <span class="c-com"># fresh</span></code></pre>
+
+<h2>Practice</h2>
+
+<ol class="steps">
+  <li><strong>Run the demo.</strong> From <code>Code/Lesson_14_code</code>,
+  run <code>./demo.sh</code>. It needs no database and no Docker — only a
+  network connection.</li>
+  <li><strong>Query a domain you own, or one you use daily.</strong>
+  <code>python3 dns_query.py &lt;name&gt; A</code>, then compare the TTL to how
+  often you would guess that domain's address changes.</li>
+  <li><strong>Read the raw wire format.</strong> Run
+  <code>dig +short bookmarks-api.local A</code> against nothing — it will
+  fail, because <code>bookmarks-api.local</code> only exists inside
+  <code>toy_dns_server.py</code>'s <code>zone.json</code>, never in real
+  DNS. Confirm you understand why: a name only resolves through a server
+  that has agreed to answer for it.</li>
+  <li><strong>Shorten a TTL, then watch it matter.</strong> Edit
+  <code>zone.json</code>'s <code>ttl</code> to <code>1</code>, rerun the
+  four-query sequence from Step 6, and time how much narrower the stale
+  window gets.</li>
+  <li><strong>Run the Lesson 12 API by name.</strong> Start
+  <code>uvicorn main:app --port 8020</code> from
+  <code>Code/Lesson_14_code</code> with its database running, point
+  <code>zone.json</code>'s IP at <code>127.0.0.1</code>, resolve it with
+  <code>caching_resolver.py</code>, and hit <code>/healthz</code> with
+  <code>curl --resolve</code> using the address it returned.</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "A resolver returns a CNAME record for www.github.com pointing at github.com. What must the client do next?",
+    "options": [
+      "Treat github.com as the final IP address",
+      "Resolve github.com separately to get an actual address",
+      "Retry the same query with a different record type",
+      "Nothing — a CNAME already contains an address"
+    ],
+    "answer": 1,
+    "why": "A CNAME maps a name to another name, never to an address. The client (or its resolver) must resolve the target name to finish the lookup." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Which server in the resolution walk actually holds the record a domain's owner configured?",
+    "options": [
+      "The root server",
+      "The TLD server",
+      "The authoritative server",
+      "The recursive resolver"
+    ],
+    "answer": 2,
+    "why": "Root servers name TLD servers; TLD servers name authoritative servers; the authoritative server holds and answers the actual record. The recursive resolver only walks this chain and caches what it finds." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "What field on a DNS answer tells a resolver how many seconds it may keep the answer cached?",
+    "answer": "TTL",
+    "accept": ["TTL", "time to live", "time-to-live"],
+    "why": "The TTL, in seconds, bounds how long any resolver in the chain may serve the answer before asking the authoritative server again." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "An authoritative server's A record changes the instant an operator saves it. Why can a client still see the old address minutes or hours later?",
+    "answer": "A resolver between the client and the authoritative server cached the old answer, and it keeps serving that cached answer until the record's TTL expires, regardless of when the record itself changed.",
+    "why": "The record changing and a given cache noticing are two different moments. The gap between them is exactly the remaining TTL at the moment of the change." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "A root server is queried directly and answers with WARNING: recursion requested but not available. What does this confirm?",
+    "options": [
+      "The root server is misconfigured",
+      "Root, TLD, and authoritative servers only answer for their own zone; they do not walk the chain for a client",
+      "The query used the wrong record type",
+      "Root servers are only reachable over TCP, not UDP"
+    ],
+    "answer": 1,
+    "why": "Only a recursive resolver performs the full walk on a client's behalf. Root, TLD, and authoritative servers each answer one link in that chain and stop." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why does curl --resolve name:port:address skip DNS entirely for that request?",
+    "options": [
+      "It disables TLS",
+      "It supplies the address directly, so curl has nothing left to look up",
+      "It only works for domains ending in .local",
+      "It forces a fresh query with a TTL of zero"
+    ],
+    "answer": 1,
+    "why": "DNS exists to produce an address from a name. Handing curl the address already answers that question, so the resolution step this lesson built has nothing left to do." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<nav class="lesson-nav">
+  <a href="0013-version-control.html">← Lesson 13: Version control</a>
+  <span>Lesson 15: The edge: reverse proxy and TLS →</span>
+</nav>
+
+</main>
+</body>
+</html>

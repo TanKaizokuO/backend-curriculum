@@ -31,6 +31,14 @@ may do, for example the `user_id` column on the row they want to delete. It
 answers "may they?" and its failure code is `403`. A `401` invites a new
 credential; a `403` does not, because the same credential fails again.
 
+**Authoritative server** (Lesson 14) — The server a domain's owner
+configured to hold its actual DNS records. A root server names the
+servers for a top-level domain; a TLD server names the authoritative
+servers for one domain within it; only the authoritative server answers
+with the record itself. Queried directly, it — like a root or TLD server
+— reports `recursion requested but not available`, because none of the
+three walks the chain on a client's behalf.
+
 ## B
 
 **Blob** (Lesson 13) — A Git object holding raw file content, addressed by
@@ -68,6 +76,11 @@ no longer matches the source, either by deleting the entry on a write or by
 giving the entry a *TTL* so it expires on its own. A TTL is simpler: no write
 path needs to know which cache keys its change affects. The cost is a stale
 read for up to one TTL after every write.
+
+**CNAME** (Lesson 14) — A DNS record that maps a name to another name,
+never to an address. `www.github.com` holds a CNAME pointing at
+`github.com`; a client must resolve that target name separately to get an
+actual address. A name with a CNAME record may hold no other record type.
 
 **Cardinality** (Lesson 11) — The number of distinct label combinations a
 metric can take, and so the number of separate time series it creates. A
@@ -284,6 +297,17 @@ has pointed to on this machine, including ones no branch names anymore.
 rebase. It is never pushed, fetched, or cloned, so it only helps on the
 machine that made the original commit.
 
+**Recursive resolver** (Lesson 14) — The server a client actually queries:
+usually one handed out by the operating system or ISP, or a public one
+such as `1.1.1.1`. It walks the chain from root to TLD to authoritative
+server on the client's behalf and caches the result, so only the first
+query for a name pays for the whole walk.
+
+**Root server** (Lesson 14) — One of thirteen well-known servers that
+know, for every top-level domain, which servers are authoritative for it.
+A root server holds no record for any individual domain — only the next
+link in the chain toward one.
+
 **Read replica** (Lesson 12) — A second database that accepts a continuous
 stream of changes (WAL) from the primary database and serves read-only queries.
 Because WAL transfer and replay take time, a replica can fall behind (*replication
@@ -371,7 +395,10 @@ database. See *span*.
 valid before the cache deletes it on its own. A short TTL bounds how stale a
 read can be, at the cost of more cache misses. A long TTL does the reverse.
 Set it in the same statement that writes the entry:
-`redis.set(key, value, ex=seconds)`.
+`redis.set(key, value, ex=seconds)`. Lesson 14 applies the same idea to a
+DNS record: every resolver between the client and the authoritative
+server may keep the old answer for up to one TTL after the record itself
+changes.
 
 ## V
 
@@ -380,3 +407,10 @@ address. The `Host` header (mandatory in HTTP/1.1) tells the server which site
 the client meant — without it, `GET /` is ambiguous because hundreds of sites
 may share the address. This is why HTTP/1.1 requires `Host` and responds `400`
 if it is missing. RFC 9110 §7.2.
+
+## Z
+
+**Zone** (Lesson 14) — The set of DNS records one authoritative server
+answers for, rooted at one domain name. `bookmarks-api.local` and every
+name under it, in this lesson's toy server, form one zone, held in one
+file re-read on every query.
