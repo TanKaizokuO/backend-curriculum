@@ -73,9 +73,9 @@ A beginner-friendly version and a DevOps beginner roadmap are linked separately.
 
 ## 7. Caching
 
-- [ ] Client side
+- [x] ~~Client side~~
 - [ ] CDN
-- [ ] Server side caching: Redis, Memcached
+- [x] ~~Server side caching: Redis, Memcached~~
 
 ## 8. Web Security
 

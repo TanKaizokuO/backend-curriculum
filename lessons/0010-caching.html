@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 10 · Caching</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 10 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../GLOSSARY.md">Glossary</a> ·
+    <a href="../lesson_plan.md">Plan</a> ·
+    <a href="0009-testing-and-ci.html">← Lesson 09</a>
+  </p>
+  <h1>Caching
+    <span class="sub">Python and TypeScript, one idea at a time.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">A cache is a copy. You keep the copy somewhere faster than
+the place that computed the answer, so the next request skips the work. A
+copy can be wrong. The source changes, and the copy does not know.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>A cache is a copy that can be wrong. Name the moment it goes stale
+  before you add it.</p>
+</div>
+
+<div class="note">
+  <span class="note-label">How the two languages sit together</span>
+  <p>The Python project is <code>Code/Lesson_10_code/</code>. The
+  TypeScript project is <code>Code/js/Lesson_10_code/</code>. Both extend
+  the bookmarks API from Lesson 9 with two caches: one in the HTTP layer,
+  one in Redis.</p>
+</div>
+
+<h2>Step 1 · The cheapest cache costs nothing to run</h2>
+
+<p>Before you add Redis, add the cache that already exists. A browser and a
+proxy can each keep a copy of a response for you, at no cost, if you tell
+them how long the copy stays good. Two headers do this:
+<code>Cache-Control</code> and <code>ETag</code>.</p>
+
+<p><code>Cache-Control: max-age=30</code> tells the client to reuse its copy
+for 30 seconds without a new request to the server. After 30 seconds, the
+client asks again, but it does not have to download the whole answer. It sends the
+<code>ETag</code> it stored, in a header named <code>If-None-Match</code>.
+If the server computes the same <code>ETag</code>, the answer has not
+changed, and it sends back <code>304 Not Modified</code> with no body.</p>
+
+<p class="filename">Code/Lesson_10_code/main.py</p>
+<pre class="wide"><code><span class="c-fn">@app.get</span>(<span class="c-str">"/bookmarks/{bookmark_id}"</span>)
+<span class="c-key">async def</span> <span class="c-fn">get_bookmark</span>(bookmark_id: <span class="c-key">int</span>, request: Request, response: Response):
+    <span class="c-key">async with</span> app.state.pool.connection() <span class="c-key">as</span> conn:
+        cur = <span class="c-key">await</span> conn.cursor(row_factory=dict_row).execute(
+            <span class="c-str">"SELECT id, url, title, visit_count, user_id FROM bookmarks WHERE id = %s"</span>,
+            (bookmark_id,),
+        )
+        row = <span class="c-key">await</span> cur.fetchone()
+    <span class="c-key">if</span> row <span class="c-key">is</span> <span class="c-key">None</span>:
+        <span class="c-key">raise</span> HTTPException(status_code=<span class="c-num">404</span>, detail=<span class="c-str">"bookmark not found"</span>)
+
+    etag = hashlib.sha256(json.dumps(row, sort_keys=<span class="c-key">True</span>).encode()).hexdigest()[:<span class="c-num">16</span>]
+    response.headers[<span class="c-str">"Cache-Control"</span>] = <span class="c-str">"max-age=30"</span>
+    response.headers[<span class="c-str">"ETag"</span>] = etag
+
+    <span class="c-key">if</span> request.headers.get(<span class="c-str">"if-none-match"</span>) == etag:
+        <span class="c-key">return</span> Response(status_code=<span class="c-num">304</span>, headers=dict(response.headers))
+    <span class="c-key">return</span> row</code></pre>
+
+<p>The ETag is a hash of the fields the client can see. Two requests for the
+same row get the same hash. A write that changes <code>title</code> or
+<code>visit_count</code> changes the hash on the next read, so the client
+downloads the new answer.</p>
+
+<p>Run it, and watch the second request come back empty.</p>
+
+<pre class="wide"><code>$ curl -i localhost:8000/bookmarks/500
+HTTP/1.1 200 OK
+cache-control: max-age=30
+etag: bc910b5231e857b6
+content-length: 110
+
+{"id":500,"url":"https://example.com/article/500","title":"Article number 500","visit_count":0,"user_id":null}
+
+$ curl -i -H "If-None-Match: bc910b5231e857b6" localhost:8000/bookmarks/500
+HTTP/1.1 304 Not Modified
+cache-control: max-age=30
+etag: bc910b5231e857b6</code></pre>
+
+<p>110 bytes became zero. No query ran for the second request that mattered:
+the row lookup still happens, because this server computes the ETag from the
+row, but the client never receives a body it already has. A proxy in front
+of the server can skip the lookup entirely, once it has seen the ETag.</p>
+
+<h2>Step 2 · TypeScript: the same ETag</h2>
+
+<p class="filename">Code/js/Lesson_10_code/src/server.ts</p>
+<pre class="wide"><code><span class="c-fn">app</span>.<span class="c-fn">get</span>(<span class="c-str">'/bookmarks/:id'</span>, <span class="c-fn">route</span>(<span class="c-key">async</span> (req, res) =&gt; {
+  <span class="c-key">const</span> id = <span class="c-fn">Number</span>(req.params.id);
+  <span class="c-key">const</span> { rows } = <span class="c-key">await</span> pool.<span class="c-fn">query</span>(
+    <span class="c-str">'SELECT id, url, title, visit_count, user_id FROM bookmarks WHERE id = $1'</span>,
+    [id],
+  );
+  <span class="c-key">const</span> row = rows[<span class="c-num">0</span>];
+  <span class="c-key">if</span> (!row) {
+    res.<span class="c-fn">status</span>(<span class="c-num">404</span>).<span class="c-fn">json</span>({ detail: <span class="c-str">'bookmark not found'</span> });
+    <span class="c-key">return</span>;
+  }
+
+  <span class="c-key">const</span> etag = <span class="c-fn">createHash</span>(<span class="c-str">'sha256'</span>).<span class="c-fn">update</span>(<span class="c-fn">JSON.stringify</span>(row)).<span class="c-fn">digest</span>(<span class="c-str">'hex'</span>).<span class="c-fn">slice</span>(<span class="c-num">0</span>, <span class="c-num">16</span>);
+  res.<span class="c-fn">set</span>(<span class="c-str">'Cache-Control'</span>, <span class="c-str">'max-age=30'</span>);
+  res.<span class="c-fn">set</span>(<span class="c-str">'ETag'</span>, etag);
+
+  <span class="c-key">if</span> (req.headers[<span class="c-str">'if-none-match'</span>] === etag) {
+    res.<span class="c-fn">status</span>(<span class="c-num">304</span>).<span class="c-fn">end</span>();
+    <span class="c-key">return</span>;
+  }
+  res.<span class="c-fn">json</span>(row);
+}));</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">Register the specific route first</span>
+  <p>Both frameworks match routes in the order you add them.
+  <code>/bookmarks/search</code> must come before
+  <code>/bookmarks/{bookmark_id}</code>, or the string <code>"search"</code>
+  reaches the handler that expects an integer id.</p>
+</div>
+
+<h2>Step 3 · Redis, for a copy the database does not need to remake</h2>
+
+<p>An ETag still asks the server a question on every request. Redis
+answers without asking the server at all: the process that holds the
+cached value is not the process that runs the query. Add it in front of the
+search endpoint, which Lesson 5 already gave a database index.</p>
+
+<p class="filename">Code/Lesson_10_code/main.py</p>
+<pre class="wide"><code><span class="c-fn">@app.get</span>(<span class="c-str">"/bookmarks/search"</span>)
+<span class="c-key">async def</span> <span class="c-fn">search_bookmarks</span>(q: <span class="c-key">str</span>, skip: <span class="c-key">int</span> = <span class="c-num">0</span>, limit: <span class="c-key">int</span> = Query(default=<span class="c-num">10</span>, le=<span class="c-num">100</span>)):
+    cache_key = <span class="c-str">f"search:{q}:{skip}:{limit}"</span>
+    cached = <span class="c-key">await</span> app.state.redis.get(cache_key)
+    <span class="c-key">if</span> cached <span class="c-key">is not</span> <span class="c-key">None</span>:
+        <span class="c-key">return</span> {<span class="c-str">"source"</span>: <span class="c-str">"cache"</span>, <span class="c-str">"results"</span>: json.loads(cached)}
+
+    <span class="c-key">async with</span> app.state.pool.connection() <span class="c-key">as</span> conn:
+        cur = <span class="c-key">await</span> conn.cursor(row_factory=dict_row).execute(
+            SEARCH_SQL, (<span class="c-str">f"{q}%"</span>, limit, skip)
+        )
+        rows = <span class="c-key">await</span> cur.fetchall()
+
+    <span class="c-key">await</span> app.state.redis.set(
+        cache_key, json.dumps(rows, default=<span class="c-key">str</span>), ex=SEARCH_CACHE_TTL_SECONDS
+    )
+    <span class="c-key">return</span> {<span class="c-str">"source"</span>: <span class="c-str">"database"</span>, <span class="c-str">"results"</span>: rows}</code></pre>
+
+<p>Every response says where it came from: <code>"database"</code> or
+<code>"cache"</code>. Say this in your own responses too, while you learn
+the mechanism. Remove it once you trust the cache.</p>
+
+<h2>Step 4 · Measure the hit and the miss</h2>
+
+<p>Do not guess whether a cache is worth the complexity. Measure it. Delete
+the cache key, request the search, then request it again five times without
+deleting the key.</p>
+
+<p class="filename">Code/Lesson_10_code/cache_bench.py</p>
+<pre class="wide"><code>$ python cache_bench.py
+--- 1. miss against hit -----------------------------------
+miss (database each time): [5.613, 3.603, 2.918, 1.908, 1.612]
+hit  (Redis each time):    [0.872, 0.818, 1.120, 1.969, 1.473]
+average miss: 3.131 ms, average hit: 1.251 ms, 2.5x faster</code></pre>
+
+<p>The database was already fast: the index from Lesson 5 answers this
+query in about 3 ms end to end, over a local TCP connection. Redis is
+still 2.5 times faster. A key lookup in memory skips SQL parsing and a
+B-tree read, even on a small tree. The TypeScript run shows the same
+shape:</p>
+
+<p class="filename">Code/js/Lesson_10_code/src/cacheBench.ts</p>
+<pre class="wide"><code>$ node src/cacheBench.ts
+--- 1. miss against hit -----------------------------------
+miss (database each time): [51.213, 5.803, 6.709, 5.977, 6.775]
+hit  (Redis each time):    [3.568, 3.185, 3.087, 3.321, 3.341]
+average miss: 15.296 ms, average hit: 3.301 ms, 4.6x faster</code></pre>
+
+<p>The first Node.js miss cost 51.2 ms, far more than the rest. The pool
+opened its first connection to PostgreSQL inside that request; the Python
+process had already opened its connections when <code>uvicorn</code>
+started, in the code from Lesson 7. Drop that one outlier and the remaining
+four average 6.3 ms — the same order of magnitude as Python, and still
+slower than every Redis hit.</p>
+
+<div class="note">
+  <span class="note-label">A cache is not a fix for a slow query</span>
+  <p>This query did not need Redis to be fast; migration 0003 already made
+  it fast. Redis removes a network round trip and a small amount of CPU
+  work for a query the same client repeats. Choose a database index first.
+  Choose a cache when the same expensive read happens again and again
+  before the underlying row changes.</p>
+</div>
+
+<h2>Step 5 · The observable failure: a stale read</h2>
+
+<p>A cache with a TTL can answer with an old copy. Insert a row directly
+with SQL, bypassing the API entirely, and search for it while the cache
+entry from an earlier search is still inside its 30 second TTL.</p>
+
+<pre class="wide"><code>$ python cache_bench.py
+--- 2. the stale read ---------------------------------------
+before insert: {'source': 'database', 'results': []}
+inserted a matching row directly in PostgreSQL, bypassing the API
+right after insert (within the 30s TTL): {'source': 'cache', 'results': []}
+waiting 31s for the cache entry to expire ...
+after the TTL: {'source': 'database', 'results': [{'id': 200010, 'url': 'https://example.com/cache-demo', 'title': 'Cache demo row'}]}</code></pre>
+
+<p>The row exists in PostgreSQL from the moment the <code>INSERT</code>
+commits. The search endpoint denies that it exists for up to 30 more
+seconds, because it never asked the database again. No error appears
+anywhere. The response is <code>200</code>, and the answer is wrong.</p>
+
+<div class="note note--warn">
+  <span class="note-label">A TTL is a choice, not a bug</span>
+  <p>Two ways exist to keep a cache honest: delete the entry on every write
+  that could affect it, or give every entry a short TTL and accept a window
+  of staleness. This lesson uses a TTL, because it needs no write path to
+  know which cache keys its change touches. Choose the TTL from how wrong an
+  answer your feature can tolerate, and for how long.</p>
+</div>
+
+<h2>Practice</h2>
+
+<ol class="steps">
+  <li><strong>Start Redis.</strong> Run <code>docker run -d --name
+  redis-bookmarks -p 6379:6379 redis:7-alpine</code>.</li>
+  <li><strong>Start the API.</strong> Run <code>uvicorn main:app --port
+  8000</code> or <code>npm start</code>.</li>
+  <li><strong>Request the same bookmark twice.</strong> Copy the
+  <code>ETag</code> from the first response into <code>If-None-Match</code>
+  on the second. Confirm the <code>304</code>.</li>
+  <li><strong>Run the bench program.</strong> Run <code>python
+  cache_bench.py</code> or <code>node src/cacheBench.ts</code>. Read your
+  own numbers, not the ones printed here.</li>
+  <li><strong>Shorten the TTL.</strong> Change
+  <code>SEARCH_CACHE_TTL_SECONDS</code> to <code>5</code>. Run the stale
+  read demonstration again and confirm the wait is shorter.</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "A client sends If-None-Match with an ETag that still matches the current row. What does the server answer?",
+    "options": [
+      "304 Not Modified, with no body",
+      "200 OK, with the full row",
+      "404 Not Found",
+      "409 Conflict"
+    ],
+    "answer": 0,
+    "why": "A matching ETag means the client already holds the current version. The server confirms this with 304 and sends no body, so the client keeps its stored copy." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why did Redis answer the search query faster than PostgreSQL, even though the query already used an index?",
+    "options": [
+      "A key lookup in memory skips SQL parsing and a B-tree read",
+      "PostgreSQL cannot use an index for a LIKE query",
+      "Redis stores data on a faster disk",
+      "The database connection pool was misconfigured"
+    ],
+    "answer": 0,
+    "why": "The index already made the database fast. Redis still does less work per request: no SQL to parse and no B-tree page to read, only a key to hash." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "What is the term for the number of seconds a cache entry stays valid before the cache deletes it on its own?",
+    "answer": "TTL",
+    "accept": ["TTL", "Time to live", "time-to-live"],
+    "why": "A TTL bounds how stale a cached answer can become. A short TTL means fewer wrong answers and more cache misses; a long TTL means the reverse." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<nav class="lesson-nav">
+  <a href="0009-testing-and-ci.html">← Lesson 09: Testing and CI</a>
+  <span>Lesson 11: Observability →</span>
+</nav>
+
+</main>
+</body>
+</html>

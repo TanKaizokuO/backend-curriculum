@@ -28,6 +28,17 @@ credential; a `403` does not, because the same credential fails again.
 
 ## C
 
+**Cache** (Lesson 10) — A copy of an answer, kept somewhere faster than the
+place that computed it, so a later request can skip the work. A cache can be
+wrong: the source changes, and the copy does not. Name the moment a copy goes
+stale before you add a cache, not after. See *TTL* and *cache invalidation*.
+
+**Cache invalidation** (Lesson 10) — The act of telling a cache that its copy
+no longer matches the source, either by deleting the entry on a write or by
+giving the entry a *TTL* so it expires on its own. A TTL is simpler: no write
+path needs to know which cache keys its change affects. The cost is a stale
+read for up to one TTL after every write.
+
 **Config** (Lesson 7) — Everything that varies between deploys: connection
 strings, credentials, and per-deploy values such as the canonical hostname.
 The twelve-factor rule (factor III) is *strict separation of config from
@@ -45,6 +56,14 @@ secret written in one layer stays readable through `docker image history` even
 after a later layer removes it. And layers are cached in order, so a
 `Dockerfile` copies `requirements.txt` and installs before it copies the
 source, otherwise every code edit reinstalls every dependency.
+
+## E
+
+**ETag** (Lesson 10) — A short opaque string that names one version of a
+resource, sent in a response header. The client stores it and sends it back
+in `If-None-Match` on the next request. If the server computes the same
+ETag, it answers `304 Not Modified` with no body, and the client keeps the
+copy it already has. RFC 9110 §8.8.3.
 
 ## F
 
@@ -206,10 +225,24 @@ one opaque id in a cookie. The id carries no facts; every fact stays in the
 cryptographic generator (`secrets.token_hex`, `crypto.randomBytes`), never
 with `random` or `Math.random()`.
 
+**Stale read** (Lesson 10) — An answer served from a cache after the source it
+copied has changed. A write that bypasses the cache, direct `SQL` against
+the database in this curriculum, makes the next cached read stale until the
+entry expires. The failure has no error: the response is `200`, and the body
+is wrong.
+
 **Start-line** (Lesson 1) — The first line of an HTTP message. For a request it
 is the *request line*: `METHOD target HTTP/version`. For a response it is the
 *status line*: `HTTP/version status-code reason-phrase`. Everything after it
 until the blank line is headers.
+
+## T
+
+**TTL** (Lesson 10) — Time to live: the number of seconds a cache entry stays
+valid before the cache deletes it on its own. A short TTL bounds how stale a
+read can be, at the cost of more cache misses. A long TTL does the reverse.
+Set it in the same statement that writes the entry:
+`redis.set(key, value, ex=seconds)`.
 
 ## V
 

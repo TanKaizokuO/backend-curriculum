@@ -36,6 +36,7 @@ figure from memory.
 | 7 | ~~[Deployment](./lessons/0007-deployment.html)~~ | A deploy is one image plus one set of environment variables. | [`Code/Lesson_7_code/`](./Code/Lesson_7_code/) |
 | 8 | ~~[Authentication](./lessons/0008-authentication.html)~~ | The server must never trust the client. It must only trust what it can verify. | [`Code/Lesson_8_code/`](./Code/Lesson_8_code/) (Python), [`Code/js/Lesson_8_code/`](./Code/js/Lesson_8_code/) (TypeScript) |
 | 9 | ~~[Testing and CI](./lessons/0009-testing-and-ci.html)~~ | A test that cannot fail proves nothing. Test the contract, not the plumbing. | [`Code/Lesson_9_code/`](./Code/Lesson_9_code/) (Python), [`Code/js/Lesson_9_code/`](./Code/js/Lesson_9_code/) (TypeScript) |
+| 10 | ~~[Caching](./lessons/0010-caching.html)~~ | A cache is a copy that can be wrong. Name the moment it goes stale before you add it. | [`Code/Lesson_10_code/`](./Code/Lesson_10_code/) (Python), [`Code/js/Lesson_10_code/`](./Code/js/Lesson_10_code/) (TypeScript) |
 
 What each finished lesson proved:
 
@@ -57,14 +58,11 @@ What each finished lesson proved:
   because the process bound `127.0.0.1`.
 - **8** The breach: an unsigned JWT lets a user edit their own ID, and ten slow hashes block the event loop for 1.7 seconds.
 - **9** The test that fails: you change the status code from 401 to 200. CI fails the test on the pull request.
-
-## Now
-
-| # | Lesson | The one idea | Code |
-| --- | --- | --- | --- |
-| 10 | [Caching](./lessons/0010-caching.html) | A cache is a copy that can be wrong. Name the moment it goes stale before you add it. | [`Code/Lesson_10_code/`](./Code/Lesson_10_code/), [`Code/js/Lesson_10_code/`](./Code/js/Lesson_10_code/) |
-
-The lesson is planned but not written.
+- **10** The failure with no error: a row inserted straight into PostgreSQL is
+  invisible to a cached search for up to 30 seconds. The response is 200, and
+  the answer is wrong. Measured: 3.131 ms average database read against
+  1.251 ms average Redis read in Python, 15.296 ms against 3.301 ms in
+  TypeScript.
 
 ## Next
 
@@ -91,10 +89,6 @@ The lesson is planned but not written.
 
 ### Details for planned lessons
 
-10. **Caching.** HTTP caching first, because it is free: `ETag`,
-    `Cache-Control`, and a `304`. Then Redis for the query that Lesson 5
-    measured. The lesson measures the hit and the miss, and it shows a stale
-    read.
 11. **Observability.** Structured JSON logs with a request id, then
     `/metrics` with a counter and a histogram, then a trace across the API and
     the database.
