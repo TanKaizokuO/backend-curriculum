@@ -367,6 +367,40 @@ the connection is refused. The lesson does not hide this divergence; it adds a
 manual timeout wrapper to the TypeScript side and explicitly calls out the
 difference in a note, proving that libraries wrap the same primitive differently.
 
+### Lesson 0013 covers
+
+Version control, git's own mechanism rather than a per-language one. Structure: the
+one idea (a commit is a snapshot with a parent; history is a graph, not a list) →
+**raw mechanism**: `git hash-object`, `git update-index`, `git write-tree`, and
+`git commit-tree` build one commit by hand, before naming the blob/tree/commit
+objects `git commit` hides → a branch shown to be a 41-byte pointer file, not a
+copy (`.git/refs/heads/main`, `.git/HEAD`) → **observable failure 1**: two branches
+each edit the same two lines of `get_bookmark`/`getBookmark`, and `git merge` stops
+with a real conflict, resolved by hand → the same conflict replayed with `git
+rebase`, contrasted against the merge: a two-parent merge commit versus a straight
+line with a rewritten commit hash → the index, via `git diff` against `git diff
+--staged` → **observable failure 2**: a local `git reset --hard HEAD~1` followed by
+`git push --force` erases a commit already reviewed and pushed → **the rescue**:
+`git reflog` finds the dropped commit's hash on the machine that made it, and a
+second force-push restores `origin/main` → pull requests and branch protection,
+which prevents the failure outright rather than relying on the reflog rescue → five
+practice steps → seven retrieval-practice questions.
+
+**Every transcript in this lesson is real output**, captured by running
+`Code/Lesson_13_code/demo.sh` and `Code/js/Lesson_13_code/demo.sh` against git
+2.43 in a throwaway repository and bare remote, both rebuilt from scratch on every
+run. Every commit hash, tree hash, and blob hash quoted in the lesson came out of
+one of those runs — none is invented.
+
+**Teaching hook worth reusing — the reflog is local, not shared.** The lesson
+deliberately shows the force-push rescue succeeding, then immediately names its
+limit: the reflog that recovers the commit lives only on the machine that made it,
+never on the remote and never in a teammate's clone. This turns the rescue into an
+argument for the actual fix (branch protection) instead of a trick to remember,
+the same shape as Lesson 3's incomplete `Allow` header and Lesson 12's doubled rate
+limit — the abstraction (a force-push "just works") leaks, and the learner can only
+see the leak because Step 1 built commits by hand first.
+
 ---
 
 ## Built infrastructure
@@ -458,6 +492,18 @@ difference in a note, proving that libraries wrap the same primitive differently
   call, and `diagnose.py` / `diagnose.ts` (reproduces the Lesson 10 stale read and
   prints only the client side of the payoff — the server's own terminal carries the
   log lines and spans the lesson diagnoses from).
+- `Code/Lesson_12_code/` + `Code/js/Lesson_12_code/` — the Lesson 11 API scaled to two
+  instances. `round_robin_proxy.py` / `roundRobinProxy.ts` (a hand-written reverse
+  proxy), `rate_limit.py` / `rateLimit.ts` (local-dict and Redis-`INCR` backends),
+  `bench_rate_limit.py`, `bench_pool_backpressure.py` / `benchPoolBackpressure.ts`,
+  `slow_link_small_db.py` (adds latency to a deliberately small database), and
+  `replica_lag_bench.py` / `replicaLagBench.ts` (pauses and resumes WAL replay on a
+  real streaming replica).
+- `Code/Lesson_13_code/` + `Code/js/Lesson_13_code/` — self-contained `demo.sh` scripts,
+  no server and no database. Each rebuilds a throwaway git repository (and, in the
+  Python version, a bare remote) from scratch on every run and prints every transcript
+  quoted in the lesson: the blob/tree/commit walkthrough, the merge and rebase
+  conflicts, the index diff, and the force-push/reflog rescue.
 - `lesson_plan.md` — the order of the course: what is done, what each finished lesson
-  proved, and seventeen planned lessons (12–28) with their one idea.
+  proved, and fifteen planned lessons (14–28) with their one idea.
 

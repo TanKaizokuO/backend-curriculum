@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 13 · Version control</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 13 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../GLOSSARY.md">Glossary</a> ·
+    <a href="../lesson_plan.md">Plan</a> ·
+    <a href="0012-scaling.html">← Lesson 12</a>
+  </p>
+  <h1>Version control
+    <span class="sub">A graph, not a list.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">Git does not store a list of changes. It stores a full
+snapshot at every commit, and each commit points back to the commit before
+it. History is a graph you can walk, not a list you scroll.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>A commit is a snapshot with a parent. History is a graph, not a
+  list.</p>
+</div>
+
+<div class="note">
+  <span class="note-label">How the two languages sit together</span>
+  <p>Git has no per-language mechanism. The demo repository is
+  <code>Code/Lesson_13_code/</code>, and it rebuilds itself on every run of
+  <code>demo.sh</code>. The TypeScript twin,
+  <code>Code/js/Lesson_13_code/</code>, repeats only the merge conflict. The
+  failure does not change with the language, so the rest need not
+  repeat.</p>
+</div>
+
+<h2>Step 1 · An object, by hand</h2>
+
+<p>Lesson 2 built a router by hand before FastAPI hid it behind a decorator.
+Do the same here. <code>git commit</code> is three lower-level commands
+wearing one name. Run them one at a time, in an empty repository.</p>
+
+<p class="filename">Code/Lesson_13_code/demo.sh</p>
+<pre class="wide"><code><span class="c-key">$</span> echo <span class="c-str">"hello backend"</span> &gt; file.txt
+<span class="c-key">$</span> git hash-object -w file.txt
+09537d4111e1e6b0250401496c7fd93ca8f575ee</code></pre>
+
+<p><code>git hash-object -w</code> takes the content of <code>file.txt</code>,
+hashes it, and writes the result into <code>.git/objects</code> under that
+hash. This is a <strong>blob</strong>: file content, with no filename and no
+path attached to it.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> git cat-file -p 09537d4111e1e6b0250401496c7fd93ca8f575ee
+hello backend
+<span class="c-key">$</span> git update-index --add --cacheinfo 100644 09537d4111e1e6b0250401496c7fd93ca8f575ee file.txt
+<span class="c-key">$</span> git write-tree
+de5083fe1c0eeeeac0fc1779f626346b35561a71
+<span class="c-key">$</span> git cat-file -p de5083fe1c0eeeeac0fc1779f626346b35561a71
+100644 blob 09537d4111e1e6b0250401496c7fd93ca8f575ee	file.txt</code></pre>
+
+<p><code>git update-index</code> tells the staging area — Git's name for it
+is the <strong>index</strong> — that <code>file.txt</code> now points at that
+blob. <code>git write-tree</code> reads the index and writes a
+<strong>tree</strong> object. Each line names one blob, or one nested tree
+for a directory, and one filename. A tree is a frozen directory listing.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> git commit-tree de5083fe1c0eeeeac0fc1779f626346b35561a71 -m <span class="c-str">"first commit"</span>
+c98ebfe374164c272c801b9ee85ef1823a0e49ac
+<span class="c-key">$</span> git cat-file -p c98ebfe374164c272c801b9ee85ef1823a0e49ac
+tree de5083fe1c0eeeeac0fc1779f626346b35561a71
+author dev &lt;dev@example.com&gt; 1787695703 +0530
+committer dev &lt;dev@example.com&gt; 1787695703 +0530
+
+first commit</code></pre>
+
+<p>A <strong>commit</strong> object names one tree, an author, a committer,
+and a message. Every commit after the first also names one or more
+<code>parent</code> lines. This first commit has no parent line; the next
+commit points at this one.</p>
+
+<div class="note">
+  <span class="note-label">Same content, same hash</span>
+  <p>Every object's name is the SHA-1 hash of its own content. Commit two
+  files with identical content and Git stores one blob, referenced twice.
+  Edit a file back to text it held three commits ago and Git reuses the old
+  blob rather than storing the bytes again.</p>
+</div>
+
+<h2>Step 2 · A branch is a pointer, not a copy</h2>
+
+<p>A commit is immutable once written. A <strong>branch</strong> is not a
+commit — it is a 41-byte text file that names one.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> git update-ref refs/heads/main c98ebfe374164c272c801b9ee85ef1823a0e49ac
+<span class="c-key">$</span> cat .git/refs/heads/main
+c98ebfe374164c272c801b9ee85ef1823a0e49ac
+<span class="c-key">$</span> cat .git/HEAD
+ref: refs/heads/main</code></pre>
+
+<p><code>refs/heads/main</code> holds one commit hash: the tip of the
+branch. <code>HEAD</code> holds one line that names the current branch. A
+new commit moves <code>refs/heads/main</code> to point at it;
+<code>git checkout -b</code> writes one new file of this shape. Neither
+operation copies the project, so branching costs the same whether the
+repository holds ten files or ten million.</p>
+
+<h2>Step 3 · The observable failure: two branches edit the same handler</h2>
+
+<p>Two developers each start from the same commit. Alice adds a cache read
+to <code>get_bookmark</code>. Bob, on his own branch, adds a log line to the
+same function.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> git log --all --oneline --graph
+* 2eef24b cache get_bookmark reads
+| * b522325 log get_bookmark reads
+|/
+* 0f7613d add get_bookmark handler
+* c98ebfe first commit</code></pre>
+
+<p>Neither branch knows the other exists. Bob merges his branch into
+Alice's.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> git merge bob-logging -m <span class="c-str">"merge bob-logging into alice-caching"</span>
+Auto-merging handler.py
+CONFLICT (content): Merge conflict in handler.py
+Automatic merge failed; fix conflicts and then commit the result.</code></pre>
+
+<p>Git merges a file line by line. Both edits landed on the same two lines
+of the same function, so Git cannot pick one side without asking. It writes
+both sides into the file, marked, and stops.</p>
+
+<p class="filename">handler.py — during the conflict</p>
+<pre class="wide"><code><span class="c-key">def</span> <span class="c-fn">get_bookmark</span>(bookmark_id: <span class="c-key">int</span>):
+&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD
+    cached = cache.get(<span class="c-str">f"bookmark:{bookmark_id}"</span>)
+    <span class="c-key">if</span> cached <span class="c-key">is not</span> <span class="c-key">None</span>:
+        <span class="c-key">return</span> cached
+=======
+    log.info(<span class="c-str">"fetching bookmark"</span>, bookmark_id=bookmark_id)
+&gt;&gt;&gt;&gt;&gt;&gt;&gt; bob-logging
+    row = db.execute(
+        <span class="c-str">"SELECT id, url, title FROM bookmarks WHERE id = %s"</span>,
+        (bookmark_id,),
+    )
+    <span class="c-key">if</span> row <span class="c-key">is</span> <span class="c-key">None</span>:
+        <span class="c-key">raise</span> HTTPException(status_code=<span class="c-num">404</span>)
+    cache.set(<span class="c-str">f"bookmark:{bookmark_id}"</span>, row, ttl=<span class="c-num">30</span>)
+    <span class="c-key">return</span> row</code></pre>
+
+<p>The text between <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD</code> and
+<code>=======</code> is Alice's line. The text between
+<code>=======</code> and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt; bob-logging</code>
+is Bob's line. Git does not choose. A person edits the file, keeps both
+changes in the right order, deletes the three marker lines, and stages the
+result.</p>
+
+<h2>Step 4 · Merge: both parents survive</h2>
+
+<pre class="wide"><code><span class="c-key">$</span> git add handler.py
+<span class="c-key">$</span> git commit -m <span class="c-str">"merge bob-logging into alice-caching"</span>
+<span class="c-key">$</span> git log --oneline --graph
+*   ce43e8f merge bob-logging into alice-caching
+|\
+| * b522325 log get_bookmark reads
+* | 2eef24b cache get_bookmark reads
+|/
+* 0f7613d add get_bookmark handler
+* c98ebfe first commit</code></pre>
+
+<p>The new commit's own object shows the shape of a merge: two
+<code>parent</code> lines, not one.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> git cat-file -p HEAD
+tree 440342f8e7e723e94769963fc927795eccf6fe34
+parent 2eef24b9164e8a83033ca69012ea225ead69e5e1
+parent b522325f2ca74aa72ab6ae194ef95bc294cc2cb9
+author dev &lt;dev@example.com&gt; 1787695703 +0530
+committer dev &lt;dev@example.com&gt; 1787695703 +0530
+
+merge bob-logging into alice-caching</code></pre>
+
+<p>Alice's commit and Bob's commit both stay in the graph, exactly as each
+of them wrote it. The merge commit only adds a new node that points at both.
+History branches, then joins, and keeps the full record of the split.</p>
+
+<h2>Step 5 · Rebase: the same conflict, replayed</h2>
+
+<p>Rebase answers the same problem a different way. Instead of joining two
+lines of history, it moves one branch's commits onto the tip of the other,
+one at a time.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> git checkout bob-logging -b bob-logging-rebase
+<span class="c-key">$</span> git rebase alice-caching
+Auto-merging handler.py
+CONFLICT (content): Merge conflict in handler.py
+error: could not apply b522325... log get_bookmark reads</code></pre>
+
+<p>The conflict is the same, for the same reason: both edits still touch the
+same two lines. A person resolves it the same way: edit the file, remove
+the markers, and stage the result. One more command tells the rebase to
+continue.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> git add handler.py
+<span class="c-key">$</span> git rebase --continue
+[detached HEAD dafcb5f] log get_bookmark reads
+Successfully rebased and updated refs/heads/bob-logging-rebase.
+<span class="c-key">$</span> git log --oneline --graph
+* dafcb5f log get_bookmark reads
+* 2eef24b cache get_bookmark reads
+* 0f7613d add get_bookmark handler
+* c98ebfe first commit</code></pre>
+
+<p>The history is one straight line. There is no merge commit. There was
+never a second branch to join — Bob's commit was rewritten to sit directly
+on top of Alice's. Rebase kept Bob's message and his final content, but not
+his commit's identity.</p>
+
+<pre class="wide"><code>bob's commit before the rebase: b522325
+bob's commit after the rebase:  dafcb5f</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">Rebase changes the hash</span>
+  <p>A commit's hash is a hash of its own content, including its parent. Give
+  a commit a new parent and you get a new commit with a new hash. Git does
+  not edit the old commit; it replaces it with the new one. If anyone else
+  already has <code>b522325</code> in their history, their copy and the
+  rebased copy are now two different commits with the same message. Never
+  rebase a commit that a branch other people build on already carries.</p>
+</div>
+
+<h2>Step 6 · TypeScript: the same conflict</h2>
+
+<p>The failure does not depend on the language. Two branches touch the same
+two lines of a TypeScript handler, and the merge stops in the same way.</p>
+
+<p class="filename">Code/js/Lesson_13_code/demo.sh</p>
+<pre class="wide"><code><span class="c-key">$</span> git merge bob-logging -m <span class="c-str">"merge bob-logging into alice-caching"</span>
+Auto-merging handler.ts
+CONFLICT (content): Merge conflict in handler.ts</code></pre>
+
+<pre class="wide"><code><span class="c-key">export async function</span> <span class="c-fn">getBookmark</span>(id: <span class="c-key">number</span>): <span class="c-fn">Promise</span>&lt;Bookmark&gt; {
+&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD
+  <span class="c-key">const</span> cached = <span class="c-key">await</span> cache.<span class="c-fn">get</span>(<span class="c-str">`bookmark:${id}`</span>);
+  <span class="c-key">if</span> (cached !== <span class="c-key">null</span>) <span class="c-key">return</span> cached;
+=======
+  log.<span class="c-fn">info</span>(<span class="c-str">"fetching bookmark"</span>, { id });
+&gt;&gt;&gt;&gt;&gt;&gt;&gt; bob-logging
+  <span class="c-key">const</span> row = <span class="c-key">await</span> db.<span class="c-fn">query</span>(
+    <span class="c-str">"SELECT id, url, title FROM bookmarks WHERE id = $1"</span>,
+    [id],
+  );
+  <span class="c-key">if</span> (row === <span class="c-key">null</span>) <span class="c-key">throw new</span> HttpError(<span class="c-num">404</span>);
+  <span class="c-key">await</span> cache.<span class="c-fn">set</span>(<span class="c-str">`bookmark:${id}`</span>, row, <span class="c-num">30</span>);
+  <span class="c-key">return</span> row;
+}</code></pre>
+
+<h2>Step 7 · The index sits between the working file and the commit</h2>
+
+<p>You edit a file. That change does not touch any commit yet — it only
+changes the file on disk. <code>git add</code> copies the file's current
+content into a new blob and points the index at it. <code>git commit</code>
+then writes a tree from the index, never straight from disk.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> echo v2 &gt; f.txt
+<span class="c-key">$</span> git status --short
+ M f.txt
+<span class="c-key">$</span> git diff
+-v1
++v2
+<span class="c-key">$</span> git add f.txt
+<span class="c-key">$</span> git diff --staged
+-v1
++v2
+<span class="c-key">$</span> git diff</code></pre>
+
+<p>Before <code>git add</code>, <code>git diff</code> shows the change:
+working file against the index. After <code>git add</code>,
+<code>git diff</code> shows nothing, because the index now matches the
+working file. <code>git diff --staged</code> shows the same change instead:
+index against the last commit. A commit only ever records what was staged,
+even if the working file changes again right after.</p>
+
+<h2>Step 8 · The failure: a force-push erases an approved commit</h2>
+
+<p>A commit reaches <code>origin/main</code> after review. A teammate later
+resets their local branch by one commit — a mistaken rebase, an over-eager
+<code>reset --hard</code>. They push with <code>--force</code>, which tells
+the remote to accept the new tip without checking that it descends from the
+old one.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> git log --oneline -1
+0f7613d add get_bookmark handler          <span class="c-com"># reviewed, on origin/main</span>
+
+<span class="c-key">$</span> git reset --hard HEAD~1
+<span class="c-key">$</span> git log --oneline -2
+c98ebfe first commit
+
+<span class="c-key">$</span> git push --force origin main
+<span class="c-key">$</span> git ls-remote origin main
+c98ebfe1cd1b... refs/heads/main           <span class="c-com"># the approved commit is gone</span></code></pre>
+
+<p>The remote branch now points at <code>c98ebfe</code>. Nothing on
+<code>origin</code> still names <code>0f7613d</code>. A teammate who pulls
+<code>main</code> right now gets a repository with no trace that the
+handler was ever added.</p>
+
+<h2>Step 9 · The rescue: git reflog</h2>
+
+<p>Git does not delete a commit the moment it stops being reachable. An
+unreachable commit only becomes eligible for garbage collection, and that
+collection runs on a schedule, not right away. Every local repository keeps
+its own private log of where <code>HEAD</code> pointed, called the
+<strong>reflog</strong>.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> git reflog -3
+c98ebfe HEAD@{0}: reset: moving to HEAD~1
+0f7613d HEAD@{1}: reset: moving to 0f7613df1566b67ea4b944a2fa527dac790c2a4a
+0f7613d HEAD@{2}: checkout: moving from bob-logging-rebase to main</code></pre>
+
+<p><code>HEAD@{1}</code> names the exact commit the mistaken reset removed.
+Reset back to it, then force-push again to overwrite the bad state with the
+good one.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> git reset --hard 0f7613d
+<span class="c-key">$</span> git push --force origin main
+<span class="c-key">$</span> git ls-remote origin main
+0f7613df1566b67ea4b944a2fa527dac790c2a4a refs/heads/main   <span class="c-com"># restored</span></code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">The reflog is local, not shared</span>
+  <p>This rescue only works on the machine where the commit was made. The
+  reflog is not part of the repository's objects and is never pushed or
+  cloned. If the developer who ran the mistaken reset does not still have
+  their local clone, this rescue has nothing to read from. This is why
+  branch protection, not memory of the reflog, is the real fix — see the
+  next section.</p>
+</div>
+
+<h2>Step 10 · Pull requests and branch protection</h2>
+
+<p>A pull request is a proposed set of commits, shown as one diff against
+the target branch, before it merges. GitHub, GitLab, and Bitbucket all
+implement the same idea under different names.</p>
+
+<ul>
+  <li>A reviewer reads the diff, not the finished file. A diff shows exactly
+  what changed and why one line matters more than the surrounding
+  ones.</li>
+  <li>CI runs against the pull request's commits, so a broken build is
+  visible before the merge, not after.</li>
+  <li><strong>Branch protection</strong> is a repository setting that blocks
+  a direct push to <code>main</code>. It separately blocks a force-push to
+  <code>main</code>, even from an administrator, by default. It requires a
+  pull request, at least one approval, and passing checks first.</li>
+</ul>
+
+<p>Turn branch protection on for <code>main</code> and the failure in
+Step 8 cannot happen there. The remote refuses the force-push outright, so
+the reflog rescue is never needed.</p>
+
+<h2>Practice</h2>
+
+<ol class="steps">
+  <li><strong>Run the demo.</strong> From <code>Code/Lesson_13_code</code>,
+  run <code>./demo.sh</code>. Read the transcript against this page and find
+  every commit's parent line.</li>
+  <li><strong>Cause your own conflict.</strong> Make two branches from one
+  commit, edit the same two lines of the same file on each, and merge one
+  into the other. Resolve it by hand.</li>
+  <li><strong>Rebase instead.</strong> Repeat the last step with
+  <code>git rebase</code> in place of <code>git merge</code>. Compare
+  <code>git log --graph</code> for both outcomes.</li>
+  <li><strong>Lose a commit, then find it.</strong> Commit something,
+  <code>git reset --hard HEAD~1</code>, then use <code>git reflog</code> to
+  get it back without typing the commit message from memory.</li>
+  <li><strong>Turn on branch protection.</strong> On a real GitHub
+  repository you own, protect <code>main</code>: require a pull request, and
+  block force-pushes. Try to push directly to <code>main</code> and read the
+  rejection.</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "What does a Git commit object store?",
+    "options": [
+      "A diff against the previous commit",
+      "One tree, plus zero or more parent commits",
+      "A copy of every file that has ever existed in the repository",
+      "A list of the file names that changed"
+    ],
+    "answer": 1,
+    "why": "A commit names one tree — a full snapshot of the project at that point — and its parent commit(s). Git computes a diff for display; it does not store one." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "You checkout a new branch from main. How much data does Git copy?",
+    "options": [
+      "The whole working tree, into a new folder",
+      "Every commit reachable from main",
+      "None — it writes one 41-byte file naming the current commit",
+      "Only the files changed since the last commit"
+    ],
+    "answer": 2,
+    "why": "A branch is a pointer, not a copy: one file under .git/refs/heads/ holding one commit hash. This is why branching is instant regardless of repository size." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "A merge commit that joins two branches has how many parent commits?",
+    "answer": "2",
+    "accept": ["2", "two"],
+    "why": "A regular commit has one parent. A merge commit has two (or more, for an octopus merge), one per branch it joins, and both branches' commits stay unchanged in the graph." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "How does rebase change history compared to merge?",
+    "options": [
+      "It deletes the older commits",
+      "It replays commits onto a new parent, giving each a new hash, with no merge commit",
+      "It keeps the same commit hashes, just in a different order",
+      "It only works if there is no conflict"
+    ],
+    "answer": 1,
+    "why": "A commit's hash depends on its parent. Rebase gives commits a new parent, so it must give them new hashes — the old commits are not edited, they are replaced. The result is a straight line, not a joined graph." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "Why must you never rebase a commit that has already been pushed to a branch other people build on?",
+    "answer": "Rebase gives the commit a new hash. Anyone who already has the old commit now has a copy that diverged from the branch, and their next pull or push conflicts against history that no longer exists on the remote.",
+    "why": "Rebase is safe on a branch only you use. It is unsafe the moment a second clone might already hold the commit you are about to rewrite." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "What Git command lists every commit HEAD has pointed to on this machine, including ones no branch names anymore?",
+    "answer": "git reflog",
+    "accept": ["reflog", "git reflog"],
+    "why": "The reflog is a local, per-repository record of HEAD's movement. It is what lets you find and restore a commit dropped by a mistaken reset or rebase." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "A teammate on a different machine made the mistaken force-push in Step 8. Can you recover the lost commit from your own machine's reflog?",
+    "options": [
+      "Yes, the reflog syncs with every clone automatically",
+      "No — the reflog is local to the machine where the commit was made",
+      "Yes, as long as you also run git fetch first",
+      "Only if the commit was signed"
+    ],
+    "answer": 1,
+    "why": "The reflog is never pushed, fetched, or cloned. It only helps on the machine that made the original commit. This is why branch protection, which prevents the force-push outright, matters more than knowing the rescue." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<nav class="lesson-nav">
+  <a href="0012-scaling.html">← Lesson 12: Scaling</a>
+  <span>Lesson 14: How a request finds your server →</span>
+</nav>
+
+</main>
+</body>
+</html>

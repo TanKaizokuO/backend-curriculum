@@ -31,7 +31,27 @@ may do, for example the `user_id` column on the row they want to delete. It
 answers "may they?" and its failure code is `403`. A `401` invites a new
 credential; a `403` does not, because the same credential fails again.
 
+## B
+
+**Blob** (Lesson 13) — A Git object holding raw file content, addressed by
+the SHA-1 hash of that content, with no filename attached. `git hash-object
+-w` writes one directly. Two files with identical content share one blob,
+even across unrelated commits.
+
+**Branch** (Lesson 13) — A movable pointer to one commit, stored as one
+41-byte file under `.git/refs/heads/`. Creating a branch copies nothing, so
+it costs the same regardless of repository size. `HEAD` names the current
+branch; a new commit moves the branch's file to point at it.
+
 ## C
+
+**Commit** (Lesson 13) — A Git object naming one tree (a full project
+snapshot) plus zero or more parent commits. The first commit in a
+repository has no parent; every later one names the commit before it,
+which is what makes history a graph rather than a list. A merge commit
+names two parents. An object's hash covers its own content, including its
+parent, so changing a commit's parent (a *rebase*) always produces a new
+hash.
 
 **Connection pool** (Lesson 4) — A cache of open database connections. Opening
 a TCP connection and negotiating TLS/authentication takes tens of milliseconds;
@@ -93,6 +113,13 @@ copy it already has. RFC 9110 §8.8.3.
 a message body ends. The three legal framing strategies for HTTP/1.1 are:
 `Content-Length`, chunked transfer encoding, and closing the connection. Missing
 all three causes the client to hang — the defining symptom of a framing bug.
+
+**Force-push** (Lesson 13) — `git push --force`: a push that tells the
+remote to accept a new branch tip without checking that it descends from
+the old one. It overwrites the remote's history — including any commit
+that only the old tip named — and offers no undo on the remote itself.
+Branch protection can block it outright on a shared branch; see *reflog*
+for the local-only rescue when it happens anyway.
 
 ## H
 
@@ -171,6 +198,13 @@ conflicts are rare).
 
 ## M
 
+**Merge conflict** (Lesson 13) — What Git reports when two branches change
+the same lines of the same file and `git merge` cannot pick a side on its
+own. Git writes both versions into the file between `<<<<<<<` and `>>>>>>>`
+markers and stops; a person edits the file, keeps the intended result, and
+stages it. `git rebase` hits the identical conflict for the identical
+reason, since it replays the same changed lines onto a new parent.
+
 **Migration** (Lesson 4) — A versioned, ordered, applied-once change to the
 database schema, checked into git beside the code that needs it. A runner
 records applied versions in a `schema_migrations` table so re-running is a
@@ -236,6 +270,19 @@ can call an endpoint in a given window, usually to stop brute-force attacks or
 manage overload. An in-memory rate limiter silently multiplies its limit across
 multiple instances behind a *load balancer*; a correct distributed limiter uses
 *atomic* operations against a shared store like Redis.
+
+**Rebase** (Lesson 13) — Replaying one branch's commits onto a new parent
+commit, one at a time, instead of joining the two branches with a merge
+commit. The result is a straight line, with no merge commit, but every
+replayed commit gets a new hash, because a commit's hash covers its parent.
+Never rebase a commit already pushed to a branch other people build on —
+their copy and the rebased copy become two different commits.
+
+**Reflog** (Lesson 13) — A local, per-repository log of every commit `HEAD`
+has pointed to on this machine, including ones no branch names anymore.
+`git reflog` recovers a commit dropped by a mistaken `reset --hard` or
+rebase. It is never pushed, fetched, or cloned, so it only helps on the
+machine that made the original commit.
 
 **Read replica** (Lesson 12) — A second database that accepts a continuous
 stream of changes (WAL) from the primary database and serves read-only queries.

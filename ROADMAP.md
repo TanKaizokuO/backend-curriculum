@@ -34,8 +34,8 @@ A beginner-friendly version and a DevOps beginner roadmap are linked separately.
 
 ## 3. Version Control Systems
 
-- [ ] Git
-- [ ] Repo hosting services: GitHub, GitLab, Bitbucket
+- [x] ~~Git~~
+- [x] ~~Repo hosting services: GitHub, GitLab, Bitbucket~~
 
 ## 4. Relational Databases
 

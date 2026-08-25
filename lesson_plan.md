@@ -39,6 +39,7 @@ figure from memory.
 | 10 | ~~[Caching](./lessons/0010-caching.html)~~ | A cache is a copy that can be wrong. Name the moment it goes stale before you add it. | [`Code/Lesson_10_code/`](./Code/Lesson_10_code/) (Python), [`Code/js/Lesson_10_code/`](./Code/js/Lesson_10_code/) (TypeScript) |
 | 11 | ~~[Observability](./lessons/0011-observability.html)~~ | You cannot debug what you cannot see. A log line, a metric, and a trace answer different questions. | [`Code/Lesson_11_code/`](./Code/Lesson_11_code/) (Python), [`Code/js/Lesson_11_code/`](./Code/js/Lesson_11_code/) (TypeScript) |
 | 12 | ~~[Scaling](./lessons/0012-scaling.html)~~ | Add a second instance and every assumption about local state breaks. | [`Code/Lesson_12_code/`](./Code/Lesson_12_code/) (Python), [`Code/js/Lesson_12_code/`](./Code/js/Lesson_12_code/) (TypeScript) |
+| 13 | ~~[Version control](./lessons/0013-version-control.html)~~ | A commit is a snapshot with a parent. History is a graph, not a list. | [`Code/Lesson_13_code/`](./Code/Lesson_13_code/) (Python), [`Code/js/Lesson_13_code/`](./Code/js/Lesson_13_code/) (TypeScript) |
 
 What each finished lesson proved:
 
@@ -76,11 +77,17 @@ What each finished lesson proved:
   median wait versus 3 seconds with right-sized pools that fail fast via 503s.
   Third failure: a paused read replica serves stale reads indefinitely until
   resumed. Measured: 3-6 ms baseline replication lag on localhost.
+- **13** The failure: two branches edit the same handler and `git merge`
+  stops with a real conflict; `git rebase` hits the same conflict but leaves
+  a linear history instead of a two-parent merge commit. Second failure: a
+  local `git reset --hard HEAD~1` followed by `git push --force` erases a
+  reviewed, already-pushed commit from `origin/main`. `git reflog` finds the
+  dropped commit's hash. A second force-push restores it, but only from the
+  machine that made the commit — exactly what branch protection prevents.
 ## Next
 
 | # | Lesson | The one idea | Planned code |
 | --- | --- | --- | --- |
-| 13 | Version control | A commit is a snapshot with a parent. History is a graph, not a list. | `Code/Lesson_13_code/`, `Code/js/Lesson_13_code/` |
 | 14 | How a request finds your server | A name becomes an address through caches you do not control. | `Code/Lesson_14_code/`, `Code/js/Lesson_14_code/` |
 | 15 | The edge: reverse proxy and TLS | The process that answers port 443 is not your application. | `Code/Lesson_15_code/`, `Code/js/Lesson_15_code/` |
 | 16 | Rules the browser enforces | CORS and CSP are instructions to the browser. They protect the user, not the server. | `Code/Lesson_16_code/`, `Code/js/Lesson_16_code/` |
@@ -99,10 +106,6 @@ What each finished lesson proved:
 
 ### Details for planned lessons
 
-13. **Version control.** Covers roadmap section 3. Branches, merge against
-    rebase, the index, `reflog`, and pull requests/reviews. The observable
-    failure: two branches edit the same handler, a force-push removes an
-    approved commit, and `git reflog` recovers it.
 14. **How a request finds your server.** Covers roadmap section 1 (DNS,
     domains, hosting). Resolvers, root/TLD servers, record types (`A`, `AAAA`,
     `CNAME`, `MX`, `TXT`), and TTL. The observable failure: changing an `A`
