@@ -303,6 +303,14 @@ such as `1.1.1.1`. It walks the chain from root to TLD to authoritative
 server on the client's behalf and caches the result, so only the first
 query for a name pays for the whole walk.
 
+**Reverse proxy** (Lesson 12) — A process that accepts a connection on a
+client's behalf and forwards it to a backend, so the client never talks
+to the backend directly. Lesson 12's round-robin proxy only copies bytes.
+Lesson 15's proxy also ends TLS, picks a certificate by *SNI*, adds
+*X-Forwarded-For*, and rejects an over-size body — the jobs a real edge
+such as Nginx or Caddy performs before an application ever sees a
+request.
+
 **Root server** (Lesson 14) — One of thirteen well-known servers that
 know, for every top-level domain, which servers are authoritative for it.
 A root server holds no record for any individual domain — only the next
@@ -349,6 +357,20 @@ password produce the same hash, and the leaked table shows which accounts
 share a password. bcrypt puts the cost and the 22-character salt inside the
 string that it returns: `$2b$12$<salt><hash>`. You never manage a salt column.
 
+**Self-signed certificate** (Lesson 15) — A TLS certificate a server signs
+with its own key, instead of a certificate authority's. It proves nothing
+to a client that has not chosen to trust that one file, so curl and
+browsers reject it by default with `SSL certificate problem`. A public
+certificate authority buys one thing: a client's existing trust, not a
+different check.
+
+**SNI (Server Name Indication)** (Lesson 15) — The hostname a client
+sends in clear text, inside the TLS handshake, before encryption starts.
+A TLS server needs it to pick a certificate for the requested hostname
+before it can decrypt anything else about the request — the `Host`
+header (see *Virtual hosting*) is not available yet, because it lives
+inside the part of the request SNI runs ahead of.
+
 **Session** (Lesson 8) — Server-held state for a signed-in user, addressed by
 one opaque id in a cookie. The id carries no facts; every fact stays in the
 `sessions` row. This gives the property a signed token cannot give: one
@@ -391,6 +413,14 @@ unrelated event. A cache hit that never opens a database span is itself
 evidence — the absence of a child span shows the request never reached the
 database. See *span*.
 
+**TLS termination** (Lesson 15) — The point where an encrypted connection
+ends and is replaced by a plain one. A reverse proxy that terminates TLS
+decrypts the client's request, then forwards it to the origin over plain
+HTTP; the origin never holds a certificate or negotiates encryption
+itself. Termination is also the moment the origin's view of the client's
+address and protocol becomes wrong, unless *X-Forwarded-For* and
+`X-Forwarded-Proto` restore them.
+
 **TTL** (Lesson 10) — Time to live: the number of seconds a cache entry stays
 valid before the cache deletes it on its own. A short TTL bounds how stale a
 read can be, at the cost of more cache misses. A long TTL does the reverse.
@@ -407,6 +437,14 @@ address. The `Host` header (mandatory in HTTP/1.1) tells the server which site
 the client meant — without it, `GET /` is ambiguous because hundreds of sites
 may share the address. This is why HTTP/1.1 requires `Host` and responds `400`
 if it is missing. RFC 9110 §7.2.
+
+## X
+
+**X-Forwarded-For** (Lesson 15) — A header a reverse proxy adds after
+*TLS termination* ends the client's own connection, naming the client's
+real address for the origin. The proxy must strip any
+`X-Forwarded-For` a client already sent before adding its own, or a
+client could claim any address it likes.
 
 ## Z
 

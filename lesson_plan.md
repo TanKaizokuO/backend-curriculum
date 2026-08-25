@@ -41,6 +41,7 @@ figure from memory.
 | 12 | ~~[Scaling](./lessons/0012-scaling.html)~~ | Add a second instance and every assumption about local state breaks. | [`Code/Lesson_12_code/`](./Code/Lesson_12_code/) (Python), [`Code/js/Lesson_12_code/`](./Code/js/Lesson_12_code/) (TypeScript) |
 | 13 | ~~[Version control](./lessons/0013-version-control.html)~~ | A commit is a snapshot with a parent. History is a graph, not a list. | [`Code/Lesson_13_code/`](./Code/Lesson_13_code/) (Python), [`Code/js/Lesson_13_code/`](./Code/js/Lesson_13_code/) (TypeScript) |
 | 14 | ~~[How a request finds your server](./lessons/0014-how-a-request-finds-your-server.html)~~ | A name becomes an address through caches you do not control. | [`Code/Lesson_14_code/`](./Code/Lesson_14_code/) (Python), [`Code/js/Lesson_14_code/`](./Code/js/Lesson_14_code/) (TypeScript) |
+| 15 | ~~[The edge: reverse proxy and TLS](./lessons/0015-the-edge-reverse-proxy-and-tls.html)~~ | The process that answers port 443 is not your application. | [`Code/Lesson_15_code/`](./Code/Lesson_15_code/) (Python), [`Code/js/Lesson_15_code/`](./Code/js/Lesson_15_code/) (TypeScript) |
 
 What each finished lesson proved:
 
@@ -90,11 +91,16 @@ What each finished lesson proved:
   the old address for the rest of the record's TTL regardless, because
   nothing tells it the record changed. `curl --resolve` shows the resolved
   address is what the TCP layer built in Lesson 1 actually connects to.
+- **15** The failure: curl refuses a proxy's self-signed certificate before
+  sending a request, because nothing signed it. A hand-written proxy
+  (`tls_proxy.py`) and Nginx both terminate TLS, choose a certificate by SNI
+  before any HTTP request exists, restore the client's real address with
+  `X-Forwarded-For` after termination erases it, and reject an oversize body
+  with `413` before the origin ever sees the connection.
 ## Next
 
 | # | Lesson | The one idea | Planned code |
 | --- | --- | --- | --- |
-| 15 | The edge: reverse proxy and TLS | The process that answers port 443 is not your application. | `Code/Lesson_15_code/`, `Code/js/Lesson_15_code/` |
 | 16 | Rules the browser enforces | CORS and CSP are instructions to the browser. They protect the user, not the server. | `Code/Lesson_16_code/`, `Code/js/Lesson_16_code/` |
 | 17 | Attacking your own API | Most breaches are authorization bugs, not broken cryptography. | `Code/Lesson_17_code/`, `Code/js/Lesson_17_code/` |
 | 18 | Delegated identity | OAuth grants access. OpenID Connect proves identity. They are not the same token. | `Code/Lesson_18_code/`, `Code/js/Lesson_18_code/` |
@@ -111,10 +117,6 @@ What each finished lesson proved:
 
 ### Details for planned lessons
 
-15. **The edge: reverse proxy and TLS.** Covers roadmap sections 8 & 19 (Nginx,
-    Caddy, HTTPS/TLS). TLS termination, SNI, certificates, `X-Forwarded-For`.
-    Observable failures: self-signed certificate rejection, proxy payload size
-    limits (`413`), missing forwarding headers.
 16. **Rules the browser enforces.** Covers CORS, CSP, and cookies (sections 8
     & 9). Same-origin policy, preflight requests, `SameSite`, `HttpOnly`,
     `Secure`. Observable failure: `http://localhost:5173` calls API, server logs

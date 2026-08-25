@@ -1,0 +1,16 @@
+{
+  "name": "bookmarks-edge-ts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lesson 15 — the edge: reverse proxy and TLS, in TypeScript",
+  "type": "module",
+  "scripts": {
+    "origin": "node src/origin.ts",
+    "tls-proxy": "node src/tlsProxy.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
+  }
+}

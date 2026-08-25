@@ -79,8 +79,8 @@ A beginner-friendly version and a DevOps beginner roadmap are linked separately.
 
 ## 8. Web Security
 
-- [ ] HTTPS
-- [ ] SSL/TLS
+- [x] ~~HTTPS~~
+- [x] ~~SSL/TLS~~
 - [ ] CORS
 - [ ] CSP
 - [ ] OWASP risks
@@ -161,7 +161,7 @@ A beginner-friendly version and a DevOps beginner roadmap are linked separately.
 
 ## 19. Web Servers
 
-- [ ] Nginx
+- [x] ~~Nginx~~
 - [ ] Apache
 - [ ] Caddy
 - [ ] MS IIS

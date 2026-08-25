@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 15 · The edge: reverse proxy and TLS</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 15 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../GLOSSARY.md">Glossary</a> ·
+    <a href="../lesson_plan.md">Plan</a> ·
+    <a href="0014-how-a-request-finds-your-server.html">← Lesson 14</a>
+  </p>
+  <h1>The edge: reverse proxy and TLS
+    <span class="sub">The process that answers port 443 is not your application.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">Lesson 14 turned a name into an address. The address still
+points at a socket, and every socket in this course so far has belonged to
+your application. In production it does not. A separate process answers
+the connection first, decides what to do with it, and only then — if at
+all — talks to your application. That process is the edge.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>The process that answers port 443 is not your application.</p>
+</div>
+
+<div class="note">
+  <span class="note-label">How the two languages sit together</span>
+  <p>A reverse proxy is a protocol handler, not a language feature, so the
+  raw mechanism ports directly: <code>tls_proxy.py</code> and
+  <code>tlsProxy.ts</code> terminate the identical TLS handshake and
+  rewrite the identical headers. Read the Python steps first. The
+  TypeScript section at the end is recognition, not new material.</p>
+</div>
+
+<h2>Step 1 · An origin behind an edge</h2>
+
+<p>This lesson needs a small server that reports exactly what it
+received, so a proxy's effect on a request is visible instead of assumed.
+<code>origin.py</code> answers two routes: <code>GET /whoami</code> returns
+the socket address and headers it saw, and <code>POST /upload</code>
+returns how many bytes it read. It never terminates TLS and never sees the
+outside network directly — every request in this lesson reaches it through
+a proxy.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> python3 origin.py
+origin listening on http://127.0.0.1:8030 (plain HTTP, no TLS)
+
+<span class="c-key">$</span> curl -s http://127.0.0.1:8030/whoami
+{
+  "socket_peer": "127.0.0.1",
+  "host_header": "127.0.0.1:8030",
+  "x_forwarded_for": null,
+  "x_forwarded_proto": null,
+  "x_real_ip": null
+}</code></pre>
+
+<p>Called directly, the origin sees exactly what Lesson 1's raw socket
+always saw: a peer address and a set of headers, nothing more. The three
+forwarding headers are absent because nothing added them yet. Every step
+below changes one thing about this picture.</p>
+
+<h2>Step 2 · TLS termination, by hand</h2>
+
+<p>Lesson 12 built a reverse proxy that copied bytes between a client and a
+backend and looked at neither. Before Nginx, build the version that also
+ends TLS at the proxy: the client's encrypted session stops here, and the
+hop onward to <code>origin.py</code> is plain HTTP, the same protocol
+Lesson 1 read by hand.</p>
+
+<p class="filename">Code/Lesson_15_code/tls_proxy.py</p>
+<pre class="wide"><code><span class="c-key">try</span>:
+    tls_sock = _base_context.wrap_socket(raw_sock, server_side=<span class="c-key">True</span>)
+<span class="c-key">except</span> ssl.SSLError <span class="c-key">as</span> exc:
+    <span class="c-fn">print</span>(<span class="c-str">f"tls_proxy: handshake with {client_addr[0]} failed: {exc}"</span>)
+    raw_sock.close()
+    <span class="c-key">return</span>
+
+head, already_read_body = _read_request_head(tls_sock)  <span class="c-com"># plain HTTP bytes, decrypted</span></code></pre>
+
+<p><code>ssl.SSLContext.wrap_socket</code> is the whole mechanism: it takes
+a plain TCP socket already accepted by <code>socket.accept()</code>, and
+returns a socket that decrypts on read and encrypts on write. Everything
+after that line — reading a request line, reading headers up to the blank
+line, forwarding to <code>origin.py</code> — is exactly the parsing Lesson
+2 wrote for a server with no TLS at all.</p>
+
+<h2>Step 3 · The observable failure: a certificate nobody signed</h2>
+
+<p>A certificate proves an identity only if something the client already
+trusts vouches for it — normally a public certificate authority. A name
+like <code>bookmarks-api.local</code> can never get one; no public CA
+signs a certificate for a name it cannot verify belongs to you. The only
+option is a <strong>self-signed certificate</strong>: one the server signs
+with its own key, vouching for itself.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> ./generate_certs.sh
+wrote certs/bookmarks-api.local.crt (CN=bookmarks-api.local)
+wrote certs/admin.bookmarks-api.local.crt (CN=admin.bookmarks-api.local)
+
+<span class="c-key">$</span> curl -v https://bookmarks-api.local:8443/whoami \
+    --resolve bookmarks-api.local:8443:127.0.0.1
+* SSL certificate problem: self-signed certificate</code></pre>
+
+<p>curl refuses the connection before it sends a single byte of the
+request. This is correct behaviour, not a bug in the demo: curl trusts
+only the certificate authorities in its own CA bundle, and nothing signed
+this certificate. Tell curl to trust this one file explicitly, and the
+same request completes.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> curl -s --cacert certs/bookmarks-api.local.crt \
+    https://bookmarks-api.local:8443/whoami \
+    --resolve bookmarks-api.local:8443:127.0.0.1
+{
+  "socket_peer": "127.0.0.1",
+  "host_header": "bookmarks-api.local:8443",
+  "x_forwarded_for": "127.0.0.1",
+  "x_forwarded_proto": "https",
+  "x_real_ip": null
+}</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">A production certificate removes one step, not the proof</span>
+  <p>A certificate from a public CA such as Let's Encrypt works without
+  <code>--cacert</code>, because curl's CA bundle already trusts that CA.
+  It does not remove the check — it only means the check passes without
+  extra help from the caller. A self-signed certificate skips the check by
+  telling the client to trust one specific file, which works for a demo
+  and for two servers you control, and fails for the public internet.</p>
+</div>
+
+<h2>Step 4 · SNI: choosing a certificate before the request exists</h2>
+
+<p>Lesson 1's reference card named <strong>virtual hosting</strong>: many
+domains share one IP address, and the <code>Host</code> header tells a
+plain HTTP server which one a request is for. TLS breaks that trick,
+because the <code>Host</code> header lives inside the encrypted request —
+and the server must pick a certificate before it can decrypt anything.
+<strong>SNI</strong>, Server Name Indication, solves this by sending the
+requested hostname in clear text, inside the handshake itself, before any
+encryption starts.</p>
+
+<p class="filename">Code/Lesson_15_code/tls_proxy.py</p>
+<pre class="wide"><code><span class="c-key">def</span> <span class="c-fn">_select_certificate</span>(tls_socket, server_name, _ctx):
+    matched = server_name <span class="c-key">in</span> _contexts
+    served = server_name <span class="c-key">if</span> matched <span class="c-key">else</span> DEFAULT_HOSTNAME
+    <span class="c-fn">print</span>(<span class="c-str">f"tls_proxy: SNI asked for {server_name!r} -> serving cert for {served!r}"</span>)
+    tls_socket.context = _contexts[served]
+
+_base_context.sni_callback = _select_certificate</code></pre>
+
+<p>One process, one port, two certificates. The hostname the client sends
+during the handshake — before the HTTP request line exists — decides which
+one it gets.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> openssl s_client -connect 127.0.0.1:8443 -servername bookmarks-api.local &lt;/dev/null 2&gt;/dev/null \
+    | openssl x509 -noout -subject
+subject=CN = bookmarks-api.local
+
+<span class="c-key">$</span> openssl s_client -connect 127.0.0.1:8443 -servername admin.bookmarks-api.local &lt;/dev/null 2&gt;/dev/null \
+    | openssl x509 -noout -subject
+subject=CN = admin.bookmarks-api.local</code></pre>
+
+<p>Same port, same process, two different certificates, chosen entirely by
+the name sent before any HTTP bytes moved.</p>
+
+<h2>Step 5 · Forwarding headers: giving back what termination took away</h2>
+
+<p>Look again at Step 2's transcript. <code>socket_peer</code> is still
+<code>127.0.0.1</code> — the proxy's own address, from the origin's point
+of view — and <code>x_forwarded_for</code> is now
+<code>127.0.0.1</code> too, because in this demo the client and proxy
+share a machine. In production those two values differ: TLS termination
+means the origin's TCP connection comes from the proxy, never from the
+real client, so the origin's own idea of "who sent this" is now wrong
+unless something restores it.</p>
+
+<p class="filename">Code/Lesson_15_code/tls_proxy.py</p>
+<pre class="wide"><code>headers = [line <span class="c-key">for</span> line <span class="c-key">in</span> lines[1:]
+           <span class="c-key">if</span> <span class="c-key">not</span> line.lower().startswith((<span class="c-str">b"x-forwarded-for:"</span>, <span class="c-str">b"x-forwarded-proto:"</span>))]
+headers.append(<span class="c-str">f"X-Forwarded-For: {client_addr[0]}"</span>.encode())
+headers.append(<span class="c-str">b"X-Forwarded-Proto: https"</span>)</code></pre>
+
+<p>Two things matter in that line. First, the proxy strips any
+<code>X-Forwarded-For</code> the client already sent before adding its
+own — otherwise a client could claim any address it liked, and the origin
+would believe it. Second, <code>X-Forwarded-Proto</code> tells the origin
+the outside protocol was HTTPS even though the hop it actually sees is
+plain HTTP — the origin has no other way to know, since TLS ended one hop
+back.</p>
+
+<h2>Step 6 · The observable failure: an unbounded body</h2>
+
+<p>Nothing in Step 2's mechanism limits how large a request body can be.
+An origin that reads the whole body before checking anything can be made
+to allocate memory for a body of any size a client cares to send. The
+proxy checks <code>Content-Length</code> before it reads or forwards a
+single byte of the body.</p>
+
+<p class="filename">Code/Lesson_15_code/tls_proxy.py</p>
+<pre class="wide"><code><span class="c-key">if</span> content_length &gt; MAX_BODY_BYTES:
+    response = (
+        <span class="c-str">b"HTTP/1.1 413 Content Too Large\r\n"</span>
+        <span class="c-str">b"Content-Length: "</span> + <span class="c-fn">str</span>(<span class="c-fn">len</span>(body)).encode() + <span class="c-str">b"\r\n"</span>
+        <span class="c-str">b"Connection: close\r\n\r\n"</span> + body
+    )
+    tls_sock.sendall(response)
+    <span class="c-key">return</span>  <span class="c-com"># the origin never sees this connection</span></code></pre>
+
+<pre class="wide"><code><span class="c-key">$</span> curl -s --cacert certs/bookmarks-api.local.crt -X POST --data "small" \
+    https://bookmarks-api.local:8443/upload --resolve bookmarks-api.local:8443:127.0.0.1
+{"received_bytes": 5}
+
+<span class="c-key">$</span> python3 -c "print('x' * 2000)" &gt; /tmp/big.txt
+<span class="c-key">$</span> curl -s -o /dev/null -w "%{http_code}\n" --cacert certs/bookmarks-api.local.crt \
+    -X POST --data-binary @/tmp/big.txt \
+    https://bookmarks-api.local:8443/upload --resolve bookmarks-api.local:8443:127.0.0.1
+413</code></pre>
+
+<p>A 2001-byte body against a 1024-byte limit gets <code>413</code> from
+the proxy. <code>origin.py</code>'s log shows nothing for this request —
+the rejection never reached it.</p>
+
+<h2>Step 7 · The abstraction: Nginx does the same four jobs, declared</h2>
+
+<p><code>tls_proxy.py</code> proved the mechanism behind TLS termination,
+SNI, forwarding headers, and a body limit. A real edge does not hand-roll
+any of them — it configures a proxy that already implements all four,
+correctly, under real load. <code>nginx.conf</code> states the same four
+jobs from Steps 2 through 6 as configuration.</p>
+
+<p class="filename">Code/Lesson_15_code/nginx.conf</p>
+<pre class="wide"><code>http {
+  client_max_body_size 1k;                    <span class="c-com"># Step 6, one line</span>
+
+  server {
+    listen 443 ssl;
+    server_name bookmarks-api.local;          <span class="c-com"># Step 4: SNI picks this block</span>
+
+    ssl_certificate     /etc/nginx/certs/bookmarks-api.local.crt;
+    ssl_certificate_key /etc/nginx/certs/bookmarks-api.local.key;
+
+    location / {
+      proxy_pass http://127.0.0.1:8030;
+      proxy_set_header X-Forwarded-For $remote_addr;    <span class="c-com"># Step 5</span>
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+  }
+
+  server { <span class="c-com"># a second block, for admin.bookmarks-api.local, same shape</span> }
+}</code></pre>
+
+<p>Every transcript from Steps 3 through 6 repeats, unchanged, against
+Nginx instead of <code>tls_proxy.py</code>.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> docker run -d --name lesson15-nginx --network host \
+    -v "$PWD/nginx.conf:/etc/nginx/nginx.conf:ro" \
+    -v "$PWD/certs:/etc/nginx/certs:ro" nginx:1.27-alpine
+
+<span class="c-key">$</span> curl -v https://bookmarks-api.local/whoami --resolve bookmarks-api.local:443:127.0.0.1
+* SSL certificate problem: self-signed certificate
+
+<span class="c-key">$</span> curl -s --cacert certs/bookmarks-api.local.crt \
+    https://bookmarks-api.local/whoami --resolve bookmarks-api.local:443:127.0.0.1
+{
+  "socket_peer": "127.0.0.1",
+  "host_header": "bookmarks-api.local",
+  "x_forwarded_for": "127.0.0.1",
+  "x_forwarded_proto": "https",
+  "x_real_ip": "127.0.0.1"
+}
+
+<span class="c-key">$</span> openssl s_client -connect 127.0.0.1:443 -servername admin.bookmarks-api.local &lt;/dev/null 2&gt;/dev/null \
+    | openssl x509 -noout -subject
+subject=CN = admin.bookmarks-api.local
+
+<span class="c-key">$</span> curl -s -o /dev/null -w "%{http_code}\n" --cacert certs/bookmarks-api.local.crt \
+    -X POST --data-binary @/tmp/big.txt \
+    https://bookmarks-api.local/upload --resolve bookmarks-api.local:443:127.0.0.1
+413</code></pre>
+
+<p>The same self-signed rejection, the same certificate per hostname, the
+same <code>X-Forwarded-*</code> headers — <code>x_real_ip</code> now
+populated too, since <code>nginx.conf</code> sets it explicitly — and the
+same <code>413</code>, all with no code of our own running.</p>
+
+<h2>TypeScript: the same handshake, the same headers</h2>
+
+<p>TLS is a protocol, not a language feature, so <code>tlsProxy.ts</code>
+terminates the identical handshake with Node's <code>tls</code> module in
+place of Python's <code>ssl</code> module. <code>SNICallback</code> is
+Node's name for the hook Python calls <code>sni_callback</code>; it runs
+at the same point in the handshake and does the same job.</p>
+
+<p class="filename">Code/js/Lesson_15_code/src/tlsProxy.ts</p>
+<pre class="wide"><code><span class="c-key">const</span> server = tls.<span class="c-fn">createServer</span>({
+  SNICallback: (servername, callback) =&gt; {
+    <span class="c-key">const</span> matched = contexts.<span class="c-fn">has</span>(servername);
+    <span class="c-key">const</span> served = matched ? servername : defaultHostname;
+    <span class="c-fn">callback</span>(<span class="c-key">null</span>, contexts.<span class="c-fn">get</span>(served)!);
+  },
+  <span class="c-com">// cert / key for the initial handshake before SNI resolves</span>
+}, (clientSocket) =&gt; { <span class="c-com">/* parse the request head, add X-Forwarded-*, forward it */</span> });</code></pre>
+
+<pre class="wide"><code><span class="c-key">$</span> node src/origin.ts &amp;
+origin listening on http://127.0.0.1:8030 (plain HTTP, no TLS)
+
+<span class="c-key">$</span> node src/tlsProxy.ts &amp;
+tls_proxy listening on https://127.0.0.1:8443 (certs for: admin.bookmarks-api.local, bookmarks-api.local) -&gt; http://127.0.0.1:8030
+
+<span class="c-key">$</span> curl -v https://bookmarks-api.local:8443/whoami --resolve bookmarks-api.local:8443:127.0.0.1
+* SSL certificate problem: self-signed certificate
+
+<span class="c-key">$</span> curl -s --cacert src/certs/bookmarks-api.local.crt \
+    https://bookmarks-api.local:8443/whoami --resolve bookmarks-api.local:8443:127.0.0.1
+{
+  "socketPeer": "127.0.0.1",
+  "hostHeader": "bookmarks-api.local:8443",
+  "xForwardedFor": "127.0.0.1",
+  "xForwardedProto": "https",
+  "xRealIp": null
+}
+
+<span class="c-key">$</span> curl -s -o /dev/null -w "%{http_code}\n" --cacert src/certs/bookmarks-api.local.crt \
+    -X POST --data-binary @/tmp/big.txt \
+    https://bookmarks-api.local:8443/upload --resolve bookmarks-api.local:8443:127.0.0.1
+413</code></pre>
+
+<p><code>src/nginx.conf</code> is the identical file from the Python
+project — Nginx never reads the origin's source code, only the bytes it
+sends, so the same config fronts either stack without change.</p>
+
+<h2>Practice</h2>
+
+<ol class="steps">
+  <li><strong>Run the demo.</strong> From <code>Code/Lesson_15_code</code>,
+  run <code>./demo.sh</code>. It needs <code>python3</code>,
+  <code>curl</code>, <code>openssl</code>, and Docker.</li>
+  <li><strong>Inspect a real certificate.</strong> Run
+  <code>openssl s_client -connect example.com:443 -servername example.com
+  &lt;/dev/null 2&gt;/dev/null | openssl x509 -noout -issuer -dates</code>
+  and compare the issuer to <code>certs/bookmarks-api.local.crt</code>'s:
+  one names a certificate authority, the other names the certificate
+  itself.</li>
+  <li><strong>Break the forwarding headers on purpose.</strong> Comment
+  out the two lines in <code>tls_proxy.py</code> that add
+  <code>X-Forwarded-For</code> and <code>X-Forwarded-Proto</code>, rerun a
+  request, and read what the origin now believes about the client.</li>
+  <li><strong>Lower the body limit until it hurts.</strong> Set
+  <code>client_max_body_size</code> to <code>10</code> in
+  <code>nginx.conf</code>, restart the container, and send a normal
+  JSON body from Lesson 3's bookmarks API through it.</li>
+  <li><strong>Run the Lesson 12 / 14 API behind the proxy.</strong> Point
+  <code>ORIGIN_PORT</code> in <code>tls_proxy.py</code> (or
+  <code>proxy_pass</code> in <code>nginx.conf</code>) at
+  <code>8020</code>, start that API, and hit
+  <code>/healthz</code> through HTTPS instead of plain HTTP.</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "curl refuses to connect to a proxy serving a self-signed certificate, before sending any request. Why?",
+    "options": [
+      "The proxy is unreachable",
+      "curl only trusts certificates signed by an authority already in its own CA bundle, and nothing signed this one",
+      "Self-signed certificates are always expired",
+      "The hostname in the URL does not match the server's IP address"
+    ],
+    "answer": 1,
+    "why": "A certificate proves an identity only if something the client already trusts vouches for it. A self-signed certificate vouches for itself, so curl's own CA bundle has no reason to trust it without --cacert naming it explicitly." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Why must SNI send the requested hostname before the TLS handshake finishes encrypting the connection?",
+    "options": [
+      "SNI is optional and only used for logging",
+      "The Host header already contains the same information, so SNI is redundant",
+      "The server must pick a certificate before it can decrypt anything, and the Host header lives inside the encrypted request",
+      "SNI replaces the need for a certificate entirely"
+    ],
+    "answer": 2,
+    "why": "Virtual hosting (Lesson 1) uses the plaintext Host header to pick a site on a plain HTTP server. TLS encrypts that header, so the hostname needed to pick a certificate must travel in clear text, inside the handshake, before encryption starts." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "What header does a TLS-terminating proxy add so the origin learns the client's real IP address instead of the proxy's own?",
+    "answer": "X-Forwarded-For",
+    "accept": ["X-Forwarded-For", "x-forwarded-for"],
+    "why": "TLS termination ends the client's connection at the proxy; the origin's own TCP connection comes from the proxy, so X-Forwarded-For carries the address the origin can no longer see directly." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "A proxy sends a 413 response for a 2001-byte body against a 1024-byte limit, and the origin's log shows nothing for that request. What does this prove?",
+    "options": [
+      "The origin crashed while reading the body",
+      "The proxy rejected the request before opening a connection to the origin at all",
+      "The origin returned 413 and the proxy only passed it through",
+      "The request never reached the proxy"
+    ],
+    "answer": 1,
+    "why": "The body-size check runs before the proxy forwards anything. An oversized request never reaches the origin, which is why the origin's own log has no record of it." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "tls_proxy.py and nginx.conf both terminate TLS, pick a certificate by SNI, add forwarding headers, and enforce a body limit. What changed between them, and what did not?",
+    "answer": "The mechanism did not change — the same four jobs run in the same order for the same reasons. What changed is that Nginx declares them as configuration instead of hand-written code, and adds correctness and performance under real load that a demo script does not need to prove.",
+    "why": "This is the 'raw mechanism before the abstraction' pattern from every earlier lesson: write it by hand once, so the library's configuration keys stop being unexplained magic." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<nav class="lesson-nav">
+  <a href="0014-how-a-request-finds-your-server.html">← Lesson 14: How a request finds your server</a>
+  <span>Lesson 16: Rules the browser enforces →</span>
+</nav>
+
+</main>
+</body>
+</html>

@@ -441,6 +441,40 @@ limit, and Lesson 13's local-only reflog: the fix Lesson 14 argues for
 makes sense once the learner has watched the gap happen on a TTL short
 enough to see with a `sleep`.
 
+### Lesson 0015 covers
+
+The edge: reverse proxy and TLS. Structure: the one idea (the process that
+answers port 443 is not your application) → `origin.py` / `origin.ts`, a
+small stand-in API that reports exactly what it received, so a proxy's
+effect on a request is visible → **raw mechanism**: `tls_proxy.py` /
+`tlsProxy.ts` terminate TLS by hand with `ssl.SSLContext.wrap_socket` /
+Node's `tls` module, before naming Nginx → **observable failure 1**: curl
+refuses a self-signed certificate outright, then trusts it once told to
+with `--cacert` → SNI: one process, one port, two certificates, chosen by
+the hostname sent inside the handshake before any HTTP request exists →
+forwarding headers: `X-Forwarded-For` / `X-Forwarded-Proto` restore what
+TLS termination erases from the origin's point of view →
+**observable failure 2**: an oversize body gets `413` from the proxy, and
+the origin's own log shows nothing for that request → the abstraction:
+`nginx.conf` performs the identical four jobs as configuration, run with
+Docker on `--network host`, and every transcript from the raw mechanism
+repeats unchanged against it → five practice steps → five
+retrieval-practice questions.
+
+**Every transcript in this lesson is real output**, captured by running
+`Code/Lesson_15_code/demo.sh` and `Code/js/Lesson_15_code/demo.sh` against
+`tls_proxy.py` / `tlsProxy.ts` and against a real `nginx:1.27-alpine`
+container. No certificate subject, header value, or status code quoted in
+the lesson is invented.
+
+**Teaching hook worth reusing — the same four jobs, twice.** `tls_proxy.py`
+and `nginx.conf` terminate TLS, pick a certificate by SNI, add forwarding
+headers, and enforce a body limit in that exact order, one by hand and one
+declared. Running the identical curl and `openssl s_client` commands
+against both and getting identical output is the argument for Nginx over a
+hand-rolled proxy — it is the same mechanism, not a different one, with
+correctness and performance the demo does not need to prove.
+
 ---
 
 ## Built infrastructure
@@ -551,6 +585,15 @@ enough to see with a `sleep`.
   `cachingResolver.ts` (a stub resolver with a TTL-keyed cache). `demo.sh` in
   each directory is the whole lesson, runnable, needing only a network
   connection and no database.
+- `Code/Lesson_15_code/` + `Code/js/Lesson_15_code/` — `origin.py` / `origin.ts`
+  (a stand-in API that reports what it received), `tls_proxy.py` / `tlsProxy.ts`
+  (a hand-written TLS-terminating reverse proxy with SNI-based certificate
+  selection, forwarding-header rewriting, and a body-size limit),
+  `generate_certs.sh` / `generate-certs.sh` (one self-signed certificate per
+  hostname), and `nginx.conf` (the identical config in both directories,
+  terminating TLS for the same two hostnames). `demo.sh` in each directory
+  runs the raw mechanism first, then a real `nginx:1.27-alpine` container
+  against the same certificates and origin.
 - `lesson_plan.md` — the order of the course: what is done, what each finished lesson
-  proved, and fourteen planned lessons (15–28) with their one idea.
+  proved, and thirteen planned lessons (16–28) with their one idea.
 
