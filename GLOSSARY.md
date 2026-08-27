@@ -112,6 +112,23 @@ when the process restarts. Answers "how often": `http_requests_total`
 counts every request, labelled by method, route, and status code.
 Contrast *histogram*.
 
+**CORS (Cross-Origin Resource Sharing)** (Lesson 16) — HTTP headers a
+server sends to tell the browser which other *origins* may read its
+responses from script. A missing `Access-Control-Allow-Origin` does not
+stop the server from answering — curl and the server's own log both show
+a normal `200` — it only stops the browser from handing that answer to
+the page's own JavaScript. A request outside the narrow "simple request"
+definition also needs a *preflight request* answered first.
+
+**Content Security Policy (CSP)** (Lesson 16) — A response header naming
+the sources a page is allowed to load resources from, stated by that
+page's own server: `default-src 'self'` allows only same-origin
+resources unless a more specific directive overrides it. Independent of
+*CORS*: CORS asks whether another origin will share its response with
+this page; CSP asks whether this page is allowed to load or run
+something at all, including its own inline `<script>` tags and its own
+`fetch()` calls to other origins.
+
 ## E
 
 **ETag** (Lesson 10) — A short opaque string that names one version of a
@@ -143,6 +160,14 @@ dependency that actually breaks — `SELECT 1` on the connection pool — and
 answers `503` when it fails, so an instance that cannot reach its database
 never receives a request. Keep it cheap; it runs forever. Render treats any
 `2xx` or `3xx` within five seconds as healthy.
+
+**HttpOnly** (Lesson 16) — A `Set-Cookie` attribute that hides a cookie
+from JavaScript entirely: `document.cookie` never includes it, on any
+origin, including the one that set it. The cookie still reaches the
+server on every matching request. A session cookie should always carry
+it — script has no legitimate reason to read a session id, and hiding
+it closes off one path a cross-site scripting attack could use to steal
+it.
 
 **Histogram** (Lesson 11) — A metric built from several counters plus a
 running sum, sorting every observed value into buckets by upper bound.
@@ -253,6 +278,13 @@ page of 100; `selectinload` gives 2, `joinedload` gives 1). `bookmark.count +=
 1` is a read-modify-write, so it loses updates. The defence is `echo=True` and
 the habit of counting statements — never avoidance of the ORM.
 
+**Origin** (Lesson 16) — A scheme, host, and port, taken together. Two
+URLs share an origin only if all three match exactly. `CORS` is enforced
+per origin, so `http://127.0.0.1:8051` and `http://127.0.0.2:8040`
+count as different origins even though both are loopback addresses on
+the same machine — the difference in host alone is enough. Contrast
+*site*, the coarser boundary a cookie's `SameSite` attribute uses.
+
 ## P
 
 **Path operation** (Lesson 3) — FastAPI's name for the pairing of an HTTP method
@@ -275,6 +307,15 @@ request body, validate every field's type, reject bad input with a `422`
 response naming the exact failing field, and emit the body's JSON Schema into
 the OpenAPI document. Replaces hand-written `json.loads` plus manual field
 checks.
+
+**Preflight request** (Lesson 16) — An `OPTIONS` request a browser sends
+by itself, before a "non-simple" cross-origin request, asking the
+server's permission for the method and headers the real request will
+use. A `POST` with a JSON body is not simple, because
+`Content-Type: application/json` is not on the CORS safelist; a plain
+`GET` with no extra headers is simple and skips preflight entirely. A
+preflight the server does not answer with `Access-Control-Allow-*`
+headers cancels the real request before it is ever sent.
 
 ## R
 
@@ -402,6 +443,29 @@ field; a sentence built with an f-string is a line only a human can read.
 Every field in this curriculum's log line is named, never embedded in
 prose: `{"request_id": ..., "method": ..., "status": ..., "duration_ms": ...}`.
 See *request id*.
+
+**Same-origin policy** (Lesson 16) — The browser's default rule that
+script on one *origin* cannot read a response from another origin.
+`CORS` is the mechanism a server uses to grant an exception; with no
+exception granted, `fetch()` still sends the request and the server
+still answers it — the browser reads the response, finds no
+permission, and discards it before the calling script sees it.
+
+**SameSite** (Lesson 16) — A `Set-Cookie` attribute controlling whether
+a cookie is sent on a cross-*site* request. `Lax`, the default when the
+attribute is absent, withholds the cookie on a cross-site subresource
+request such as `fetch()`. `None` sends it on cross-site requests too,
+but only alongside `Secure` — a browser drops a `SameSite=None` cookie
+outright if `Secure` is missing, even on a loopback address over plain
+HTTP. Distinct from *HttpOnly*, which hides a cookie from JavaScript
+regardless of which site is asking.
+
+**Site** (Lesson 16) — A scheme plus registrable domain, ignoring port.
+Coarser than *origin*: two ports on the same host are different
+origins but the same site, so a cookie's `SameSite` attribute treats
+them as same-site while `CORS` still treats them as cross-origin. A
+cross-site cookie failure needs a genuine host difference to
+demonstrate, not just a different port.
 
 ## T
 

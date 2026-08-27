@@ -134,6 +134,26 @@ Scope skeleton: [`ROADMAP.md`](./ROADMAP.md) — local scope checklist. **Use it
 - [Node.js — crypto.timingSafeEqual](https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b) and [Python — hmac.compare_digest](https://docs.python.org/3/library/hmac.html)
   Both verified 2026-08-10. One paragraph each. Why a constant-time comparison is required, and why the lengths must match first.
 
+### Browser security (CORS, CSP, cookies)
+
+- [MDN — Cross-Origin Resource Sharing (CORS)](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS)
+  Verified 2026-08-26. The source for Lesson 16: the simple-request
+  safelist (methods, headers, `Content-Type` values), the preflight
+  exchange, and the rule that a credentialed response must name one
+  origin, never `*`.
+- [MDN — Content Security Policy (CSP)](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP)
+  Verified 2026-08-26. `default-src` as the fallback for every unset
+  fetch directive, including `script-src` and `connect-src` — the fact
+  behind Lesson 16's CSP blocking both an inline script and the page's
+  own cross-origin `fetch()`.
+- [MDN — Using HTTP cookies](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Cookies)
+  Verified 2026-08-26. `HttpOnly`, `Secure`, and `SameSite` (`Strict`,
+  `Lax`, `None`), the default of `Lax` when unset, and the rule that
+  `SameSite=None` requires `Secure` or the browser rejects the cookie —
+  confirmed against a real headless Chromium in Lesson 16, which stored
+  no cookie at all for a `SameSite=None` `Set-Cookie` sent over plain
+  HTTP.
+
 ### Architecture
 
 - [Kleppmann — Distributed Systems notes (Cambridge)](https://www.cl.cam.ac.uk/teaching/2526/ConcDisSys/dist-sys-notes.pdf)

@@ -81,8 +81,8 @@ A beginner-friendly version and a DevOps beginner roadmap are linked separately.
 
 - [x] ~~HTTPS~~
 - [x] ~~SSL/TLS~~
-- [ ] CORS
-- [ ] CSP
+- [x] ~~CORS~~
+- [x] ~~CSP~~
 - [ ] OWASP risks
 - [ ] Server security
 - [ ] API security best practices

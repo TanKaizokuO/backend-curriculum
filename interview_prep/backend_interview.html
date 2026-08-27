@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>200 Backend Interview Questions</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #12141a;
+    --bg-alt: #1a1d25;
+    --fg: #e8e9ec;
+    --muted: #9aa0ac;
+    --accent: #7dd3fc;
+    --border: #2a2e38;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg);
+    color: var(--fg);
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    line-height: 1.55;
+    padding: 2rem 1rem 4rem;
+  }
+  main {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+  }
+  h1 {
+    font-size: 1.9rem;
+    margin: 0 0 0.5rem;
+    color: var(--fg);
+  }
+  p.lede {
+    color: var(--muted);
+    max-width: 65ch;
+  }
+  nav.toc {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.5rem 0 2.5rem;
+  }
+  nav.toc h2 {
+    font-size: 1rem;
+    margin: 0 0 0.6rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  nav.toc ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.35rem 1rem;
+  }
+  nav.toc a {
+    color: var(--fg);
+    text-decoration: none;
+  }
+  nav.toc a:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  nav.toc .count {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  section {
+    margin-bottom: 2.25rem;
+  }
+  h2 {
+    font-size: 1.25rem;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.4rem;
+    margin-bottom: 0.9rem;
+  }
+  ul.qlist {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  li.qitem {
+    border-bottom: 1px solid var(--border);
+  }
+  li.qitem:last-child {
+    border-bottom: none;
+  }
+  details {
+    padding: 0.15rem 0;
+  }
+  summary {
+    padding: 0.5rem 0.25rem;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+    border-radius: 6px;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary::before {
+    content: "+";
+    color: var(--accent);
+    font-weight: 700;
+    width: 1rem;
+    flex: 0 0 auto;
+  }
+  details[open] summary::before {
+    content: "\2212";
+  }
+  summary:hover {
+    background: var(--bg-alt);
+  }
+  summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .qnum {
+    color: var(--muted);
+    display: inline-block;
+    min-width: 2.6rem;
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+  }
+  p.answer {
+    margin: 0 0 0.85rem 3.1rem;
+    padding: 0.6rem 0.9rem;
+    background: var(--bg-alt);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+    color: var(--fg);
+    max-width: 68ch;
+  }
+  footer {
+    color: var(--muted);
+    font-size: 0.85rem;
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+    margin-top: 2rem;
+  }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>200 Backend Interview Questions</h1>
+    <p class="lede">
+      This page lists 200 common questions from backend developer interviews.
+      The list groups the questions into 17 topics. Click a question to show
+      its answer. Read the question first. Try to answer it yourself. Then
+      click the question and check your answer against the text.
+    </p>
+  </header>
+
+  <nav class="toc">
+    <h2>Topics</h2>
+    <ul>
+<li><a href="#sec-http-and-networking-basics">HTTP and Networking Basics</a> <span class="count">(12)</span></li>
+<li><a href="#sec-rest-api-design">REST API Design</a> <span class="count">(12)</span></li>
+<li><a href="#sec-authentication-and-authorization">Authentication and Authorization</a> <span class="count">(12)</span></li>
+<li><a href="#sec-databases-and-sql">Databases and SQL</a> <span class="count">(14)</span></li>
+<li><a href="#sec-nosql-databases">NoSQL Databases</a> <span class="count">(10)</span></li>
+<li><a href="#sec-caching">Caching</a> <span class="count">(12)</span></li>
+<li><a href="#sec-system-design-fundamentals">System Design Fundamentals</a> <span class="count">(14)</span></li>
+<li><a href="#sec-scalability-and-load-balancing">Scalability and Load Balancing</a> <span class="count">(10)</span></li>
+<li><a href="#sec-microservices-and-message-queues">Microservices and Message Queues</a> <span class="count">(13)</span></li>
+<li><a href="#sec-concurrency-and-threading">Concurrency and Threading</a> <span class="count">(12)</span></li>
+<li><a href="#sec-data-structures-and-algorithms">Data Structures and Algorithms</a> <span class="count">(12)</span></li>
+<li><a href="#sec-object-oriented-design-and-design-patterns">Object-Oriented Design and Design Patterns</a> <span class="count">(10)</span></li>
+<li><a href="#sec-security">Security</a> <span class="count">(12)</span></li>
+<li><a href="#sec-testing-and-debugging">Testing and Debugging</a> <span class="count">(10)</span></li>
+<li><a href="#sec-devops-deployment-and-monitoring">DevOps, Deployment and Monitoring</a> <span class="count">(13)</span></li>
+<li><a href="#sec-language-and-framework-fundamentals">Language and Framework Fundamentals</a> <span class="count">(12)</span></li>
+<li><a href="#sec-behavioral-and-process">Behavioral and Process</a> <span class="count">(10)</span></li>
+    </ul>
+  </nav>
+
+    <section id="sec-http-and-networking-basics">
+      <h2>HTTP and Networking Basics</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">1.</span> What happens when a user types a URL into a browser and presses Enter?</summary>
+          <p class="answer">The browser checks its cache for the IP address. If the browser does not find the IP address, it queries a DNS server. The browser then starts a TCP connection to the server. It sends an HTTP request to receive the web page data.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">2.</span> What is the difference between TCP and UDP?</summary>
+          <p class="answer">TCP requires a connection and guarantees data delivery. This ensures correct data order but increases latency. UDP sends data packets without a connection. This process operates faster, but it does not guarantee data delivery or correct order.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">3.</span> What is the difference between HTTP and HTTPS?</summary>
+          <p class="answer">HTTP transmits data as plain text. This lets attackers read the data over a network. HTTPS encrypts the data with TLS or SSL. This ensures data privacy and security.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">4.</span> What is a three-way handshake?</summary>
+          <p class="answer">A three-way handshake establishes a TCP connection between a client and a server. The client sends a SYN packet to start the connection. The server replies with a SYN-ACK packet. The client then sends an ACK packet to confirm the connection.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">5.</span> What is the difference between a stateless protocol and a stateful protocol?</summary>
+          <p class="answer">A stateless protocol does not store information about past requests. Each request contains all necessary data for the server to process it. A stateful protocol stores client session data on the server. The server uses this stored data across multiple requests.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">6.</span> What is the difference between a cookie and a session?</summary>
+          <p class="answer">A cookie stores small amounts of data in the client browser. The browser sends the cookie to the server with each request. A session stores user data on the server. The server uses a session identifier from a client cookie to find the session data.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">7.</span> What are common HTTP status codes, and what does each one mean?</summary>
+          <p class="answer">Status codes indicate the result of an HTTP request. The 200 code means the request succeeded, while the 400 code indicates a client error. The 404 code means the server did not find the resource. The 500 code means the server had an internal error.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">8.</span> What is the difference between HTTP/1.1, HTTP/2, and HTTP/3?</summary>
+          <p class="answer">HTTP/1.1 uses one connection for each request. HTTP/2 sends multiple requests over a single TCP connection. HTTP/3 uses UDP and the QUIC protocol. This decreases latency and improves performance on poor networks.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">9.</span> What is DNS, and how does DNS resolution work?</summary>
+          <p class="answer">DNS translates human-readable domain names into IP addresses. The client sends a domain name to a DNS resolver. The resolver queries root servers and authoritative servers to find the matching IP address. The resolver then returns the IP address to the client.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">10.</span> What is the difference between a forward proxy and a reverse proxy?</summary>
+          <p class="answer">A forward proxy operates in front of client devices. It forwards client requests to the internet and hides the client IP address. A reverse proxy operates in front of backend servers. It receives external requests and distributes them to the servers.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">11.</span> What is a CDN, and why do teams use one?</summary>
+          <p class="answer">A CDN is a network of distributed servers that store static content. The CDN delivers this content from a server near the user. This decreases network latency and reduces the load on the origin server.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">12.</span> What is the difference between latency and throughput?</summary>
+          <p class="answer">Latency measures the time for a data packet to travel from a source to a destination. Throughput measures the volume of data that transfers across a network in a given time. Low latency means fast response times, while high throughput means a large data capacity.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-rest-api-design">
+      <h2>REST API Design</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">13.</span> What makes an API RESTful?</summary>
+          <p class="answer">A RESTful API uses standard HTTP methods to operate on resources. Each resource has a unique URI. The server does not store client state between requests. The server sends resource representations to the client.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">14.</span> What is the difference between PUT and PATCH?</summary>
+          <p class="answer">The PUT method replaces an entire resource with a new representation. The PATCH method modifies specific fields of an existing resource. A client sends a full payload for PUT. A client sends only the changed fields for PATCH.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">15.</span> What is the difference between PUT and POST?</summary>
+          <p class="answer">A client uses the POST method to create a new resource. The server assigns the new resource identifier. A client uses the PUT method to replace a resource at a specific URI. The POST method is not idempotent, but the PUT method is idempotent.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">16.</span> What is idempotency, and which HTTP methods are idempotent?</summary>
+          <p class="answer">Idempotency means that multiple identical requests produce the same result as a single request. A client can repeat an idempotent request safely if a network error occurs. The GET, PUT, DELETE, HEAD, and OPTIONS methods are idempotent. The POST and PATCH methods are usually not idempotent.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">17.</span> How do you version a public API without breaking existing clients?</summary>
+          <p class="answer">You include a version number in the URI path or in an HTTP header. The server routes the request to the correct code version. You add new endpoints for new features. You keep the old endpoints active until all clients migrate.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">18.</span> How do you design pagination for a large collection endpoint?</summary>
+          <p class="answer">You use query parameters to limit the number of items in the response. Offset pagination uses a start index and a page size. Cursor pagination uses a unique identifier from the last item. Cursor pagination provides better performance for large datasets.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">19.</span> How do you design error responses for a REST API?</summary>
+          <p class="answer">The server sends standard HTTP status codes to indicate the error type. The response body contains a JSON object. This object includes an error code and a human-readable message. The object also provides a link to the documentation.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">20.</span> What is the difference between REST, GraphQL, gRPC, and SOAP?</summary>
+          <p class="answer">REST transfers resource state over standard HTTP. GraphQL lets the client specify the exact data fields it needs. gRPC uses protocol buffers and binary serialization for fast remote calls. SOAP uses strict XML schemas and complex network protocols.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">21.</span> How do you handle partial updates and optional fields in a request body?</summary>
+          <p class="answer">A client sends a PATCH request to update a resource. The request body contains only the fields that change. The server ignores missing fields. The server updates the resource and returns a success status code.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">22.</span> How do you design an endpoint for file upload?</summary>
+          <p class="answer">A client sends a POST request or a PUT request to a specific URI. The client sets the Content-Type header to multipart/form-data. The server reads the file stream and stores the file. The server returns the new file URI to the client.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">23.</span> What is content negotiation, and how does the Accept header work?</summary>
+          <p class="answer">Content negotiation lets the client and the server agree on a data format. The client sends an Accept header in the HTTP request. This header lists the format types that the client understands, such as JSON or XML. The server selects the best format and sends it in the response.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">24.</span> How do you document an API so other teams can use it?</summary>
+          <p class="answer">You write an OpenAPI specification file. This file describes all endpoints, request parameters, and response formats. You use a tool to generate a web interface from this specification. Developers read the web interface to understand the API.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-authentication-and-authorization">
+      <h2>Authentication and Authorization</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">25.</span> What is the difference between authentication and authorization?</summary>
+          <p class="answer">Authentication proves the identity of a user. Authorization checks the permissions of that user. For example, authentication verifies a password, and authorization allows access to a file.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">26.</span> How does JWT authentication work?</summary>
+          <p class="answer">A client sends credentials to the server. The server verifies the credentials and returns a JWT. The client sends this JWT in the header of subsequent requests. The server validates the signature of the JWT to identify the user.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">27.</span> What is the difference between a JWT access token and a refresh token?</summary>
+          <p class="answer">An access token grants immediate access to resources and has a short lifespan. A refresh token has a long lifespan. The client uses the refresh token to get a new access token when the old access token expires.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">28.</span> How does OAuth 2.0 work?</summary>
+          <p class="answer">OAuth 2.0 is an authorization framework. A user grants an application access to their resources on a resource server. The application receives an access token from an authorization server. The application uses this token to access the resources.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">29.</span> What is the difference between OAuth 2.0 and OpenID Connect?</summary>
+          <p class="answer">OAuth 2.0 handles authorization for access to resources. OpenID Connect adds an identity layer on top of OAuth 2.0. OpenID Connect provides an ID token that contains information about the authenticated user.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">30.</span> How do you store passwords safely?</summary>
+          <p class="answer">You must never store passwords in plain text. You use a cryptographic hash function like Argon2 or bcrypt to hash the password. You store the resulting hash and a unique salt in the database.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">31.</span> What is the difference between hashing and encryption?</summary>
+          <p class="answer">Hashing is a one-way mathematical function. You cannot reverse a hash to get the original data. Encryption is a two-way function that uses a key. You can decrypt the data if you have the correct key.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">32.</span> What is salting, and why does it matter for password storage?</summary>
+          <p class="answer">A salt is random data that you add to a password before you hash it. The salt ensures that identical passwords have different hashes. This protects the passwords against rainbow table attacks.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">33.</span> How do you implement role-based access control?</summary>
+          <p class="answer">You assign roles to users in your system. You map permissions to these roles instead of individual users. The application checks the role of the user before it allows an operation.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">34.</span> What is single sign-on, and how does it work across services?</summary>
+          <p class="answer">Single sign-on allows a user to log in once and access multiple independent systems. The user authenticates with a central identity provider. The identity provider issues a token that the other services trust.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">35.</span> How do you revoke a JWT before it expires?</summary>
+          <p class="answer">A JWT is stateless, so the server cannot revoke it directly. You must maintain a blocklist of revoked tokens in a database or a cache. The server checks this blocklist during each request to deny revoked tokens.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">36.</span> How do you protect an API from brute-force login attempts?</summary>
+          <p class="answer">You limit the number of login requests from a single IP address or user account. You block the address or account for a time period after too many failed attempts. You can also require a CAPTCHA to verify a human user.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-databases-and-sql">
+      <h2>Databases and SQL</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">37.</span> What is the difference between a primary key and a foreign key?</summary>
+          <p class="answer">A primary key uniquely identifies each row in a database table. A foreign key links a column in one table to the primary key of another table. The database uses these keys to enforce referential integrity between tables.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">38.</span> What is database normalization, and why do you normalize a schema?</summary>
+          <p class="answer">Normalization is a database design process that reduces data redundancy. You divide large tables into smaller tables and define relationships between them. You normalize a schema to improve data integrity and prevent update anomalies.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">39.</span> When do you denormalize a schema, and why?</summary>
+          <p class="answer">You denormalize a schema when you need to improve read query performance. The process adds redundant data to one or more tables. This reduces the number of expensive table joins during read operations.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">40.</span> What are the ACID properties of a transaction?</summary>
+          <p class="answer">The ACID properties stand for Atomicity, Consistency, Isolation, and Durability. Atomicity guarantees that a transaction succeeds or fails completely. Consistency ensures valid data, while Isolation separates concurrent transactions. Durability saves committed changes permanently.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">41.</span> What is the difference between the WHERE clause and the HAVING clause?</summary>
+          <p class="answer">The WHERE clause filters rows before the database groups the data. The HAVING clause filters the result groups after the database applies the GROUP BY clause. You cannot use aggregate functions in a WHERE clause, but you can use them in a HAVING clause.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">42.</span> What is an index, and how does an index speed up a query?</summary>
+          <p class="answer">An index is a database structure that organizes data for fast retrieval. The database uses the index to find rows quickly without a full table scan. The index stores a sorted copy of specific columns and pointers to the actual rows.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">43.</span> What is the trade-off of adding many indexes to one table?</summary>
+          <p class="answer">Multiple indexes increase the speed of read queries. However, each index decreases the speed of write operations. The database must update every relevant index when you insert, update, or delete a row.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">44.</span> What is the difference between a clustered index and a non-clustered index?</summary>
+          <p class="answer">A clustered index sorts and stores the actual data rows of the table. A table can have only one clustered index because the data rows can sort in only one order. A non-clustered index stores a separate sorted list of keys and pointers to the data rows.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">45.</span> What is the difference between INNER JOIN, LEFT JOIN, and FULL OUTER JOIN?</summary>
+          <p class="answer">An INNER JOIN returns only the rows that have matching values in both tables. A LEFT JOIN returns all rows from the left table and the matched rows from the right table. A FULL OUTER JOIN returns all rows when there is a match in either the left table or the right table.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">46.</span> What is a database transaction, and how do you roll one back?</summary>
+          <p class="answer">A database transaction groups multiple operations into one logical unit. You use the ROLLBACK command to undo the changes of an uncommitted transaction. This command returns the database to the previous state.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">47.</span> What are the four transaction isolation levels?</summary>
+          <p class="answer">The four transaction isolation levels dictate how the database handles concurrent transactions. These levels are Read Uncommitted, Read Committed, Repeatable Read, and Serializable. Read Uncommitted offers the lowest isolation, and Serializable offers the highest isolation and safety.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">48.</span> How do you find and fix a slow query?</summary>
+          <p class="answer">You use the EXPLAIN command to analyze the execution plan of a slow query. The execution plan shows if the database performs a full table scan instead of an index lookup. You can fix the query when you add an index, rewrite the SQL, or update the database statistics.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">49.</span> What is connection pooling, and why does a backend service need it?</summary>
+          <p class="answer">Connection pooling maintains a cache of active database connections. A backend service reuses these open connections for multiple client requests. This process avoids the performance cost of a new connection for every database query.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">50.</span> What is database replication, and what is the difference between synchronous and asynchronous replication?</summary>
+          <p class="answer">Database replication copies data from a primary database server to one or more replica servers. Synchronous replication waits for the replica to acknowledge the data write before it confirms the transaction. Asynchronous replication confirms the transaction immediately and sends the data to the replica in the background.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-nosql-databases">
+      <h2>NoSQL Databases</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">51.</span> What is the difference between a SQL database and a NoSQL database?</summary>
+          <p class="answer">A SQL database stores data in tables with a fixed schema. A NoSQL database stores data in documents, key-value pairs, or graphs with a flexible schema. A SQL database scales vertically, but a NoSQL database scales horizontally.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">52.</span> When do you choose a NoSQL database over a relational database?</summary>
+          <p class="answer">You choose a NoSQL database when your application needs a flexible data model or horizontal scaling. A NoSQL database handles large volumes of unstructured data efficiently. You also use a NoSQL database for fast read and write operations.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">53.</span> What is the difference between a document store, a key-value store, and a wide-column store?</summary>
+          <p class="answer">A document store keeps data in JSON or BSON documents. A key-value store connects a unique key to a simple value. A wide-column store keeps data in tables with dynamic columns and rows.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">54.</span> What is eventual consistency?</summary>
+          <p class="answer">Eventual consistency is a database model for distributed systems. The system updates data across all nodes over time. If no new updates occur, all nodes eventually return the same data.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">55.</span> What is the CAP theorem?</summary>
+          <p class="answer">The CAP theorem states that a distributed database can provide a maximum of two out of three guarantees. These guarantees are consistency, availability, and partition tolerance. A system must choose between consistency and availability when a network partition occurs.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">56.</span> How does sharding work in a distributed database?</summary>
+          <p class="answer">Sharding divides a large database into smaller parts. The system distributes these smaller parts across multiple servers. This distribution increases the storage capacity and the processing speed of the database.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">57.</span> What is a partition key, and how do you choose a good one?</summary>
+          <p class="answer">A partition key is an attribute that determines how a database distributes data across shards. A good partition key distributes data evenly across all available nodes. You must choose a key that prevents read and write operations on a single node.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">58.</span> What is the difference between horizontal partitioning and vertical partitioning?</summary>
+          <p class="answer">Horizontal partitioning divides a table into multiple tables with the same columns but different rows. Vertical partitioning divides a table into multiple tables with the same rows but different columns. You use horizontal partitioning to distribute data across multiple servers.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">59.</span> How does a database handle a hot partition?</summary>
+          <p class="answer">A hot partition occurs when one node receives too many requests. A database handles this problem when you change the partition key. You can also add a random number to the partition key to distribute the load.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">60.</span> What is the BASE model, and how does it differ from ACID?</summary>
+          <p class="answer">The BASE model stands for Basically Available, Soft state, and Eventual consistency. The BASE model prioritizes availability over immediate consistency. The ACID model guarantees immediate consistency and data integrity.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-caching">
+      <h2>Caching</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">61.</span> What is a cache, and why does it reduce latency?</summary>
+          <p class="answer">A cache is a fast data storage layer. It holds copies of popular data. The system reads data from the cache instead of the primary database. This operation decreases the time that the system needs to process a request.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">62.</span> What is the difference between a write-through cache and a write-back cache?</summary>
+          <p class="answer">A write-through cache saves data to the cache and the primary database at the same time. A write-back cache saves data only to the cache and confirms the write operation immediately. The system writes the data to the primary database later.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">63.</span> What is cache invalidation, and why is it hard?</summary>
+          <p class="answer">Cache invalidation is the process that removes old data from a cache. This task is difficult because the system must accurately identify when the original data changes. If the system fails to remove the old data, the users see incorrect information.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">64.</span> What is the LRU eviction policy?</summary>
+          <p class="answer">The Least Recently Used policy removes the data items that the system accessed least recently. The cache uses this policy when it needs more storage space. This method keeps popular data available for fast operations.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">65.</span> What is a cache stampede, and how do you prevent one?</summary>
+          <p class="answer">A cache stampede happens when many clients request the same expired data at the same time. These simultaneous requests overload the primary database. You prevent this problem when you add a random value to the cache expiration time. You can also use a software lock so that only one client updates the cache.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">66.</span> Where can a backend system place a cache?</summary>
+          <p class="answer">A backend system can place a cache on the application server. The system can also use an external cache server like Redis. The database itself can operate an internal cache that stores query results.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">67.</span> What is the difference between caching at the application layer and caching at the database layer?</summary>
+          <p class="answer">An application cache stores objects that the application code uses directly. This method prevents network calls to the database. A database cache stores the results of database queries. The database uses this cache to skip slow disk operations.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">68.</span> How do you keep a cache consistent with the source of truth?</summary>
+          <p class="answer">You set a short time limit for the data in the cache. The system can also listen for data update events. When the primary database changes, the system receives an event and updates the cache immediately.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">69.</span> What happens to your service when the cache goes down?</summary>
+          <p class="answer">The system routes all data requests directly to the primary database. This change increases the response time of the service. If the traffic volume is high, the sudden load causes the database to fail.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">70.</span> What is a TTL, and how do you choose a good value for it?</summary>
+          <p class="answer">The Time to Live value defines how long data stays in the cache. A short value keeps the data accurate but requires frequent database reads. A long value improves speed but increases the risk that users see old data.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">71.</span> What is the difference between Redis and Memcached?</summary>
+          <p class="answer">Memcached stores simple text strings and numbers in memory. Redis stores complex data types like lists and sets. Redis also saves data to a storage disk so that the data survives a system restart.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">72.</span> How do you cache the result of a paginated query?</summary>
+          <p class="answer">You create a unique cache key that includes the query parameters, the page number, and the page size. The cache stores the exact list of results for that specific page. When new items appear in the database, you remove the old cached pages. This action guarantees that the system shows correct data.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-system-design-fundamentals">
+      <h2>System Design Fundamentals</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">73.</span> How do you approach a system design interview question?</summary>
+          <p class="answer">You start the process when you ask the interviewer for the requirements. You calculate the traffic and the data storage numbers. You draw the high-level architecture before you design the detailed components.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">74.</span> How do you design a URL shortener?</summary>
+          <p class="answer">You use a hash function to convert the long URL into a short string. A database stores the short string and the long URL. A web server receives the short URL and redirects the user to the long URL.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">75.</span> How do you design a rate limiter?</summary>
+          <p class="answer">A cache server stores a counter for each user IP address. The rate limiter checks this counter when a new request arrives. The rate limiter rejects the request if the counter goes above the allowed limit.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">76.</span> How do you design a notification service?</summary>
+          <p class="answer">A message queue receives the notification requests from the application servers. Worker services read these messages from the queue. The workers send the notifications to the users through external services.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">77.</span> How do you design a chat application that supports real-time messages?</summary>
+          <p class="answer">Users connect to the chat servers through WebSockets. The chat servers keep these connections open. A message broker routes the messages between the different chat servers to deliver them to the recipients.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">78.</span> How do you design a news feed for a social media application?</summary>
+          <p class="answer">A fan-out service creates a pre-computed news feed for each active user. A cache stores these pre-computed feeds to decrease the read latency. The system retrieves the feed from the cache when the user opens the application.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">79.</span> How do you design a file storage and sync service?</summary>
+          <p class="answer">The client application divides the large files into small chunks. Object storage stores these chunks. A metadata database stores the file structures and the chunk locations.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">80.</span> How do you design a ticket booking system that avoids double booking?</summary>
+          <p class="answer">The database uses a transaction to lock the ticket record when a user starts the booking process. This lock prevents other users from booking the same ticket. The system removes the lock after the user completes the payment.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">81.</span> How do you estimate the scale of a system during an interview?</summary>
+          <p class="answer">You calculate the number of daily active users and the requests per second. You estimate the size of the data that each request creates. You multiply these numbers to find the network bandwidth and the storage requirements.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">82.</span> How do you design a system for 10 times the current traffic?</summary>
+          <p class="answer">You add more servers behind a load balancer to distribute the traffic. You put a cache in front of the database to decrease the database load. You partition the database across multiple machines to increase the storage capacity.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">83.</span> What is a single point of failure, and how do you remove one?</summary>
+          <p class="answer">A single point of failure is a component that stops the whole system when it breaks. You remove it when you add duplicate components to the system. A load balancer sends the traffic to a healthy component if the primary component fails.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">84.</span> How do you design a system to stay available during a partial outage?</summary>
+          <p class="answer">You design the system with multiple independent services. A healthy service returns a default response if a dependent service fails. This design prevents the failure from spreading through the entire system.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">85.</span> What is back-pressure, and why does a system need it?</summary>
+          <p class="answer">Back-pressure is a signal that tells a sender to slow down the data transmission. A system needs this signal when a receiver processes the data too slowly. This mechanism prevents the receiver from crashing under a heavy load.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">86.</span> How do you design an idempotent payment endpoint?</summary>
+          <p class="answer">The client generates a unique key for each payment request. The payment endpoint stores this unique key in a database. The endpoint rejects the request if the database already has the key.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-scalability-and-load-balancing">
+      <h2>Scalability and Load Balancing</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">87.</span> What is the difference between horizontal scaling and vertical scaling?</summary>
+          <p class="answer">Vertical scaling adds hardware power to one server. Horizontal scaling adds more servers to a system. Vertical scaling has a physical limit.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">88.</span> What is a load balancer, and what problem does it solve?</summary>
+          <p class="answer">A load balancer distributes network traffic across multiple servers. This prevents server failures. It increases the capacity and reliability of a system.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">89.</span> What is the difference between a Layer 4 load balancer and a Layer 7 load balancer?</summary>
+          <p class="answer">A Layer 4 load balancer routes traffic based on IP addresses and TCP ports. A Layer 7 load balancer routes traffic based on HTTP headers and URL paths. Layer 7 load balancers make smarter routing decisions.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">90.</span> What load-balancing algorithms do you know, and how does each one work?</summary>
+          <p class="answer">The round-robin algorithm sends requests to servers in a sequence. The least-connections algorithm sends requests to the server with the fewest active connections. The IP-hash algorithm uses the client IP address to select a server.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">91.</span> What is a stateless service, and why does statelessness help you scale horizontally?</summary>
+          <p class="answer">A stateless service does not save client data between requests. Each request contains all information that the server needs. You can add more servers easily because any server can process any request.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">92.</span> How do you handle session data when you run many stateless instances behind a load balancer?</summary>
+          <p class="answer">You store the session data in a separate database, such as Redis or Memcached. The application servers read the session data from this shared database.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">93.</span> What is auto-scaling, and how does a system decide when to scale?</summary>
+          <p class="answer">Auto-scaling adds or removes server instances automatically. The system monitors metrics, such as CPU usage or request latency. The system starts new servers or stops old servers when a metric crosses a limit.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">94.</span> What is a circuit breaker, and when does it trip?</summary>
+          <p class="answer">A circuit breaker stops network calls to a failing service. It trips when the error rate goes above a limit. The circuit breaker returns an error immediately when it trips.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">95.</span> How do you handle a sudden spike in traffic?</summary>
+          <p class="answer">You configure auto-scaling rules to start more servers. You use a content delivery network to serve static files. You configure rate limits to protect your database.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">96.</span> What is graceful degradation?</summary>
+          <p class="answer">Graceful degradation occurs when a system keeps its core functions active during a failure. The system turns off unnecessary features. For example, a video service plays video at a lower quality when the network is slow.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-microservices-and-message-queues">
+      <h2>Microservices and Message Queues</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">97.</span> What is a microservice, and how does it differ from a monolith?</summary>
+          <p class="answer">A microservice is a small application that does one specific business task. It runs independently of other services. A monolithic application contains all business functions in one program.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">98.</span> What are the trade-offs of a microservice architecture compared to a monolith?</summary>
+          <p class="answer">Microservices scale independently. You can write them in different programming languages. But, microservices increase network latency and they make the system complex to operate. A monolithic application is simpler to operate but difficult to scale.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">99.</span> How do microservices communicate with each other?</summary>
+          <p class="answer">Microservices exchange data over a network. They use HTTP or gRPC for synchronous communication. They use a message broker for asynchronous communication.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">100.</span> What is the role of a message queue in a microservice architecture?</summary>
+          <p class="answer">A message queue stores messages between a data producer and a data consumer. This decouples the services from each other. The queue also protects the consumer from sudden spikes in network traffic.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">101.</span> What is the difference between Kafka and RabbitMQ?</summary>
+          <p class="answer">RabbitMQ is a traditional message broker that pushes messages to consumers. It deletes a message after the consumer reads it. Apache Kafka is an event streaming platform that stores an append-only data log. Consumers pull data from Kafka and they can read the old events again.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">102.</span> What is the difference between a message queue and a publish-subscribe system?</summary>
+          <p class="answer">In a message queue, only one consumer processes a specific message. This guarantees that exactly one worker does the task. In a publish-subscribe system, multiple subscribers receive a copy of the same message.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">103.</span> How do you guarantee at-least-once delivery for a message?</summary>
+          <p class="answer">The consumer receives a message and processes the data. After the consumer finishes the work, it sends an acknowledgment signal to the message broker. If the message broker does not receive the signal, it sends the message again.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">104.</span> How do you handle a duplicate message in a consumer?</summary>
+          <p class="answer">You design the consumer to be idempotent. An idempotent consumer produces the same result when it processes the same message multiple times. The consumer uses a unique message identifier to detect and ignore a duplicate message.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">105.</span> What is a dead-letter queue, and when does a message end up there?</summary>
+          <p class="answer">A dead-letter queue is a special storage area for failed messages. A message broker moves a message there if a consumer fails to process it. This usually happens when the data has an invalid format or when a retry limit expires.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">106.</span> What is the saga pattern, and why do distributed transactions need one?</summary>
+          <p class="answer">A distributed transaction spans multiple microservices. The saga pattern manages this transaction as a sequence of local database updates. If a local update fails, the saga executes compensating transactions to undo the previous steps.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">107.</span> What is an API gateway, and what does it do in a microservice architecture?</summary>
+          <p class="answer">An API gateway is a single entry point for client applications. It routes client requests to the correct microservices in the backend. It also performs security tasks like rate limiting and user authentication.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">108.</span> How do you handle service discovery in a microservice system?</summary>
+          <p class="answer">Microservices register their network addresses in a central service registry. Client applications query this registry to find the current address of a target service. This allows services to change their locations dynamically.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">109.</span> What is the difference between choreography and orchestration in a workflow?</summary>
+          <p class="answer">In an orchestrated workflow, a central controller tells each service what task to do. In a choreographed workflow, the services do not use a central controller. Instead, each service observes network events and decides when to act.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-concurrency-and-threading">
+      <h2>Concurrency and Threading</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">110.</span> What is the difference between a process and a thread?</summary>
+          <p class="answer">A process is an independent program that runs in its own memory space. A thread is a smaller execution unit inside a process. Multiple threads in the same process share the same memory space.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">111.</span> What is a race condition, and how do you prevent one?</summary>
+          <p class="answer">A race condition happens when multiple threads access shared data at the same time and change it in an unpredictable order. This causes incorrect results. You prevent race conditions when you use synchronization tools like mutexes to protect the shared data.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">112.</span> What is a deadlock, and what conditions must hold for one to occur?</summary>
+          <p class="answer">A deadlock is a situation where two or more threads wait forever for each other to release resources. Four conditions must hold for a deadlock: mutual exclusion, hold and wait, no preemption, and circular wait. The system stops completely when these four conditions exist.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">113.</span> What is a mutex, and how does a mutex differ from a semaphore?</summary>
+          <p class="answer">A mutex is a lock that gives one thread exclusive access to a resource. Only the thread that locks the mutex can unlock it. A semaphore is a counter that controls access to a limited pool of resources, and any thread can signal a semaphore.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">114.</span> What is the difference between concurrency and parallelism?</summary>
+          <p class="answer">Concurrency means that a system manages multiple tasks. The system switches between the tasks to make progress on all of them. Parallelism means that a system executes multiple tasks at the exact same time on different processors. A concurrent system can run on a single processor, but a parallel system requires multiple processors.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">115.</span> How does an event loop work?</summary>
+          <p class="answer">An event loop is a continuous process that waits for and dispatches events. It puts new events in a queue and processes them one by one. If an event requires a long operation, the event loop delegates the task and continues to the next event in the queue.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">116.</span> What is the difference between blocking I/O and non-blocking I/O?</summary>
+          <p class="answer">Blocking I/O stops the current thread until the input or output operation completes. The thread does no work during this wait. Non-blocking I/O allows the thread to start the operation and immediately continue with other tasks. The thread checks the result later or receives a notification.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">117.</span> What is the difference between synchronous code and asynchronous code?</summary>
+          <p class="answer">Synchronous code executes instructions one after another in a strict sequence. Each instruction must finish before the next instruction starts. Asynchronous code starts an operation and moves to the next instruction before the operation finishes. A callback or promise handles the result of the asynchronous operation later.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">118.</span> What is a thread pool, and why does a server use one?</summary>
+          <p class="answer">A thread pool is a group of pre-created worker threads that wait for tasks. A server uses a thread pool to avoid the high cost of thread creation. The server assigns incoming requests to available threads in the pool. This improves performance and manages resources efficiently.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">119.</span> How do you share state safely between two threads?</summary>
+          <p class="answer">You share state safely when you use synchronization mechanisms to prevent simultaneous access. You can use a mutex to lock the shared data before a thread reads or writes it. Alternatively, you can use atomic operations or thread-safe data structures that handle the synchronization internally.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">120.</span> What is optimistic locking, and how does it differ from pessimistic locking?</summary>
+          <p class="answer">Optimistic locking allows multiple threads to read a record. It checks for conflicts only when a thread attempts to save changes. Pessimistic locking locks the record as soon as a thread reads it. This prevents other threads from accessing the record until the lock releases.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">121.</span> What is a livelock, and how does a livelock differ from a deadlock?</summary>
+          <p class="answer">A livelock is a situation where two threads continuously change their states in response to each other. Neither thread makes progress. In a deadlock, the threads stop completely and wait. In a livelock, the threads remain active but cannot finish their tasks.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-data-structures-and-algorithms">
+      <h2>Data Structures and Algorithms</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">122.</span> What is the time complexity of a hash table lookup, and when does it degrade?</summary>
+          <p class="answer">A hash table lookup has an average time complexity of O(1). The lookup time degrades to O(N) when many hash collisions occur. A bad hash function causes these collisions.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">123.</span> What is the difference between an array and a linked list?</summary>
+          <p class="answer">An array stores elements in contiguous memory blocks. A linked list stores elements in separate memory nodes. Each node points to the next node. Arrays provide fast read access, but linked lists provide fast insert operations.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">124.</span> What is a hash collision, and how do you resolve one?</summary>
+          <p class="answer">A hash collision occurs when a hash function maps two different keys to the same index. You resolve a collision with chaining or open addressing. Chaining stores multiple elements in a linked list at the same index.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">125.</span> When do you use a queue instead of a stack?</summary>
+          <p class="answer">You use a queue when you need a First-In-First-Out data structure. A queue processes items in the exact order that they arrive. You use a stack when you need a Last-In-First-Out structure for nested operations.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">126.</span> What is a binary search tree, and what is the time complexity of a lookup?</summary>
+          <p class="answer">A binary search tree is a node-based data structure. Each node has a maximum of two child nodes. The left child contains a smaller value, and the right child contains a larger value. A lookup has an average time complexity of O(log N).</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">127.</span> What is Big O notation, and why does it matter for backend code?</summary>
+          <p class="answer">Big O notation describes the performance of an algorithm. It shows how time and memory requirements increase for large datasets. This matters for backend applications because inefficient algorithms cause slow HTTP responses.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">128.</span> How do you find a cycle in a linked list?</summary>
+          <p class="answer">You find a cycle with the Floyd algorithm. You create a slow pointer that moves one node per step. You create a fast pointer that moves two nodes per step. A cycle exists if the fast pointer meets the slow pointer.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">129.</span> What is the difference between breadth-first search and depth-first search?</summary>
+          <p class="answer">A breadth-first search explores a graph level by level. A depth-first search explores a graph branch by branch until it reaches the end. You use a breadth-first search to find the shortest path. You use a depth-first search to explore all paths.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">130.</span> How do you reverse a linked list?</summary>
+          <p class="answer">You read each node in the linked list. You store the next node in a temporary variable. You change the next pointer of the current node to point to the previous node. You update the head pointer to the last node.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">131.</span> What is a trie, and when do you use one?</summary>
+          <p class="answer">A trie is a tree data structure that stores strings character by character. Each node represents one character of a string. You use a trie for autocomplete features, spell checkers, and fast prefix lookups.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">132.</span> How do you detect duplicate entries in a large dataset efficiently?</summary>
+          <p class="answer">You use a hash set to detect duplicate entries. You read each element in the dataset. You check if the element exists in the hash set. The hash set provides an O(1) time complexity for this check.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">133.</span> What is memoization, and how does it speed up a recursive function?</summary>
+          <p class="answer">Memoization is an optimization technique that stores the results of function calls. A recursive function checks the cache before it computes a result. The function computes each unique result only one time.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-object-oriented-design-and-design-patterns">
+      <h2>Object-Oriented Design and Design Patterns</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">134.</span> What are the four pillars of object-oriented programming?</summary>
+          <p class="answer">Encapsulation hides the internal data of an object. Abstraction shows only the essential features to the user. Inheritance copies properties from an existing class to a new class. Polymorphism lets different classes use the same method name.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">135.</span> What is the difference between an interface and an abstract class?</summary>
+          <p class="answer">An interface defines a contract with empty method signatures. A class implements multiple interfaces to provide the behavior. An abstract class provides both empty methods and implemented methods. A subclass extends only one abstract class to inherit this shared behavior.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">136.</span> What is the singleton pattern, and what problem does it solve?</summary>
+          <p class="answer">The singleton pattern restricts a class to exactly one instance. The pattern provides a global access point to this single instance. This design prevents the creation of multiple database connections. It solves the problem of shared state coordination across an application.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">137.</span> What is the factory pattern, and when do you use one?</summary>
+          <p class="answer">The factory pattern uses a separate method to create objects. The pattern hides the creation logic from the calling code. You use this pattern when your application creates different object types based on input data. This approach makes the code easy to update when you add new classes.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">138.</span> What is the repository pattern, and why does it help with testing?</summary>
+          <p class="answer">The repository pattern separates the data access logic from the business logic. The pattern provides a simple interface to read and write objects. This separation helps with testing because you easily replace the real database with a fake database. The fake database makes the unit tests run fast.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">139.</span> What is dependency injection, and why does it help with testing?</summary>
+          <p class="answer">Dependency injection passes required objects into a class through a constructor or a method. The class does not create its own dependencies. This approach helps with testing because you inject mock objects into the target class. The mock objects isolate the logic from external systems.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">140.</span> What is the difference between composition and inheritance?</summary>
+          <p class="answer">Inheritance creates a new class that represents a specific type of an existing parent class. The new class copies all behaviors from the parent class. Composition builds a new class that contains instances of other objects. Composition provides more flexibility because the program changes the behavior at runtime.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">141.</span> What is the observer pattern, and where do you see it in a backend system?</summary>
+          <p class="answer">The observer pattern lets a subject object notify a list of dependents about state changes. The subject object does not know the details of the dependent objects. You see this pattern in backend systems that process events. Message brokers use this pattern to send data updates to multiple subscriber services.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">142.</span> What is the SOLID set of design principles?</summary>
+          <p class="answer">SOLID is a set of five object-oriented design principles. The single responsibility principle states that a class performs only one job. The open-closed principle means that developers extend classes without changes to the original code. Liskov substitution, interface segregation, and dependency inversion complete the set to make systems easy to maintain.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">143.</span> What is the difference between a strategy pattern and a template method pattern?</summary>
+          <p class="answer">The strategy pattern defines a family of interchangeable algorithms. This pattern lets a class switch the entire algorithm at runtime through object composition. The template method pattern defines the skeleton of an algorithm in a base class. Subclasses override specific steps of the algorithm through inheritance.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-security">
+      <h2>Security</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">144.</span> What is SQL injection, and how do you prevent it?</summary>
+          <p class="answer">SQL injection occurs when an attacker sends malicious SQL commands to a database. You prevent this attack when you use parameterized queries or prepared statements. These methods separate the user input from the SQL command logic.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">145.</span> What is cross-site scripting, and how do you prevent it?</summary>
+          <p class="answer">Cross-site scripting occurs when an attacker injects malicious JavaScript into a web page. You prevent this attack when you sanitize all user input. You also prevent it when you set the Content-Security-Policy HTTP header. This header stops the execution of unauthorized scripts.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">146.</span> What is cross-site request forgery, and how do you prevent it?</summary>
+          <p class="answer">Cross-site request forgery forces an authenticated user to send an unwanted request to a web application. You prevent this attack when you require an anti-CSRF token for each state-changing request. The server validates this token before it processes the request.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">147.</span> What is the principle of least privilege?</summary>
+          <p class="answer">The principle of least privilege requires a system to give users only the necessary access rights. A user receives only the permissions that the user needs for a specific task. This approach limits the damage from a security breach.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">148.</span> What is rate limiting, and why does an API need it?</summary>
+          <p class="answer">Rate limiting restricts the number of requests that a client sends to an API. The API server enforces a maximum limit for a specific time period. An API needs rate limiting to stop denial-of-service attacks and to prevent server overload.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">149.</span> What is CORS, and why does a browser enforce it?</summary>
+          <p class="answer">CORS is a security mechanism that allows a web application to request resources from a different domain. A web browser enforces CORS to stop malicious websites from reading sensitive data. The browser checks the HTTP headers to verify that the target server permits the request.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">150.</span> How do you store and rotate a secret such as an API key?</summary>
+          <p class="answer">You store a secret in a dedicated secrets management system. You never store a secret in the source code. You rotate a secret when you generate a new key and update the application configuration. You then revoke the old key.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">151.</span> What is the difference between symmetric encryption and asymmetric encryption?</summary>
+          <p class="answer">Symmetric encryption uses the same key to encrypt and decrypt the data. This method is fast but requires a secure key exchange. Asymmetric encryption uses a public key to encrypt the data and a private key to decrypt the data. This method secures the communication channel between two unknown parties.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">152.</span> What is TLS, and what problem does TLS solve?</summary>
+          <p class="answer">TLS is a cryptographic protocol that provides secure communication over a network. TLS encrypts the data that travels between a client and a server. This encryption solves the problem of data interception. The protocol also ensures data integrity.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">153.</span> What is a man-in-the-middle attack, and how does TLS prevent one?</summary>
+          <p class="answer">A man-in-the-middle attack occurs when an attacker intercepts the communication between two systems. The attacker secretly reads or alters the transmitted data. TLS prevents this attack because it encrypts the data. TLS also uses digital certificates to authenticate the server identity.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">154.</span> How do you validate and sanitize user input on a backend service?</summary>
+          <p class="answer">You validate user input when you check that the data matches an expected format. You use a validation library to enforce these rules. You sanitize the input when you remove or escape dangerous characters. This process prevents injection attacks.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">155.</span> What is the OWASP Top 10, and why does a backend team track it?</summary>
+          <p class="answer">The OWASP Top 10 is a standard document for web application security. It describes the ten most critical security risks. A backend team tracks this list to understand common vulnerabilities. The team uses this knowledge to write secure code and to prevent data breaches.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-testing-and-debugging">
+      <h2>Testing and Debugging</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">156.</span> What is the difference between a unit test and an integration test?</summary>
+          <p class="answer">A unit test checks one isolated function or class. An integration test checks how multiple components operate together. Developers use unit tests for fast feedback. They use integration tests to find errors in the connections between modules.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">157.</span> What is a mock, and when do you use one instead of a real dependency?</summary>
+          <p class="answer">A mock is a fake object that simulates the behavior of a real component. Developers use a mock when the real dependency is slow, expensive, or difficult to configure. The mock isolates the tested code from external systems like databases. This isolation makes the test fast and reliable.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">158.</span> How do you test a service that calls an external API?</summary>
+          <p class="answer">You replace the external API with a mock server or a stub. This mock server returns predefined HTTP responses. The test sends a request to the mock server and verifies the behavior of the service. This method stops test failures when the network fails.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">159.</span> What is test coverage, and why is high coverage not the same as a well-tested system?</summary>
+          <p class="answer">Test coverage measures the percentage of code lines that execute during a test suite. High coverage does not guarantee software quality. A test can execute a line of code but fail to verify the correct output. A well-tested system requires tests that check different inputs and edge cases.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">160.</span> How do you debug a production issue where an API fails only sometimes?</summary>
+          <p class="answer">You examine the application logs and the error tracking software to find the context of the failure. You look for patterns in the time, the user data, or the input parameters. Then, you analyze the metrics for resource limits like memory or connections to the database. You use this data to reproduce the specific error condition in a local environment.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">161.</span> How do you reproduce a bug that only appears under load?</summary>
+          <p class="answer">You use software for load testing to send many concurrent requests to a test server. You monitor the CPU, the memory, and the network usage during the test. The heavy load forces race conditions or resource limits to occur. You analyze the logs and the metrics to find the cause of the bug.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">162.</span> What is a flaky test, and how do you fix one?</summary>
+          <p class="answer">A flaky test is a test that passes and fails randomly without code changes. This instability often comes from race conditions, time dependencies, or shared state. You fix a flaky test when you isolate the test data and remove sleep statements. You ensure that the test waits for deterministic events instead of fixed time periods.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">163.</span> What is the difference between a smoke test and a regression test?</summary>
+          <p class="answer">A smoke test is a fast check to verify that the main functions operate correctly. Developers run smoke tests after a deployment to ensure that the application starts. A regression test is a comprehensive check of all software features. Developers run regression tests to confirm that new code does not break existing functions.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">164.</span> How do you test database migrations safely?</summary>
+          <p class="answer">You create a copy of the schema of the production database and a small set of data. You run the migration script against this test database. You verify that the script executes without errors and that the data transforms correctly. You also test the rollback script to ensure that you can revert the changes.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">165.</span> What is contract testing, and why does it help across microservices?</summary>
+          <p class="answer">Contract testing checks the messages that pass between different microservices. It defines a contract about the format of the request and the response. Each service tests its code against this contract independently. This process ensures that changes in one service do not break the communication with other services.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-devops-deployment-and-monitoring">
+      <h2>DevOps, Deployment and Monitoring</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">166.</span> What is the difference between continuous integration and continuous deployment?</summary>
+          <p class="answer">Continuous integration builds and tests new code when a developer saves it in the repository. Continuous deployment releases this code to the production environment. These processes decrease the time to deliver new features.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">167.</span> What is a Docker container, and how does a container differ from a virtual machine?</summary>
+          <p class="answer">A Docker container packages an application and its dependencies into one executable unit. A container shares the operating system kernel with the host machine. A virtual machine runs a complete operating system. Thus, a container uses fewer system resources and starts faster.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">168.</span> What is the difference between a blue-green deployment and a canary deployment?</summary>
+          <p class="answer">A blue-green deployment uses two identical environments. The router sends all user traffic to the new environment at once. A canary deployment releases the new software to a small percentage of users first. This strategy limits the effect of a software defect.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">169.</span> How do you roll back a bad deployment?</summary>
+          <p class="answer">You change the load balancer configuration to route traffic to the previous version. Then, you stop the server instances that run the bad version. A continuous deployment system does these steps automatically when a health check fails.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">170.</span> What is a health check endpoint, and why does a load balancer call one?</summary>
+          <p class="answer">A health check endpoint is an HTTP path that reports the status of an application. A load balancer calls this endpoint frequently. If the endpoint returns an error, the load balancer stops traffic to that server instance. This prevents failures for users.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">171.</span> What is the difference between a log, a metric, and a trace?</summary>
+          <p class="answer">A log records a specific event at a specific time. A metric aggregates data over an interval, such as the number of requests each minute. A trace records the path of a single request across multiple services.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">172.</span> How do you monitor a production service for latency and error rate?</summary>
+          <p class="answer">You install a software agent on each application server. The application records the duration and status code of each HTTP response. A central system collects these metrics and shows them on a dashboard.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">173.</span> What is distributed tracing, and why does a microservice system need it?</summary>
+          <p class="answer">Distributed tracing assigns a unique identifier to an initial user request. Each service passes this identifier to subsequent downstream services. The central tracing system collects the performance data for each step. This data helps a developer find the cause of a slow request in a complex system.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">174.</span> What is infrastructure as code, and why does a team adopt it?</summary>
+          <p class="answer">Infrastructure as code uses text files to define servers, databases, and networks. A tool reads these files and provisions the resources automatically. A team adopts this practice to create identical environments and prevent manual configuration errors.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">175.</span> How do you manage configuration and secrets across environments?</summary>
+          <p class="answer">You store configuration values in environment variables on the application server. You store passwords and API keys in a secure secret manager. The application reads these values from the secret manager when it starts. This practice keeps sensitive data out of the code repository.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">176.</span> What is a feature flag, and why does it help with a risky release?</summary>
+          <p class="answer">A feature flag is a configuration value that enables or disables code in production. A risky release uses a flag to hide a new feature from most users. If an error occurs, an engineer changes the flag value to disable the feature immediately. This action stops the error without a new deployment.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">177.</span> How do you plan capacity for a service before a large launch?</summary>
+          <p class="answer">You create a load test that simulates the expected user traffic. You run the test against a replica of the production environment. You measure the CPU use and memory use of the servers during the test. This data shows you how many servers the launch requires.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">178.</span> How do you set up alerting so an on-call engineer learns about an outage quickly?</summary>
+          <p class="answer">You define a threshold for the error rate or latency in the monitoring system. The system measures the metric continuously. If the metric exceeds the threshold, the system triggers an alert. An external service sends a notification to the mobile device of the on-call engineer.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-language-and-framework-fundamentals">
+      <h2>Language and Framework Fundamentals</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">179.</span> How does the Node.js event loop handle a blocking operation?</summary>
+          <p class="answer">The Node.js event loop runs on a single thread and processes callbacks from a queue. When the application starts a blocking operation (such as file I/O or DNS lookup), Node.js sends that work to a thread pool managed by libuv. The worker thread completes the operation and puts the callback onto the event queue. The event loop then picks up the callback on its next cycle and runs it on the main thread.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">180.</span> What is the difference between a callback, a promise, and async/await?</summary>
+          <p class="answer">A callback is a function that you pass to another function; the receiver calls it after the asynchronous work finishes. A promise is an object that represents a future result; you attach .then() and .catch() handlers to it instead of nesting callbacks. The async/await syntax lets you write promise-based code in a sequential style: the await keyword pauses the function until the promise resolves, and the runtime resumes it with the resolved value.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">181.</span> What is garbage collection, and how does it reclaim memory?</summary>
+          <p class="answer">Garbage collection is an automatic process that finds objects the program no longer references and frees their memory. Most modern runtimes (V8, JVM, CPython) use a generational approach: they allocate new objects in a young generation and promote long-lived objects to an old generation. The collector traces references from root objects (stack variables, global variables) and marks all reachable objects. It then reclaims the memory of every unreachable object.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">182.</span> What is the difference between the Global Interpreter Lock in Python and true multithreading?</summary>
+          <p class="answer">The Global Interpreter Lock (GIL) in CPython allows only one thread to execute Python bytecode at a time. Multiple threads can exist, but the GIL serializes their access to the interpreter. True multithreading lets threads run on separate CPU cores at the same time without a shared lock. To achieve CPU-parallel work in Python, you use the multiprocessing module or a runtime without a GIL (such as a C extension that releases the GIL).</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">183.</span> What is the difference between Django, Flask, and FastAPI?</summary>
+          <p class="answer">Django is a full-stack framework that includes an ORM, an admin panel, authentication, and templating out of the box. Flask is a micro-framework that provides routing and request handling but leaves other choices (ORM, templating) to the developer. FastAPI is an asynchronous framework built on Starlette and Pydantic; it validates request data with Python type hints and generates OpenAPI documentation automatically.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">184.</span> What is middleware, and how does a request pass through a middleware chain?</summary>
+          <p class="answer">Middleware is a layer of code that sits between the server and the application handler. Each middleware component receives the request, performs work (such as logging, authentication, or header modification), and then passes the request to the next component in the chain. After the final handler produces a response, the response travels back through the middleware layers in reverse order. Each layer can also modify the response before it reaches the client.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">185.</span> What is an ORM, and what problem does an ORM solve?</summary>
+          <p class="answer">An ORM (Object-Relational Mapper) maps database tables to classes and rows to objects in your application code. It lets developers query and manipulate data with the programming language instead of raw SQL strings. The ORM solves the mismatch between relational data (tables, rows, foreign keys) and object-oriented data (classes, instances, references). It also handles connection management, parameterized queries, and schema migrations.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">186.</span> What is the N+1 query problem, and how do you fix it?</summary>
+          <p class="answer">The N+1 query problem occurs when the application runs one query to fetch a list of N parent records and then runs one additional query per parent to fetch its related records. This produces N+1 total queries instead of a small constant number. You fix it with eager loading: use a JOIN query or an IN clause to fetch all related records in one or two queries. Most ORMs provide an API for this, such as select_related in Django or joinedload in SQLAlchemy.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">187.</span> What is the difference between a HashMap and a ConcurrentHashMap?</summary>
+          <p class="answer">A HashMap in Java is not thread-safe: concurrent reads and writes from multiple threads can corrupt its internal structure. A ConcurrentHashMap allows safe concurrent access without a single global lock. It divides the map into segments (or uses CAS operations in Java 8+) so that multiple threads can read and write to different segments at the same time. Use ConcurrentHashMap when multiple threads share one map; use HashMap when only one thread accesses it.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">188.</span> What is dependency injection in a framework such as Spring?</summary>
+          <p class="answer">Dependency injection (DI) is a pattern where a framework supplies an object&#x27;s dependencies instead of the object creating them itself. In Spring, you declare dependencies through constructor parameters, setter methods, or annotations such as @Autowired. The Spring IoC container creates the required beans at startup and injects them into each dependent object. This decouples components and makes them easier to test because you can substitute mock implementations.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">189.</span> How does a WSGI or ASGI server serve a Python web application?</summary>
+          <p class="answer">A WSGI server (such as Gunicorn) calls the application&#x27;s callable with an environment dictionary and a start_response callback for each HTTP request. The application returns the response body as an iterable of byte strings. An ASGI server (such as Uvicorn) uses an asynchronous protocol instead: it calls the application with scope, receive, and send coroutines so the application can handle many connections concurrently on a single thread. WSGI handles one request per worker thread, while ASGI supports long-lived connections such as WebSockets.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">190.</span> What is the difference between a synchronous framework and an asynchronous framework?</summary>
+          <p class="answer">A synchronous framework processes each request on a dedicated thread or process; the thread blocks while it waits for I/O (database queries, HTTP calls). An asynchronous framework uses an event loop and non-blocking I/O so that a single thread can handle many requests concurrently. The asynchronous approach uses less memory per connection and handles high-concurrency workloads more efficiently. However, all I/O calls in the application must use non-blocking libraries for the benefit to apply.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-behavioral-and-process">
+      <h2>Behavioral and Process</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">191.</span> Describe a time you disagreed with a technical decision. What did you do?</summary>
+          <p class="answer">You use the situation-task-action-result framework to structure your answer. You describe the technical problem and your proposed solution. You explain how you discussed the disagreement with your team. The interviewer looks for your communication skills and your respect for team decisions.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">192.</span> Describe a time you shipped a solution that traded correctness for a deadline. What was the outcome?</summary>
+          <p class="answer">You explain the business requirement that caused the strict deadline. You describe the technical debt that you introduced. You detail the plan that you used to fix the debt later. The interviewer wants to see your pragmatic approach to business goals.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">193.</span> Describe a production incident you handled. What was the root cause?</summary>
+          <p class="answer">You use the situation-task-action-result framework to explain the incident. You describe the steps that you took to stop the problem. You explain the root cause and the permanent fix that you implemented. The interviewer evaluates your troubleshooting skills under pressure.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">194.</span> How do you decide between a quick fix and a proper fix under time pressure?</summary>
+          <p class="answer">You explain how you evaluate the impact of the bug on the users. You describe how you estimate the time to write a proper fix. You discuss how you communicate the risk to the product manager. The interviewer looks for your analytical skills and business awareness.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">195.</span> How do you approach a code review for a teammate&#x27;s pull request?</summary>
+          <p class="answer">You state that you read the issue ticket before you read the code. You explain how you check the code for logic errors and missing tests. You describe how you write polite and constructive comments. The interviewer wants to see your collaboration skills and attention to detail.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">196.</span> How do you onboard yourself into a codebase you did not write?</summary>
+          <p class="answer">You explain how you read the documentation and the system architecture diagrams. You describe how you run the test suite to understand the code behavior. You mention that you ask specific questions to the senior developers. The interviewer looks for your independence and learning strategy.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">197.</span> Describe a time you improved the performance of an existing system.</summary>
+          <p class="answer">You define the performance metric that you wanted to improve. You explain the software tools that you used to find the bottleneck. You describe the code changes that you made and the final performance metric. The interviewer evaluates your technical depth and optimization skills.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">198.</span> How do you communicate a technical trade-off to a non-technical stakeholder?</summary>
+          <p class="answer">You explain how you avoid technical jargon when you speak. You describe the trade-off in terms of cost, time, and user experience. You mention how you provide clear options to the stakeholder. The interviewer looks for your empathy and communication skills.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">199.</span> How do you prioritize a backlog of bugs against a backlog of new features?</summary>
+          <p class="answer">You explain how you categorize the bugs by their severity and frequency. You describe how you discuss the business value of new features with the product manager. You detail how you allocate time to fix bugs. The interviewer wants to see your time management skills.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">200.</span> Describe a time you mentored a junior engineer on your team.</summary>
+          <p class="answer">You describe the technical topic that the junior engineer needed to learn. You explain the resources and the exercises that you provided. You discuss how you reviewed their code and gave constructive feedback. The interviewer evaluates your leadership skills and your patience.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+  <footer>
+    <p>Total questions: 200. Compiled from common backend, database, system
+    design, and API interview question lists. Click a question to show its
+    answer. Click it again to hide the answer.</p>
+  </footer>
+</main>
+</body>
+</html>

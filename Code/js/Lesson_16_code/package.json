@@ -1,0 +1,16 @@
+{
+  "name": "browser-rules-ts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lesson 16 — rules the browser enforces, in TypeScript",
+  "type": "module",
+  "scripts": {
+    "api": "node src/api.ts",
+    "static-site": "node src/staticSite.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
+  }
+}

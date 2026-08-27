@@ -1,0 +1,5 @@
+html { background-color: #14141a; color: #e6e3da; }
+body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
+button { background: #262633; color: #e6e3da; border: 1px solid #3a3a4a; padding: 0.5rem 1rem; margin-right: 0.5rem; cursor: pointer; }
+pre { background: #1b1b23; padding: 0.75rem; overflow-x: auto; }
+h1 { font-size: 1.1rem; }

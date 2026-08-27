@@ -42,6 +42,7 @@ figure from memory.
 | 13 | ~~[Version control](./lessons/0013-version-control.html)~~ | A commit is a snapshot with a parent. History is a graph, not a list. | [`Code/Lesson_13_code/`](./Code/Lesson_13_code/) (Python), [`Code/js/Lesson_13_code/`](./Code/js/Lesson_13_code/) (TypeScript) |
 | 14 | ~~[How a request finds your server](./lessons/0014-how-a-request-finds-your-server.html)~~ | A name becomes an address through caches you do not control. | [`Code/Lesson_14_code/`](./Code/Lesson_14_code/) (Python), [`Code/js/Lesson_14_code/`](./Code/js/Lesson_14_code/) (TypeScript) |
 | 15 | ~~[The edge: reverse proxy and TLS](./lessons/0015-the-edge-reverse-proxy-and-tls.html)~~ | The process that answers port 443 is not your application. | [`Code/Lesson_15_code/`](./Code/Lesson_15_code/) (Python), [`Code/js/Lesson_15_code/`](./Code/js/Lesson_15_code/) (TypeScript) |
+| 16 | ~~[Rules the browser enforces](./lessons/0016-rules-the-browser-enforces.html)~~ | CORS and CSP are instructions to the browser. They protect the user, not the server. | [`Code/Lesson_16_code/`](./Code/Lesson_16_code/) (Python), [`Code/js/Lesson_16_code/`](./Code/js/Lesson_16_code/) (TypeScript) |
 
 What each finished lesson proved:
 
@@ -97,11 +98,23 @@ What each finished lesson proved:
   before any HTTP request exists, restore the client's real address with
   `X-Forwarded-For` after termination erases it, and reject an oversize body
   with `413` before the origin ever sees the connection.
+- **16** The failure with no error message a browser will give your code:
+  `fetch()` rejects with a plain `TypeError`, while the server's own log
+  shows `200`. curl gets the same response cleanly, because curl enforces
+  no same-origin policy. Second failure: a login cookie set across a
+  cross-site response is never stored at all — not sent-but-withheld,
+  never stored — because it carries no `SameSite` attribute and defaults
+  to `Lax`, and `SameSite=None` set instead is dropped too, for lacking
+  `Secure`. Third: a page's own `Content-Security-Policy: default-src
+  'self'` blocks an inline `<script>` and, independently, blocks the
+  page's own `fetch()` to another origin, even when that origin's CORS
+  headers are correct — two separate mechanisms, enforced by the same
+  browser, either one able to block what the other allows.
+
 ## Next
 
 | # | Lesson | The one idea | Planned code |
 | --- | --- | --- | --- |
-| 16 | Rules the browser enforces | CORS and CSP are instructions to the browser. They protect the user, not the server. | `Code/Lesson_16_code/`, `Code/js/Lesson_16_code/` |
 | 17 | Attacking your own API | Most breaches are authorization bugs, not broken cryptography. | `Code/Lesson_17_code/`, `Code/js/Lesson_17_code/` |
 | 18 | Delegated identity | OAuth grants access. OpenID Connect proves identity. They are not the same token. | `Code/Lesson_18_code/`, `Code/js/Lesson_18_code/` |
 | 19 | Other API shapes | The shape of the API decides who writes the query: you or the client. | `Code/Lesson_19_code/`, `Code/js/Lesson_19_code/` |
@@ -114,13 +127,8 @@ What each finished lesson proved:
 | 26 | Containers and orchestration | An orchestrator is a control loop that keeps a declared state true. | `Code/Lesson_26_code/`, `Code/js/Lesson_26_code/` |
 | 27 | Splitting the monolith | A split distributes the work and the failures with it. | `Code/Lesson_27_code/`, `Code/js/Lesson_27_code/` |
 | 28 | Design and architecture | A pattern is a name for pressure you already feel in the code. | `Code/Lesson_28_code/`, `Code/js/Lesson_28_code/` |
-
 ### Details for planned lessons
 
-16. **Rules the browser enforces.** Covers CORS, CSP, and cookies (sections 8
-    & 9). Same-origin policy, preflight requests, `SameSite`, `HttpOnly`,
-    `Secure`. Observable failure: `http://localhost:5173` calls API, server logs
-    `200`, browser drops the response due to CORS policy.
 17. **Attacking your own API.** Covers OWASP risks & server security (section 8).
     Broken Object Level Authorization (BOLA), mass assignment, injection, rate
     limiting. Observable failure: changing an ID in the path allows reading

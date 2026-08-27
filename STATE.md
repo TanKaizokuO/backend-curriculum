@@ -6,7 +6,7 @@ the append-only record of what each lesson covered and verified; `NOTES.md` is
 the working scratchpad and `learning-records/` holds decisions that must not be
 silently reversed.
 
-Last updated: **2026-08-26** (end of Session 15, agent session — no learner reply captured this session; see Open threads).
+Last updated: **2026-08-26** (end of Session 16, agent session — no learner reply captured this session; see Open threads).
 
 ---
 
@@ -25,15 +25,15 @@ Do not restate the mission back to the learner — they wrote it. Pick up and te
 
 | | |
 | --- | --- |
-| Sessions completed | 15 |
-| Lessons shipped | `0001-a-server-is-bytes-on-a-socket.html`, `0002-a-server-without-a-framework.html`, `0003-fastapi.html`, `0004-relational-modelling-and-sql.html`, `0005-why-is-this-slow.html`, `0006-concurrency-and-the-orm.html`, `0007-deployment.html`, `0008-authentication.html`, `0009-testing-and-ci.html`, `0010-caching.html`, `0011-observability.html`, `0012-scaling.html`, `0013-version-control.html`, `0014-how-a-request-finds-your-server.html`, `0015-the-edge-reverse-proxy-and-tls.html` (Python + TypeScript from Lesson 8 on; Lesson 13's TypeScript twin repeats only the merge conflict) |
+| Sessions completed | 16 |
+| Lessons shipped | `0001-a-server-is-bytes-on-a-socket.html`, `0002-a-server-without-a-framework.html`, `0003-fastapi.html`, `0004-relational-modelling-and-sql.html`, `0005-why-is-this-slow.html`, `0006-concurrency-and-the-orm.html`, `0007-deployment.html`, `0008-authentication.html`, `0009-testing-and-ci.html`, `0010-caching.html`, `0011-observability.html`, `0012-scaling.html`, `0013-version-control.html`, `0014-how-a-request-finds-your-server.html`, `0015-the-edge-reverse-proxy-and-tls.html`, `0016-rules-the-browser-enforces.html` (Python + TypeScript from Lesson 8 on; Lesson 13's TypeScript twin repeats only the merge conflict) |
 | Course order | `lesson_plan.md` — the order, the one idea of each lesson, and what each one proved. Update it first when the plan changes. |
 | Reference docs | `reference/http-message-anatomy.html`, `reference/reading-a-query-plan.html` |
 | Reference PDFs | `reference-pdfs/` — ASGI spec, RFC 9110 Methods, PEP 3333 key points, HTTP Messages Reference (`HTTP_Messages_Reference.pdf`) |
 | Lesson code | `Code/Lesson_1_code/`, `Code/Lesson_2_code/`, `Code/Lesson_4_code/` (schema migrations, `migrate.py`, DB-backed `main.py`, injection demo), `Code/Lesson_5_code/` (`seed.sql`, migration 0003, `main.py` with search + a deliberate N+1 endpoint, `n_plus_1.py`, `slow_link.py`), `Code/Lesson_6_code/` (migration 0004, `lost_update.py`, `orm_models.py`, `orm_n_plus_1.py`, `orm_increment.py`, `main.py` with the visit counter), `Code/Lesson_7_code/` (the deployable project: `config.py`, `main.py` with `/healthz`, `migrate.py`, `migrations/0001`–`0004`, `Dockerfile`, `.dockerignore`, `compose.yaml`, `.env.example`, `render.yaml`, `README.md`, and `naive/` for the four failures), `Code/Lesson_8_code/` + `Code/js/Lesson_8_code/` (accounts, in both languag…
 | Learning records | LR-0001 (language anchor: Python first), LR-0002 (both languages from Lesson 8) |
-| Glossary | `GLOSSARY.md` — Lesson 11 added cardinality, counter, histogram, request id, span, structured log, trace; Lesson 12 added atomic, connection pool, load balancer, rate limiting, read replica, scaling; Lesson 13 added blob, branch, commit, force-push, merge conflict, rebase, reflog; Lesson 14 added authoritative server, CNAME, recursive resolver, root server, zone; Lesson 15 added reverse proxy, self-signed certificate, SNI, TLS termination, X-Forwarded-For |
-| Next on the spine | **Lesson 16: rules the browser enforces**, in both languages. `lesson_plan.md`'s one idea: "CORS and CSP are instructions to the browser. They protect the user, not the server." No detailed spec written yet — see `## Next lesson: spec` below. |
+| Glossary | `GLOSSARY.md` — Lesson 11 added cardinality, counter, histogram, request id, span, structured log, trace; Lesson 12 added atomic, connection pool, load balancer, rate limiting, read replica, scaling; Lesson 13 added blob, branch, commit, force-push, merge conflict, rebase, reflog; Lesson 14 added authoritative server, CNAME, recursive resolver, root server, zone; Lesson 15 added reverse proxy, self-signed certificate, SNI, TLS termination, X-Forwarded-For; Lesson 16 added CORS, CSP, HttpOnly, origin, preflight request, same-origin policy, SameSite, site |
+| Next on the spine | **Lesson 17: attacking your own API**, in both languages. `lesson_plan.md`'s one idea: "Most breaches are authorization bugs, not broken cryptography." No detailed spec written yet — see `## Next lesson: spec` below. |
 
 ---
 
@@ -140,30 +140,39 @@ Do not restate the mission back to the learner — they wrote it. Pick up and te
   hand before naming Nginx land as useful or as unnecessary detail given the
   learner has no live URL to put a real edge in front of (see the
   no-live-URL thread above).
+- **Lesson 16 shipped with no learner reply in session.** Session 16 was
+  agent-run, the same as Sessions 9–15. Ask concretely before Lesson 17:
+  did they run `Code/Lesson_16_code/demo.sh`, did they open
+  `static/index.html` in their own browser and read the console errors
+  themselves, and did switching the API to a second loopback address
+  (`127.0.0.2`) to get a genuine cross-site cookie failure land as a
+  useful trick or as an odd detour from anything they would meet in a
+  real deployment.
 
 ---
 
 ## Next lesson: spec
 
-### Lesson 0016 — rules the browser enforces
+### Lesson 0017 — attacking your own API
 
-No detailed spec written yet. From `lesson_plan.md`'s one idea: "CORS and CSP
-are instructions to the browser. They protect the user, not the server." The
-plan's detail: covers CORS, CSP, and cookies (sections 8 & 9) — same-origin
-policy, preflight requests, `SameSite`, `HttpOnly`, `Secure`. Observable
-failure: `http://localhost:5173` calls the API, the server logs `200`, and
-the browser drops the response due to CORS policy. Write the full spec — the
-observable failure to open with, the build order, and the sources to fetch —
-at the start of the session that ships it.
+No detailed spec written yet. From `lesson_plan.md`'s one idea: "Most
+breaches are authorization bugs, not broken cryptography." The plan's
+detail: covers OWASP risks and server security (section 8) — Broken
+Object Level Authorization (BOLA), mass assignment, injection, rate
+limiting. Observable failure: changing an ID in the path allows reading
+another user's private data. Write the full spec — the observable
+failure to open with, the build order, and the sources to fetch — at the
+start of the session that ships it.
 
 ### Carry-over rules
 
-Lesson 15 put `tls_proxy.py` / `nginx.conf` in front of `origin.py`, a
-stand-in for the Lesson 12 / 14 API, rather than extending that API's own
-`main.py` — the proxy's job is identical regardless of which origin sits
-behind it, and a stand-in keeps the demo free of a database dependency.
-Lesson 16's CORS failure needs a real browser, not curl: `fetch()` enforces
-the same-origin policy client-side, and curl does not. Plan a lightweight
-static page served from one origin, calling the API on another, and confirm
-the block happens in a real browser's console before writing the lesson.
-Keep both languages in one page unless the learner asks for a split.
+Lesson 16 needed a genuine cross-site pair to show a `SameSite` cookie
+failure, not just two ports on `127.0.0.1` — CORS enforces per *origin*
+(port included), cookies enforce per *site* (port ignored). The trick:
+bind the API to a second loopback address, `127.0.0.2`, still no
+`/etc/hosts` edit needed. Lesson 17's BOLA failure needs two real,
+distinct user accounts on one API (the Lesson 8 accounts API is the
+natural host for this), not two origins — check whether the existing
+account fixtures are enough or need a second seeded user before writing
+the spec. Keep both languages in one page unless the learner asks for a
+split.

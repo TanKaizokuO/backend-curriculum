@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>200 System Design Interview Questions</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #12141a;
+    --bg-alt: #1a1d25;
+    --fg: #e8e9ec;
+    --muted: #9aa0ac;
+    --accent: #7dd3fc;
+    --border: #2a2e38;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg);
+    color: var(--fg);
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    line-height: 1.55;
+    padding: 2rem 1rem 4rem;
+  }
+  main {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+  }
+  h1 {
+    font-size: 1.9rem;
+    margin: 0 0 0.5rem;
+    color: var(--fg);
+  }
+  p.lede {
+    color: var(--muted);
+    max-width: 65ch;
+  }
+  nav.toc {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.5rem 0 2.5rem;
+  }
+  nav.toc h2 {
+    font-size: 1rem;
+    margin: 0 0 0.6rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  nav.toc ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 0.35rem 1rem;
+  }
+  nav.toc a {
+    color: var(--fg);
+    text-decoration: none;
+  }
+  nav.toc a:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  nav.toc .count {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  section {
+    margin-bottom: 2.25rem;
+  }
+  h2 {
+    font-size: 1.25rem;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.4rem;
+    margin-bottom: 0.9rem;
+  }
+  ul.qlist {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  ul.qlist li {
+    border-bottom: 1px solid var(--border);
+  }
+  ul.qlist li:last-child {
+    border-bottom: none;
+  }
+  details {
+    padding: 0.5rem 0;
+  }
+  summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 0.15rem 0;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary::before {
+    content: "▸";
+    display: inline-block;
+    width: 1.1rem;
+    color: var(--accent);
+    transition: transform 0.15s ease;
+  }
+  details[open] summary::before {
+    transform: rotate(90deg);
+  }
+  summary:hover {
+    color: var(--accent);
+  }
+  .qnum {
+    color: var(--muted);
+    display: inline-block;
+    min-width: 2.6rem;
+    font-variant-numeric: tabular-nums;
+  }
+  p.answer {
+    margin: 0.5rem 0 0.25rem 1.1rem;
+    padding: 0.6rem 0.9rem;
+    background: var(--bg-alt);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    color: var(--fg);
+    max-width: 68ch;
+  }
+  footer {
+    color: var(--muted);
+    font-size: 0.85rem;
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+    margin-top: 2rem;
+  }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>200 System Design Interview Questions</h1>
+    <p class="lede">
+      This page lists 200 common questions from system design interviews.
+      The list groups the questions into 16 topics. Read a question. Say
+      your answer out loud. Then click the question to reveal a model
+      answer and check your own answer against it.
+    </p>
+  </header>
+
+  <nav class="toc">
+    <h2>Topics</h2>
+    <ul>
+<li><a href="#sec-scalability-fundamentals">Scalability Fundamentals</a> <span class="count">(13)</span></li>
+<li><a href="#sec-load-balancing">Load Balancing</a> <span class="count">(12)</span></li>
+<li><a href="#sec-caching">Caching</a> <span class="count">(13)</span></li>
+<li><a href="#sec-relational-databases-and-sql-for-system-design">Relational Databases and SQL for System Design</a> <span class="count">(12)</span></li>
+<li><a href="#sec-nosql-and-data-modeling">NoSQL and Data Modeling</a> <span class="count">(13)</span></li>
+<li><a href="#sec-sharding-and-partitioning">Sharding and Partitioning</a> <span class="count">(12)</span></li>
+<li><a href="#sec-replication-and-consistency">Replication and Consistency</a> <span class="count">(13)</span></li>
+<li><a href="#sec-cap-theorem-and-consistency-models">CAP Theorem and Consistency Models</a> <span class="count">(12)</span></li>
+<li><a href="#sec-message-queues-and-event-driven-architecture">Message Queues and Event-Driven Architecture</a> <span class="count">(13)</span></li>
+<li><a href="#sec-microservices-architecture">Microservices Architecture</a> <span class="count">(12)</span></li>
+<li><a href="#sec-api-gateway-rate-limiting-and-api-design-for-scale">API Gateway, Rate Limiting and API Design for Scale</a> <span class="count">(13)</span></li>
+<li><a href="#sec-cdn-and-content-delivery">CDN and Content Delivery</a> <span class="count">(12)</span></li>
+<li><a href="#sec-consensus-coordination-and-distributed-locking">Consensus, Coordination and Distributed Locking</a> <span class="count">(13)</span></li>
+<li><a href="#sec-storage-systems-search-and-indexing">Storage Systems, Search and Indexing</a> <span class="count">(12)</span></li>
+<li><a href="#sec-reliability-monitoring-and-fault-tolerance">Reliability, Monitoring and Fault Tolerance</a> <span class="count">(13)</span></li>
+<li><a href="#sec-case-study-design-prompts-and-capacity-estimation">Case-Study Design Prompts and Capacity Estimation</a> <span class="count">(12)</span></li>
+    </ul>
+  </nav>
+
+    <section id="sec-scalability-fundamentals">
+      <h2>Scalability Fundamentals</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">1.</span> What is the difference between scalability and performance?</summary>
+        <p class="answer">Performance measures the speed of one request. Scalability measures how the system keeps that speed as load grows. A fast system at low load can still fail to scale.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">2.</span> What is the difference between vertical scaling and horizontal scaling?</summary>
+        <p class="answer">Vertical scaling adds more CPU, memory, or disk to one machine. Horizontal scaling adds more machines and spreads the load across them. Horizontal scaling has a higher limit, but it needs a stateless design.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">3.</span> What is a single point of failure, and how do you remove one?</summary>
+        <p class="answer">A single point of failure is a part of the system that stops the whole system when it fails. You remove it by adding a redundant copy and a way to fail over to that copy.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">4.</span> What is the difference between throughput and latency?</summary>
+        <p class="answer">Throughput is the number of requests the system handles in a fixed time. Latency is the time one request takes from start to finish. A system can raise throughput and still keep latency high.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">5.</span> How do you design a system to be stateless?</summary>
+        <p class="answer">You move session data out of the application server and into a shared store, such as a cache or a database. Any server instance can then handle any request.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">6.</span> What is back-pressure, and why does a system need it?</summary>
+        <p class="answer">Back-pressure is a signal that tells an upstream sender to slow down when a downstream service cannot keep up. Without back-pressure, a slow service falls further behind and then crashes under a growing queue.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">7.</span> What is the difference between scaling reads and scaling writes?</summary>
+        <p class="answer">You scale reads by adding read replicas or a cache, because many read requests can hit a copy of the data. You scale writes by sharding the data, because each shard owns a separate slice of the writes.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">8.</span> What is a bottleneck, and how do you find one in a running system?</summary>
+        <p class="answer">A bottleneck is the single slowest component that limits the throughput of the whole system. You find it with metrics and tracing: you look for the component with the highest latency or the highest resource use under load.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">9.</span> What is graceful degradation?</summary>
+        <p class="answer">Graceful degradation is a design where the system drops a non-critical feature under heavy load, but it keeps the core feature working. For example, a shop site can turn off product recommendations but still process checkout.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">10.</span> What is the difference between scaling up and scaling out?</summary>
+        <p class="answer">Scaling up means the same as vertical scaling: you add resources to one machine. Scaling out means the same as horizontal scaling: you add more machines.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">11.</span> What is capacity planning, and why does a design interview ask about it?</summary>
+        <p class="answer">Capacity planning is the estimate of the traffic, storage, and bandwidth a system needs. An interview asks about it because the estimate drives real design choices, such as the number of shards or the cache size.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">12.</span> What is the difference between synchronous processing and asynchronous processing?</summary>
+        <p class="answer">Synchronous processing blocks the caller until the work finishes and returns a result right away. Asynchronous processing accepts the request, queues the work, and returns a result later, often through a callback or a poll.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">13.</span> How do you scale a system that has a hot spot of traffic on one resource?</summary>
+        <p class="answer">You split the hot resource into smaller parts, such as shards or partitions, so that no single part takes all the traffic. You can also add a cache in front of the hot resource or replicate it.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-load-balancing">
+      <h2>Load Balancing</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">14.</span> What is a load balancer, and why does a system need one?</summary>
+        <p class="answer">A load balancer is a component that spreads incoming requests across many servers. A system needs one so that no single server takes all the traffic and fails.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">15.</span> What is the difference between Layer 4 and Layer 7 load balancing?</summary>
+        <p class="answer">A Layer 4 load balancer routes traffic based on the IP address and the port, without reading the request content. A Layer 7 load balancer reads the HTTP request, such as the path or the header, and routes on that content.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">16.</span> What is the round-robin algorithm, and when does it work poorly?</summary>
+        <p class="answer">Round robin sends each new request to the next server on a fixed list, in turn. It works poorly when servers have unequal capacity, because a weak server gets the same share of traffic as a strong server.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">17.</span> What is the least-connections algorithm?</summary>
+        <p class="answer">The least-connections algorithm sends a new request to the server that currently holds the fewest active connections. It balances load better than round robin when requests take different amounts of time.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">18.</span> What is a health check, and how does a load balancer use one?</summary>
+        <p class="answer">A health check is a periodic probe that asks a server if it can handle traffic. A load balancer removes a server from its rotation when the health check fails, and it adds the server back when the check passes again.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">19.</span> What is session affinity, and what problem does it solve?</summary>
+        <p class="answer">Session affinity, also called sticky sessions, sends all requests from one client to the same server. It solves the problem of a server that holds session state in local memory.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">20.</span> What is the difference between a hardware load balancer and a software load balancer?</summary>
+        <p class="answer">A hardware load balancer is a dedicated physical appliance built for high throughput. A software load balancer, such as NGINX or HAProxy, runs as a program on standard servers and costs less to scale.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">21.</span> What is DNS-based load balancing, and what is a limit of this method?</summary>
+        <p class="answer">DNS-based load balancing returns a different server IP address for each DNS query, in a rotation. A limit is that clients and resolvers cache the DNS answer, so a failed server can still receive traffic until the cache expires.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">22.</span> How does a load balancer handle a server that fails mid-request?</summary>
+        <p class="answer">The load balancer detects the failure through a timeout or a health check, marks the server as down, and retries the request on a healthy server.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">23.</span> What is the difference between active-active and active-passive failover?</summary>
+        <p class="answer">In active-active failover, every replica serves traffic at the same time. In active-passive failover, one replica serves traffic and a standby replica waits idle until the active replica fails.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">24.</span> What is consistent hashing, and why does a load balancer use it?</summary>
+        <p class="answer">Consistent hashing maps each request and each server to a position on a fixed ring, and it sends the request to the nearest server on that ring. A load balancer uses it because adding or removing one server moves only a small share of the traffic, not all of it.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">25.</span> How do you scale the load balancer itself when it becomes a bottleneck?</summary>
+        <p class="answer">You place multiple load balancer instances behind a shared virtual IP address, or you use DNS to spread traffic across them. Each instance then load-balances its own share of traffic to the backend servers.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-caching">
+      <h2>Caching</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">26.</span> What is a cache, and why does it lower latency?</summary>
+        <p class="answer">A cache is a fast storage layer that keeps a copy of data that a client needs often. It lowers latency because it answers a request from fast local storage instead of a slower source, such as a database.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">27.</span> What is the difference between a write-through cache and a write-back cache?</summary>
+        <p class="answer">A write-through cache writes to the cache and to the source at the same time, so the two stay consistent. A write-back cache writes to the cache first and copies the data to the source later, which is faster but risks data loss on a crash.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">28.</span> What is cache invalidation, and why is it hard?</summary>
+        <p class="answer">Cache invalidation is the removal or update of stale cache data after the source data changes. It is hard because the system must find every cache entry that depends on the changed data, across every server.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">29.</span> What is the LRU eviction policy?</summary>
+        <p class="answer">LRU means least recently used. The cache removes the entry that no one has read for the longest time when it needs space for a new entry.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">30.</span> What is the difference between LRU and LFU eviction?</summary>
+        <p class="answer">LRU evicts the entry with the oldest last access time. LFU, which means least frequently used, evicts the entry with the lowest total access count, regardless of when the last access happened.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">31.</span> What is a cache stampede, and how do you prevent one?</summary>
+        <p class="answer">A cache stampede happens when many requests miss the cache at the same time and all hit the source at once, which overloads the source. You prevent it with a lock that lets only one request rebuild the cache entry, while other requests wait or use a stale value.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">32.</span> Where can a system place a cache?</summary>
+        <p class="answer">A system can place a cache in the browser, on a CDN edge node, in front of the application server, inside the application process, or in front of the database.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">33.</span> What is the difference between a local cache and a distributed cache?</summary>
+        <p class="answer">A local cache lives in the memory of one application instance and disappears when that instance restarts. A distributed cache, such as Redis, runs as a shared service that many instances read and write.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">34.</span> How do you keep a cache consistent with the source of truth?</summary>
+        <p class="answer">You set a short time-to-live on each entry, and you actively invalidate or update the entry when the source data changes. No method removes every risk of a brief mismatch.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">35.</span> What happens to a service when its cache goes down?</summary>
+        <p class="answer">Every request that the cache used to answer now falls through to the source, such as the database. The source load spikes, and the service can slow down or fail if it cannot absorb that spike.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">36.</span> What is a TTL, and how do you choose a good value for it?</summary>
+        <p class="answer">A TTL, or time to live, is the length of time a cache entry stays valid before the cache treats it as stale. You choose a value that balances two costs: a short TTL raises source load, and a long TTL raises the risk of stale data.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">37.</span> What is the difference between Redis and Memcached?</summary>
+        <p class="answer">Redis stores rich data types, such as lists and sets, and it can save data to disk. Memcached stores only simple key-value pairs in memory and does not persist data to disk.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">38.</span> How do you cache the result of a paginated query?</summary>
+        <p class="answer">You build the cache key from the query parameters, such as the page number and the filter, so each distinct page gets its own cache entry. You invalidate the whole set of page keys when the underlying data changes.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-relational-databases-and-sql-for-system-design">
+      <h2>Relational Databases and SQL for System Design</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">39.</span> What is the difference between vertical partitioning and horizontal partitioning of a table?</summary>
+        <p class="answer">Vertical partitioning splits a table by column and stores different columns in different tables. Horizontal partitioning splits a table by row and stores different rows in different tables or shards.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">40.</span> What is a database index, and what is the cost of adding one?</summary>
+        <p class="answer">An index is a separate structure that lets the database find a row without a full table scan. The cost is extra disk space and slower writes, because the database must update the index on every insert, update, or delete.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">41.</span> What are the ACID properties of a transaction?</summary>
+        <p class="answer">Atomicity means a transaction applies fully or not at all. Consistency means a transaction moves the database from one valid state to another valid state. Isolation means concurrent transactions do not see each other&#x27;s partial work. Durability means a committed transaction survives a crash.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">42.</span> What is database replication, and why does a system use it?</summary>
+        <p class="answer">Database replication is the copying of data from one database node to one or more other nodes. A system uses it to raise read capacity and to keep a standby copy ready for failover.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">43.</span> What is the difference between synchronous replication and asynchronous replication?</summary>
+        <p class="answer">Synchronous replication waits for the replica to confirm the write before it tells the client the write succeeded, so it never loses data but it adds latency. Asynchronous replication tells the client the write succeeded right away and copies the data to the replica later, which is faster but can lose recent writes on a failure.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">44.</span> What is connection pooling, and why does a backend service need it?</summary>
+        <p class="answer">Connection pooling is the reuse of a fixed set of open database connections across many requests. A service needs it because opening a new connection for each request is slow and a database allows only a limited number of open connections.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">45.</span> How do you find and fix a slow query in a production system?</summary>
+        <p class="answer">You use the database&#x27;s query plan tool to see which step of the query takes the most time. You then add a missing index, rewrite the query, or split the query into smaller steps.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">46.</span> What is database sharding, and what is the hardest part of it?</summary>
+        <p class="answer">Database sharding is the split of one large dataset across multiple database instances, each called a shard. The hardest part is the choice of a shard key that spreads the data and the traffic evenly.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">47.</span> What is a read replica, and what problem can it introduce?</summary>
+        <p class="answer">A read replica is a copy of a database that serves read traffic and does not accept writes. It can introduce replication lag, so a client can read stale data right after a write to the primary.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">48.</span> What is the difference between optimistic locking and pessimistic locking?</summary>
+        <p class="answer">Optimistic locking lets two transactions proceed at the same time and checks for a conflict only at commit time. Pessimistic locking blocks other transactions from touching a row as soon as one transaction starts to use it.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">49.</span> How do you design a database schema for a system with a very high write rate?</summary>
+        <p class="answer">You reduce the number of indexes, because each index adds write cost. You also batch writes, shard the data, and consider a write-optimized storage engine instead of a general-purpose relational database.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">50.</span> What is a database transaction isolation level, and why does an interview ask about it?</summary>
+        <p class="answer">An isolation level controls how much one transaction sees of another transaction&#x27;s uncommitted or concurrent work, and it ranges from read uncommitted to serializable. An interview asks about it because a stricter level gives more correctness but lower concurrency.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-nosql-and-data-modeling">
+      <h2>NoSQL and Data Modeling</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">51.</span> When do you choose a NoSQL database over a relational database?</summary>
+        <p class="answer">You choose NoSQL when the data has a flexible or changing shape, when the write volume is very high, or when the system needs to scale across many nodes with simple queries. You choose a relational database when the data needs strong consistency and complex joins.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">52.</span> What is the difference between a document store, a key-value store, a wide-column store, and a graph database?</summary>
+        <p class="answer">A document store, such as MongoDB, saves each record as a self-contained document. A key-value store, such as DynamoDB, maps a single key to a value with no query on the value&#x27;s fields. A wide-column store, such as Cassandra, organizes data into rows with dynamic columns across nodes. A graph database, such as Neo4j, stores nodes and the edges between them, and it answers relationship queries fast.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">53.</span> What is denormalization, and why does a NoSQL data model favor it?</summary>
+        <p class="answer">Denormalization is the duplication of data across multiple records so a read needs only one lookup. A NoSQL data model favors it because most NoSQL stores lack a fast join operation, so the design moves the join cost to write time instead of read time.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">54.</span> How do you model a one-to-many relationship in a document database?</summary>
+        <p class="answer">You embed the many-side records inside the one-side document when the many-side list stays small and reads together. You keep the many-side records in a separate collection with a reference to the one-side document when the list grows large or changes often.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">55.</span> What is a partition key, and how do you choose a good one?</summary>
+        <p class="answer">A partition key is the field that a database uses to decide which physical node stores a given record. A good partition key spreads records and traffic evenly across nodes and avoids a hot spot on one value.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">56.</span> What is a hot partition, and how does a database handle one?</summary>
+        <p class="answer">A hot partition is a single partition that receives far more traffic than the other partitions, which slows every request to that partition. A database handles it by splitting the partition further or by changing the partition key design to spread the load.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">57.</span> What is eventual consistency?</summary>
+        <p class="answer">Eventual consistency means that after a write stops, every replica converges to the same value, but a read right after the write can still return an old value.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">58.</span> What is the BASE model, and how does it differ from ACID?</summary>
+        <p class="answer">BASE stands for basically available, soft state, and eventual consistency. It differs from ACID because it trades strict, immediate consistency for higher availability and higher scalability.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">59.</span> How do you model a many-to-many relationship in a NoSQL database?</summary>
+        <p class="answer">You store an array of related IDs on each side of the relationship, or you create a separate join-style collection or table that pairs the two IDs. The exact choice depends on which side the queries read from most.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">60.</span> What is schema-on-read, and how does it differ from schema-on-write?</summary>
+        <p class="answer">Schema-on-read stores raw data without a fixed structure and applies structure only when the application reads the data. Schema-on-write enforces a fixed structure at insert time, before the database accepts the record.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">61.</span> What is a secondary index in a NoSQL database, and what is its cost?</summary>
+        <p class="answer">A secondary index lets a query search on a field other than the partition key. The cost is extra storage and extra write latency, and in some systems the index update happens asynchronously, which can delay a new record&#x27;s visibility in a query.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">62.</span> How do you choose between a strongly consistent NoSQL configuration and an eventually consistent one for a given feature?</summary>
+        <p class="answer">You choose strong consistency for a feature where a stale read causes a real error, such as a bank balance. You choose eventual consistency for a feature that can tolerate a brief delay, such as a view counter or a social media like count.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">63.</span> What is a wide-column store, and how does it store data differently from a relational table?</summary>
+        <p class="answer">A wide-column store organizes data by row key, and each row can hold a different set of columns from other rows in the same table. A relational table fixes the same columns for every row.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-sharding-and-partitioning">
+      <h2>Sharding and Partitioning</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">64.</span> What is sharding, and why does a system shard its data?</summary>
+        <p class="answer">Sharding is the split of a dataset into smaller, independent parts, each stored on a separate node. A system shards data because a single node cannot hold or serve the full dataset once the data or the traffic grows past its limit.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">65.</span> What is a shard key, and what makes a shard key good or bad?</summary>
+        <p class="answer">A shard key is the field that decides which shard stores a given record. A good shard key spreads records and traffic evenly. A bad shard key sends too many records or too much traffic to one shard, which creates a hot spot.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">66.</span> What is range-based sharding, and what is its main weakness?</summary>
+        <p class="answer">Range-based sharding assigns each shard a contiguous range of key values, such as user IDs 1 to 1,000,000. Its main weakness is a hot spot, because new records with sequential keys all land on the same shard.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">67.</span> What is hash-based sharding, and what trade-off does it make?</summary>
+        <p class="answer">Hash-based sharding applies a hash function to the shard key and uses the result to pick a shard, which spreads records evenly. The trade-off is that a range query, such as &quot;all records between two dates,&quot; must scan every shard instead of one contiguous range.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">68.</span> What is consistent hashing, and why does sharding use it?</summary>
+        <p class="answer">Consistent hashing places shards and keys on the same fixed ring by hash value, and each key belongs to the nearest shard on the ring. Sharding uses it because adding or removing one shard moves only a small share of the keys, not the whole dataset.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">69.</span> What is resharding, and why is it a hard operation?</summary>
+        <p class="answer">Resharding is the process of moving data to a new set of shards, usually because the shard count changes. It is a hard operation because the system must move a large volume of data without downtime and without data loss, while requests keep arriving.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">70.</span> How do you run a query that spans multiple shards?</summary>
+        <p class="answer">The application or a query router sends the query to every relevant shard, collects the partial results, and merges them. This method is called a scatter-gather query, and it costs more than a single-shard query.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">71.</span> What is a hot shard, and how do you fix one?</summary>
+        <p class="answer">A hot shard is a shard that receives far more traffic than the other shards, which slows every request to that shard. You fix it by splitting the shard further, or by changing the shard key so it spreads the load more evenly.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">72.</span> How do you handle a join across two shards?</summary>
+        <p class="answer">You avoid the join at the database level and instead fetch each side from its own shard and join the results in the application. Some designs also denormalize the data so the join is not needed at all.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">73.</span> What is a directory-based sharding strategy?</summary>
+        <p class="answer">A directory-based strategy keeps a separate lookup service that maps each shard key to its shard. It adds an extra network hop for every lookup, but it lets the system move a key to a new shard without a hash change.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">74.</span> What is the difference between partitioning and replication?</summary>
+        <p class="answer">Partitioning splits a dataset into disjoint parts, and each part lives on one node or one set of nodes. Replication copies the same full dataset, or the same partition, onto multiple nodes so more than one node holds an identical copy.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">75.</span> How do you choose the number of shards for a new system?</summary>
+        <p class="answer">You estimate the total data size and the total write throughput, then divide by the safe capacity of one node, and you round up. You also leave headroom for growth, because resharding later is costly.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-replication-and-consistency">
+      <h2>Replication and Consistency</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">76.</span> What is the difference between single-leader replication and multi-leader replication?</summary>
+        <p class="answer">In single-leader replication, only one node accepts writes and it sends the writes to every other node. In multi-leader replication, more than one node accepts writes, and the nodes must resolve any conflict between two writes to the same record.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">77.</span> What is leaderless replication, and how does it handle conflicting writes?</summary>
+        <p class="answer">In leaderless replication, a client sends a write to several nodes at once and accepts the write once enough nodes confirm it. The system handles a conflict with a rule such as &quot;last write wins&quot; or with a vector clock that tracks the causal order of writes.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">78.</span> What is replication lag, and what problem does it cause?</summary>
+        <p class="answer">Replication lag is the delay between a write on the primary node and the same write&#x27;s arrival on a replica. It causes a stale read: a client can read old data from a replica right after it wrote new data to the primary.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">79.</span> What is read-your-writes consistency?</summary>
+        <p class="answer">Read-your-writes consistency guarantees that a user always sees their own recent write, even if a replica has not caught up yet. A system reaches this by routing that user&#x27;s next read to the primary node for a short window after their write.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">80.</span> What is quorum-based consistency, and how does it work?</summary>
+        <p class="answer">Quorum-based consistency requires a write to succeed on W nodes and a read to check R nodes, where W plus R is greater than the total node count N. This overlap guarantees that a read always sees the most recent write.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">81.</span> What is the difference between strong consistency and eventual consistency?</summary>
+        <p class="answer">Strong consistency guarantees that every read returns the most recent write, right after that write completes. Eventual consistency only guarantees that every replica converges to the same value if the system stops receiving new writes.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">82.</span> What is a conflict-free replicated data type, and why does a system use one?</summary>
+        <p class="answer">A conflict-free replicated data type, or CRDT, is a data structure with a merge rule that produces the same result regardless of the order in which updates arrive. A system uses one in a multi-leader or leaderless design so that it can merge concurrent updates without manual conflict resolution.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">83.</span> What is the difference between a primary-replica setup and a multi-primary setup for handling failover?</summary>
+        <p class="answer">A primary-replica setup promotes one replica to primary when the current primary fails, and only one node accepts writes at a time. A multi-primary setup already runs more than one write-accepting node, so a single node&#x27;s failure does not stop writes, but it must resolve write conflicts continuously.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">84.</span> What is a split-brain scenario in a replicated system?</summary>
+        <p class="answer">A split-brain scenario happens when a network partition isolates two groups of nodes, and each group elects its own primary and accepts writes. The system then holds two conflicting histories that it must reconcile once the network heals.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">85.</span> How does a system detect and recover from a failed primary node?</summary>
+        <p class="answer">The system detects the failure through a missed heartbeat or a failed health check, and it promotes a replica to the new primary through an election or a fixed failover rule. Clients then redirect their writes to the new primary.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">86.</span> What is causal consistency, and how does it differ from strong consistency?</summary>
+        <p class="answer">Causal consistency guarantees that if one write happens before another, every node sees them in that same order, but it lets unrelated writes appear in a different order on different nodes. Strong consistency orders every write the same way on every node, related or not.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">87.</span> What is the difference between synchronous multi-node replication and asynchronous multi-node replication in terms of availability?</summary>
+        <p class="answer">Synchronous replication waits for every replica, or a quorum of replicas, to confirm before it accepts a write, so a slow or down replica can block writes. Asynchronous replication accepts a write once the primary confirms it, so a slow replica does not block writes, at the cost of possible data loss.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">88.</span> What is anti-entropy, and why does a replicated system run it?</summary>
+        <p class="answer">Anti-entropy is a background process that compares replicas and repairs any difference between them. A replicated system runs it to fix data drift that a missed message or a temporary outage can cause between replicas.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-cap-theorem-and-consistency-models">
+      <h2>CAP Theorem and Consistency Models</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">89.</span> What is the CAP theorem?</summary>
+        <p class="answer">The CAP theorem states that a distributed data store can give only two of three guarantees at the same time: consistency, availability, and partition tolerance. During a network partition, the system must choose between consistency and availability.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">90.</span> Why must a distributed system choose partition tolerance in practice?</summary>
+        <p class="answer">A real network can always drop or delay a message between nodes, so a distributed system cannot assume the network never partitions. This leaves only a real choice between consistency and availability during a partition.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">91.</span> What is the difference between a CP system and an AP system?</summary>
+        <p class="answer">A CP system stays consistent during a partition, but it rejects some requests so it does not return stale or conflicting data. An AP system stays available during a partition and answers every request, even if some answers are stale.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">92.</span> Give an example of a CP system and explain the trade-off.</summary>
+        <p class="answer">A distributed configuration store such as ZooKeeper is a CP system. It refuses a write or a read on the minority side of a partition, which lowers availability but keeps every confirmed value correct.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">93.</span> Give an example of an AP system and explain the trade-off.</summary>
+        <p class="answer">A DNS system and many NoSQL stores such as Cassandra, in their default mode, are AP systems. Every node keeps answering requests during a partition, but two nodes on different sides of the partition can return different values.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">94.</span> What is the PACELC theorem, and how does it extend CAP?</summary>
+        <p class="answer">PACELC states that during a Partition, a system chooses between Availability and Consistency, and Else, when the network runs normally, it chooses between Latency and Consistency. It extends CAP because CAP only describes system behavior during a partition, not during normal operation.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">95.</span> What is linearizability?</summary>
+        <p class="answer">Linearizability is a strong consistency model where every operation appears to take effect at one single instant, and that instant falls between the operation&#x27;s start and its end. Every client sees operations in the same real-time order.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">96.</span> What is the difference between consistency in the CAP theorem and consistency in the ACID properties?</summary>
+        <p class="answer">Consistency in the CAP theorem means every node returns the same, most recent value for a read. Consistency in the ACID properties means a transaction moves the database from one valid state to another valid state, according to defined rules and constraints.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">97.</span> How do you decide whether a given feature needs a CP design or an AP design?</summary>
+        <p class="answer">You ask whether a stale or conflicting read causes real harm. A payment balance needs a CP design because a wrong balance causes harm. A product view count can use an AP design because a brief inconsistency causes no harm.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">98.</span> What is a network partition, and how does a distributed system detect one?</summary>
+        <p class="answer">A network partition is a break in communication between two groups of nodes that otherwise form one cluster. A system detects a suspected partition through a missed heartbeat or a request timeout, though it cannot always tell a partition apart from a slow or crashed node.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">99.</span> What is the difference between weak consistency and eventual consistency?</summary>
+        <p class="answer">Weak consistency gives no guarantee about when, or whether, every replica will converge to the same value. Eventual consistency is a stronger, specific promise within weak consistency: every replica converges to the same value once writes stop arriving.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">100.</span> How does a system such as DynamoDB let a client choose its consistency level per request?</summary>
+        <p class="answer">DynamoDB lets a client request either an eventually consistent read, which is cheaper and faster, or a strongly consistent read, which always returns the most recent successful write, at a higher cost.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-message-queues-and-event-driven-architecture">
+      <h2>Message Queues and Event-Driven Architecture</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">101.</span> What is a message queue, and why does a system use one?</summary>
+        <p class="answer">A message queue is a component that stores messages sent by a producer until a consumer reads and processes them. A system uses one to decouple two services in time, so a slow or offline consumer does not block the producer.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">102.</span> What is the difference between a message queue and a publish-subscribe system?</summary>
+        <p class="answer">In a plain message queue, one message goes to exactly one consumer, even when several consumers listen on the queue. In a publish-subscribe system, one message goes to every subscriber of the topic.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">103.</span> What is the difference between at-most-once, at-least-once, and exactly-once delivery?</summary>
+        <p class="answer">At-most-once delivery can lose a message but never delivers it twice. At-least-once delivery never loses a message but can deliver it more than once. Exactly-once delivery guarantees a message arrives once, and it needs extra coordination to achieve.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">104.</span> How do you make message processing idempotent?</summary>
+        <p class="answer">You give each message a unique ID and you record the IDs your system has already processed. When a duplicate message arrives, the consumer checks the record and skips the message instead of processing it again.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">105.</span> What is a dead-letter queue, and why does a system need one?</summary>
+        <p class="answer">A dead-letter queue holds a message that a consumer failed to process after a set number of retries. A system needs one so that a single bad message does not block the whole queue or trigger endless retries.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">106.</span> What is the difference between Kafka and a traditional message queue such as RabbitMQ?</summary>
+        <p class="answer">Kafka keeps every message on disk in an ordered log for a retention period, and multiple consumer groups can each read the full log independently. A traditional queue such as RabbitMQ removes a message once a consumer acknowledges it, so the message is not available for replay.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">107.</span> What is a consumer group, and how does it help a system scale message processing?</summary>
+        <p class="answer">A consumer group is a set of consumers that split the partitions of a topic between them, so each partition goes to only one consumer in the group. A system scales processing by adding more consumers to the group, up to the number of partitions.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">108.</span> What is backpressure in a message-driven system, and how does a queue provide it?</summary>
+        <p class="answer">Backpressure is a mechanism that slows a fast producer to match the speed of a slower consumer. A queue provides it by growing in size when the consumer falls behind, which the producer or an operator can detect and react to.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">109.</span> What is event sourcing?</summary>
+        <p class="answer">Event sourcing is a design where the system stores every state change as an immutable event, instead of storing only the current state. The system rebuilds the current state at any time by replaying the events in order.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">110.</span> What is the difference between choreography and orchestration in an event-driven system?</summary>
+        <p class="answer">In choreography, each service reacts to events on its own, and no central service directs the overall flow. In orchestration, one central service tells each other service what step to run next.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">111.</span> What problem does the outbox pattern solve?</summary>
+        <p class="answer">The outbox pattern solves the problem of keeping a database write and a message publish consistent, since a service cannot commit a database transaction and publish a message as one atomic step. The service writes the message to an outbox table inside the same transaction, and a separate process reads that table and publishes the message.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">112.</span> How does a message queue guarantee message order?</summary>
+        <p class="answer">A message queue guarantees order only within a single partition or a single queue, because it must serialize the delivery for that portion. It cannot guarantee a global order across multiple partitions without extra coordination.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">113.</span> What is a poison message, and how does a consumer handle one?</summary>
+        <p class="answer">A poison message is a message that a consumer cannot process, no matter how many times it retries, often due to a bad format or a bug. The consumer detects the repeated failure and moves the message to a dead-letter queue instead of retrying forever.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-microservices-architecture">
+      <h2>Microservices Architecture</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">114.</span> What is a microservice, and how does it differ from a monolith?</summary>
+        <p class="answer">A microservice is a small, independently deployed service that owns one business capability and its own data. A monolith packages every capability into one deployable unit that shares one codebase and often one database.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">115.</span> What are the main trade-offs of a microservices architecture compared to a monolith?</summary>
+        <p class="answer">Microservices give independent deployment and independent scaling for each service, at the cost of network latency between services and more operational complexity. A monolith is simpler to build and to debug, but it forces the whole system to deploy and scale together.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">116.</span> How do microservices communicate with each other?</summary>
+        <p class="answer">Microservices communicate through synchronous calls, such as REST or gRPC, or through asynchronous messages on a queue or an event stream. The choice depends on whether the caller needs an immediate response.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">117.</span> What is service discovery, and why does a microservices system need it?</summary>
+        <p class="answer">Service discovery is a mechanism that lets one service find the network address of another service at runtime. A microservices system needs it because service instances start, stop, and move addresses often, especially in a container environment.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">118.</span> What is an API gateway, and what role does it play in a microservices system?</summary>
+        <p class="answer">An API gateway is a single entry point that receives every external request and routes it to the correct internal service. It also handles cross-cutting concerns, such as authentication, rate limiting, and request logging, in one place.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">119.</span> What is the database-per-service pattern, and why do microservices favor it?</summary>
+        <p class="answer">The database-per-service pattern gives each microservice its own private database, which no other service accesses directly. Microservices favor it because a shared database couples services together and defeats independent deployment.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">120.</span> How do you handle a transaction that spans multiple microservices?</summary>
+        <p class="answer">You use the saga pattern: each service commits its own local transaction and publishes an event, and the saga runs a compensating action on an earlier service if a later step fails. A distributed system avoids a single ACID transaction across services because it does not scale well.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">121.</span> What is the circuit breaker pattern, and why does a microservices system use it?</summary>
+        <p class="answer">A circuit breaker pattern stops a service from calling a failing dependency for a cooldown period once the failure rate crosses a threshold. A microservices system uses it to stop one failing service from causing a cascading failure across its callers.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">122.</span> What is service mesh, and what problem does it solve?</summary>
+        <p class="answer">A service mesh is an infrastructure layer that manages traffic, security, and observability between services, usually through a sidecar proxy next to each service. It solves the problem of repeating this cross-cutting logic in every service&#x27;s own code.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">123.</span> What is the strangler fig pattern for migrating a monolith to microservices?</summary>
+        <p class="answer">The strangler fig pattern moves one feature at a time out of the monolith and into a new microservice, while a router sends traffic for that feature to the new service. Over time, the new services replace the monolith, and the team removes the old code.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">124.</span> How do you version an API between microservices without breaking existing consumers?</summary>
+        <p class="answer">You add a version identifier to the API, such as a path prefix or a header, and you keep the old version running until every consumer moves to the new version. You avoid a breaking change to a version that a consumer still depends on.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">125.</span> What is the difference between orchestration and choreography when microservices coordinate a business process?</summary>
+        <p class="answer">Orchestration uses one central coordinator service that calls each other service in a defined sequence. Choreography lets each service listen for events and decide its own next action, with no central coordinator.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-api-gateway-rate-limiting-and-api-design-for-scale">
+      <h2>API Gateway, Rate Limiting and API Design for Scale</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">126.</span> What is rate limiting, and why does a public API need it?</summary>
+        <p class="answer">Rate limiting is a control that caps the number of requests a client can send in a fixed time window. A public API needs it to protect the backend from overload and to stop one client from starving other clients of capacity.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">127.</span> What is the token bucket algorithm for rate limiting?</summary>
+        <p class="answer">The token bucket algorithm gives each client a bucket that refills with tokens at a fixed rate, up to a maximum size. Each request consumes one token, and the client&#x27;s request fails or waits once the bucket is empty.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">128.</span> What is the difference between the token bucket algorithm and the leaky bucket algorithm?</summary>
+        <p class="answer">The token bucket algorithm allows a burst of requests up to the bucket size, as long as tokens are available. The leaky bucket algorithm smooths traffic to a fixed output rate, regardless of how bursty the input is.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">129.</span> What is the sliding window algorithm for rate limiting, and why is it more accurate than a fixed window?</summary>
+        <p class="answer">The sliding window algorithm counts requests in a moving time window that shifts continuously, rather than resetting at a fixed boundary. It is more accurate because a fixed window can let a client send double the intended limit near the window&#x27;s edge.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">130.</span> How do you rate-limit a distributed system with many API server instances?</summary>
+        <p class="answer">You store the rate-limit counters in a shared store, such as Redis, so that every API server instance reads and updates the same count for a given client. A local, per-instance counter would let a client exceed the limit by spreading requests across instances.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">131.</span> What is API gateway throttling, and how does it differ from a per-client rate limit?</summary>
+        <p class="answer">API gateway throttling caps the total request rate the gateway forwards to a backend service, regardless of which client sent the request. A per-client rate limit caps the rate for one specific client or API key.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">132.</span> How do you design pagination for a very large collection endpoint?</summary>
+        <p class="answer">You use a cursor, such as the ID or the timestamp of the last item on the page, instead of an offset. A cursor avoids the cost of skipping past a large offset and stays correct even if the underlying data changes between page loads.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">133.</span> What is idempotency, and why does a payment API require an idempotency key?</summary>
+        <p class="answer">Idempotency means that repeating the same operation produces the same result as running it once. A payment API requires an idempotency key so that a client&#x27;s retry after a network timeout does not charge the customer twice.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">134.</span> What is the difference between REST, GraphQL, and gRPC, from a system design point of view?</summary>
+        <p class="answer">REST exposes fixed resources over HTTP and is simple to cache and to scale behind standard infrastructure. GraphQL lets a client ask for exactly the fields it needs in one request, which reduces over-fetching but complicates caching. gRPC uses a binary protocol over HTTP/2 for low-latency service-to-service calls.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">135.</span> What is API versioning, and what are the common strategies for it?</summary>
+        <p class="answer">API versioning is the practice of marking a change to an API&#x27;s contract so that old and new clients can both work. Common strategies include a version number in the URL path, a custom header, or a field in the request body.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">136.</span> How does an API gateway help protect a backend from a denial-of-service attack?</summary>
+        <p class="answer">An API gateway sits in front of the backend and applies a rate limit, a request size limit, and an authentication check before it forwards a request. It absorbs and drops malicious or excess traffic before that traffic reaches the backend services.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">137.</span> What is the difference between authentication and rate limiting at the API gateway layer?</summary>
+        <p class="answer">Authentication checks who the caller is and rejects a caller with no valid identity. Rate limiting checks how often a known caller sends requests and rejects a request that exceeds the allowed rate, regardless of identity.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">138.</span> How do you design an API so that a slow downstream dependency does not block the whole request pipeline?</summary>
+        <p class="answer">You set a timeout on the call to the slow dependency, and you pair the timeout with a circuit breaker that stops further calls once the dependency fails repeatedly. You can also return a partial or cached response instead of a full failure.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-cdn-and-content-delivery">
+      <h2>CDN and Content Delivery</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">139.</span> What is a CDN, and why does a system use one?</summary>
+        <p class="answer">A CDN, or content delivery network, is a set of edge servers spread across many geographic locations that cache and serve content close to the user. A system uses one to lower latency and to reduce load on the origin server.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">140.</span> What is the difference between a push CDN and a pull CDN?</summary>
+        <p class="answer">A push CDN requires the origin to upload content to the CDN ahead of time. A pull CDN fetches content from the origin automatically on the first request for that content, then caches it for later requests.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">141.</span> How does a CDN decide which edge server serves a given user?</summary>
+        <p class="answer">A CDN routes the user to the edge server with the lowest network distance or the lowest latency, often through DNS-based routing or anycast routing at the network layer.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">142.</span> What content is a good fit for CDN caching, and what content is not?</summary>
+        <p class="answer">Static content, such as images, video, CSS, and JavaScript files, is a good fit because it rarely changes and every user can share one cached copy. Highly personalized or fast-changing content, such as a user&#x27;s private dashboard, is a poor fit.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">143.</span> What is cache invalidation on a CDN, and why is it slower than invalidating a local cache?</summary>
+        <p class="answer">CDN cache invalidation is the removal of a cached object from every edge server that holds a copy. It is slower because the origin must send the invalidation request to potentially hundreds of geographically spread edge nodes.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">144.</span> What is the origin shield pattern in a CDN setup?</summary>
+        <p class="answer">An origin shield is a single intermediate caching layer that sits between the CDN edge nodes and the origin server. It absorbs the combined cache-miss traffic from every edge node, so the origin server sees far fewer direct requests.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">145.</span> How does a CDN help mitigate a distributed denial-of-service attack?</summary>
+        <p class="answer">A CDN spreads incoming traffic across many edge locations and absorbs a large volume of malicious traffic before it reaches the origin. Many CDNs also include a dedicated filtering layer that drops known attack patterns.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">146.</span> What is the difference between edge caching and browser caching?</summary>
+        <p class="answer">Edge caching stores a copy of content on a CDN server that many different users share. Browser caching stores a copy of content on one specific user&#x27;s device, and only that user benefits from it.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">147.</span> How do you serve dynamic, per-user content through a CDN?</summary>
+        <p class="answer">You cache only the static parts of the page or the response at the edge, and you fetch the personalized parts from the origin on each request, often through a technique such as edge-side includes or a small dynamic API call.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">148.</span> What is a signed URL, and why does a CDN use one for private content?</summary>
+        <p class="answer">A signed URL includes a cryptographic signature and an expiry time, and the CDN checks both before it serves the content. A CDN uses it to serve private content, such as a paid video, without exposing the content to any user who guesses the URL.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">149.</span> What is TTL in the context of CDN caching, and how does it affect freshness?</summary>
+        <p class="answer">TTL, or time to live, is the length of time an edge server keeps a cached object before it checks the origin again. A short TTL keeps content fresh but raises origin load, and a long TTL lowers origin load but risks serving stale content.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">150.</span> How do you handle a cache miss storm across many CDN edge nodes for a newly popular piece of content?</summary>
+        <p class="answer">You warm the cache by pushing the content to edge nodes ahead of a known traffic spike, or you rely on the origin shield to absorb the simultaneous miss traffic. Without one of these steps, every edge node&#x27;s first request hits the origin at once.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-consensus-coordination-and-distributed-locking">
+      <h2>Consensus, Coordination and Distributed Locking</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">151.</span> What is a consensus algorithm, and why does a distributed system need one?</summary>
+        <p class="answer">A consensus algorithm lets a group of nodes agree on a single value or a single order of operations, even when some nodes fail or messages arrive late. A distributed system needs one to keep replicas consistent, for example when it elects a leader.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">152.</span> What is the Paxos algorithm, at a high level?</summary>
+        <p class="answer">Paxos is a consensus algorithm where a proposer suggests a value, a set of acceptors vote on it, and the algorithm commits the value once a majority of acceptors agree. It tolerates the failure of a minority of nodes and still reaches a correct, single decision.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">153.</span> What is the Raft algorithm, and how does it differ from Paxos in goal?</summary>
+        <p class="answer">Raft is a consensus algorithm that elects a single leader, and only that leader accepts new log entries and replicates them to followers. It differs from Paxos in goal because the designers built Raft to be easier to understand and to implement correctly.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">154.</span> What is a quorum, and why does a distributed system require one for a decision?</summary>
+        <p class="answer">A quorum is the minimum number of nodes that must agree before the system accepts a decision, typically a strict majority. A system requires one so that two conflicting decisions cannot both reach agreement at the same time, since two quorums out of the same node set must overlap.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">155.</span> What is leader election, and why does a distributed system perform it?</summary>
+        <p class="answer">Leader election is the process by which a set of nodes choose one node to coordinate writes or decisions for a period of time. A distributed system performs it so that only one node makes a given class of decision, which avoids conflicting concurrent decisions.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">156.</span> What is a distributed lock, and what problem does it solve?</summary>
+        <p class="answer">A distributed lock grants exclusive access to a resource to only one process at a time, across multiple machines. It solves the problem of two processes on different machines both modifying the same resource at the same time.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">157.</span> What is the danger of a naive distributed lock implementation, and how does a system guard against it?</summary>
+        <p class="answer">A naive lock can expire while the holder still runs, for example after a long garbage-collection pause, which lets a second process acquire the same lock and both processes then act at once. A system guards against this with a fencing token, a number the lock service increases on each grant, which the protected resource checks and rejects if it sees an older token.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">158.</span> What is ZooKeeper, and what role does it commonly play in a distributed system?</summary>
+        <p class="answer">ZooKeeper is a coordination service that stores small amounts of configuration data and provides primitives such as leader election, distributed locks, and service discovery. Systems commonly use it as a shared, strongly consistent source of coordination state.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">159.</span> What is the difference between a two-phase commit protocol and a consensus algorithm such as Raft?</summary>
+        <p class="answer">A two-phase commit protocol coordinates a single, one-time transaction across multiple participants and blocks if the coordinator fails mid-protocol. A consensus algorithm such as Raft runs continuously to keep a replicated log in agreement and tolerates the failure of the leader through re-election.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">160.</span> What is split-brain in the context of leader election, and how does a quorum-based system prevent it?</summary>
+        <p class="answer">Split-brain happens when a network partition lets two separate groups each believe they hold the leader role at the same time. A quorum-based system prevents it because only the group with a majority of nodes can elect a leader, so at most one side of any partition can ever have a quorum.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">161.</span> What is a heartbeat, and how does a distributed system use it to detect a failed node?</summary>
+        <p class="answer">A heartbeat is a small, periodic message a node sends to signal that it is still alive and reachable. A distributed system marks a node as failed once it misses a set number of consecutive heartbeats.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">162.</span> What is the FLP impossibility result, and what does it mean in practice?</summary>
+        <p class="answer">The FLP impossibility result proves that no algorithm can guarantee consensus in an asynchronous network where even one node can fail, within a bounded time. In practice, real consensus systems use timeouts and randomization to reach agreement with very high probability, instead of an absolute guarantee.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">163.</span> What is etcd, and how do systems commonly use it?</summary>
+        <p class="answer">Etcd is a distributed, strongly consistent key-value store built on the Raft consensus algorithm. Systems commonly use it to store cluster configuration, to run leader election, and to coordinate service discovery, for example inside Kubernetes.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-storage-systems-search-and-indexing">
+      <h2>Storage Systems, Search and Indexing</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">164.</span> What is object storage, and how does it differ from a file system or a block storage volume?</summary>
+        <p class="answer">Object storage, such as Amazon S3, stores each item as an object with data, metadata, and a unique key, accessed over a simple HTTP API. A file system organizes data in a folder hierarchy, and block storage exposes raw, fixed-size blocks that an operating system formats into a file system.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">165.</span> Why is object storage a common choice for storing large binary files, such as images or videos?</summary>
+        <p class="answer">Object storage scales to a very large number of objects and a very large total size without the operator managing individual servers. It also gives high durability through automatic replication across multiple locations.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">166.</span> What is a content-addressable storage system, and what benefit does it give?</summary>
+        <p class="answer">A content-addressable storage system derives an object&#x27;s key from a hash of its content, so identical content always produces the same key. This benefit lets the system detect and skip a duplicate upload, and it lets a client verify content integrity by recomputing the hash.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">167.</span> What is an inverted index, and why does a search engine use one?</summary>
+        <p class="answer">An inverted index maps each word to the list of documents that contain that word. A search engine uses one because it lets the engine find every document that matches a search term without scanning every document.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">168.</span> How does a full-text search system, such as Elasticsearch, handle a query with multiple terms?</summary>
+        <p class="answer">It looks up each term in the inverted index to get a list of matching documents, and it merges and ranks the lists by a relevance score, such as term frequency, to produce the final ordered result.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">169.</span> What is the difference between a search index and a database index?</summary>
+        <p class="answer">A search index, such as an inverted index, ranks and retrieves documents by relevance to free-text terms. A database index, such as a B-tree index, retrieves exact matches or ranges on a structured field, without a relevance score.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">170.</span> How do you keep a search index in sync with a source database?</summary>
+        <p class="answer">You stream every change from the database, often through change-data-capture or an event published on write, into an indexing pipeline that updates the search index. A periodic full re-index acts as a backup for any change that the stream misses.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">171.</span> What is a Bloom filter, and how does a storage system use one?</summary>
+        <p class="answer">A Bloom filter is a compact, probabilistic data structure that answers whether an item is definitely absent or possibly present in a set. A storage system uses one to skip a costly disk lookup when the filter reports that a key is definitely absent.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">172.</span> What is a log-structured merge tree, and why do some databases use it for writes?</summary>
+        <p class="answer">A log-structured merge tree, or LSM tree, buffers writes in memory and flushes them to disk in sorted, immutable segments, which it merges together over time. Databases use it because sequential disk writes are far faster than random writes, which suits a high write-throughput workload.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">173.</span> What is tiered storage, and why does a large-scale system use it?</summary>
+        <p class="answer">Tiered storage keeps frequently accessed, or hot, data on fast and expensive storage, and it moves rarely accessed, or cold, data to slower and cheaper storage. A large-scale system uses it to control storage cost without sacrificing the performance of the hot data path.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">174.</span> How would you design a system to store and serve billions of small files, such as user profile photos?</summary>
+        <p class="answer">You avoid storing each file directly in a general file system, since that approach runs into a limit on the number of files per directory and a high per-file overhead. You instead use an object storage service, and you generate a unique key per file, often placed behind a CDN for delivery.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">175.</span> What is data compaction in a storage engine, and why does the engine run it?</summary>
+        <p class="answer">Data compaction merges multiple smaller data segments into fewer, larger segments and removes any entry that a later write or delete has made obsolete. The engine runs it to reclaim disk space and to keep read performance from degrading as the number of segments grows.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-reliability-monitoring-and-fault-tolerance">
+      <h2>Reliability, Monitoring and Fault Tolerance</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">176.</span> What is the difference between availability and reliability in a system design context?</summary>
+        <p class="answer">Availability measures the fraction of time a system responds successfully to a request. Reliability measures how consistently a system performs its intended function correctly over time, including under failure conditions.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">177.</span> What does &quot;five nines&quot; of availability mean, and how much downtime does it allow per year?</summary>
+        <p class="answer">Five nines means 99.999 percent availability. It allows about five minutes of downtime per year.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">178.</span> What is redundancy, and how does it raise a system&#x27;s availability?</summary>
+        <p class="answer">Redundancy is the duplication of a critical component so a backup can take over when the primary component fails. It raises availability because the system keeps working as long as at least one redundant copy stays healthy.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">179.</span> What is the difference between fault tolerance and fault prevention?</summary>
+        <p class="answer">Fault prevention tries to stop a fault from happening at all, for example through code review and testing. Fault tolerance accepts that a fault will happen and designs the system to keep working correctly despite that fault.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">180.</span> What is a circuit breaker, and how does it protect a system during a partial outage?</summary>
+        <p class="answer">A circuit breaker tracks the failure rate of calls to a dependency and stops sending new calls to that dependency once the failure rate crosses a threshold. It protects the system because it stops a failing dependency from consuming resources and causing further failures elsewhere.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">181.</span> What is the difference between a retry with a fixed delay and a retry with exponential backoff?</summary>
+        <p class="answer">A retry with a fixed delay waits the same amount of time before each retry attempt. A retry with exponential backoff doubles, or otherwise increases, the wait time after each failed attempt, which reduces load on a struggling dependency.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">182.</span> What is a timeout, and why does every network call need one?</summary>
+        <p class="answer">A timeout is a maximum time a caller waits for a response before it gives up and treats the call as failed. Every network call needs one because, without a timeout, a caller can wait forever on a dependency that never responds.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">183.</span> What is chaos engineering, and why do teams practice it?</summary>
+        <p class="answer">Chaos engineering is the practice of intentionally injecting failures, such as a killed server or a network delay, into a running system to observe how it responds. Teams practice it to find a weakness before a real, unplanned outage exposes it.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">184.</span> What is the difference between a metric, a log, and a trace, in observability?</summary>
+        <p class="answer">A metric is a numeric measurement over time, such as request count or latency. A log is a timestamped record of a discrete event. A trace follows one request across every service it touches and records the time each step took.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">185.</span> What is a service level objective, and how does it differ from a service level agreement?</summary>
+        <p class="answer">A service level objective, or SLO, is an internal target for a metric, such as 99.9 percent of requests under 200 milliseconds. A service level agreement, or SLA, is an external, often contractual, promise to a customer, and it usually includes a penalty for missing the target.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">186.</span> What is a runbook, and why does an on-call engineer rely on one during an incident?</summary>
+        <p class="answer">A runbook is a written, step-by-step guide for how to diagnose and fix a known type of incident. An on-call engineer relies on one to resolve a familiar incident quickly and correctly, without depending on memory alone under pressure.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">187.</span> How do you design a system to survive the failure of an entire data center?</summary>
+        <p class="answer">You deploy the system across at least two geographically separate data centers, and you replicate data between them. You also route traffic away from the failed data center automatically, through a health check and a failover mechanism at the load balancer or the DNS layer.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">188.</span> What is a post-incident review, and what should it produce?</summary>
+        <p class="answer">A post-incident review is a structured discussion held after an outage to establish the timeline, the root cause, and the contributing factors. It should produce a small set of concrete action items that reduce the chance or the impact of a similar future incident.</p>
+      </details></li>
+      </ul>
+    </section>
+
+    <section id="sec-case-study-design-prompts-and-capacity-estimation">
+      <h2>Case-Study Design Prompts and Capacity Estimation</h2>
+      <ul class="qlist">
+      <li><details>
+        <summary><span class="qnum">189.</span> How do you design a URL shortener?</summary>
+        <p class="answer">You generate a short, unique key for each long URL, for example by encoding an incrementing ID in base 62, and you store the key-to-URL mapping in a key-value store. On a redirect request, you look up the key and return an HTTP redirect to the original URL, and you place a cache in front of the store for the most popular keys.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">190.</span> How do you design a rate limiter as a standalone system?</summary>
+        <p class="answer">You pick an algorithm, such as the sliding window or the token bucket, and you store each client&#x27;s counter in a shared, fast store like Redis so every API server instance shares the same count. You return a clear error and a retry-after header once a client exceeds its limit.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">191.</span> How do you design a news feed system, such as the feed on a social media app?</summary>
+        <p class="answer">For a small following count, you generate the feed at read time by fetching recent posts from every followed account and merging them. For a very large following count, you generate the feed at write time by pushing a new post into each follower&#x27;s precomputed feed, and you handle a very popular account as a special case to avoid a huge fan-out.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">192.</span> How do you design a URL-based web crawler?</summary>
+        <p class="answer">You keep a queue of URLs to visit and a separate store of visited URLs to avoid a repeat crawl. You run many worker processes that pull a URL from the queue, fetch the page, extract new links, and push the new links back onto the queue, while you respect each site&#x27;s crawl rate limit.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">193.</span> How do you design a chat application that supports one-to-one and group messaging?</summary>
+        <p class="answer">You use a persistent connection, such as a WebSocket, between each online client and a chat server, and you route a message through that server to the recipient&#x27;s connection or store it for later delivery if the recipient is offline. You store message history in a database partitioned by conversation, and you notify group members through a fan-out to their active connections.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">194.</span> How do you design a system that shortens and tracks click analytics for a URL, at a scale of billions of clicks per day?</summary>
+        <p class="answer">You separate the redirect path, which must stay fast, from the analytics path, which can run asynchronously. The redirect service looks up the URL and responds immediately, while it also emits a click event to a message queue, and a separate analytics pipeline consumes that queue and aggregates the data.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">195.</span> How do you design a distributed file storage service, such as Google Drive or Dropbox?</summary>
+        <p class="answer">You split each file into fixed-size chunks, store the chunks in a distributed object store, and keep file and chunk metadata in a separate database. You sync only the changed chunks between the client and the server to save bandwidth, and you version each file to support history and conflict resolution.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">196.</span> How do you design a notification system that sends push, email, and SMS notifications?</summary>
+        <p class="answer">You accept a notification request and place it on a queue instead of sending it inline, so a slow provider does not block the caller. A set of workers, one per channel, consume the queue and call the correct external provider, with a retry policy and a dead-letter queue for a failed send.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">197.</span> How do you design a ticket-booking system, such as one for movie or airline seats, that avoids double booking?</summary>
+        <p class="answer">You use a database transaction with a row-level lock, or a conditional update, on the specific seat, so only one request can reserve it. You also add a short-lived hold with an expiry, so a seat a user selected but did not pay for returns to availability.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">198.</span> How do you design a distributed unique ID generator?</summary>
+        <p class="answer">You avoid a single auto-increment counter, since it becomes a bottleneck and a single point of failure at scale. You instead use a scheme such as Snowflake, which combines a timestamp, a machine ID, and a per-machine sequence number into one unique, roughly sortable ID, generated locally without coordination.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">199.</span> How do you estimate the storage a system needs for a feature, given a rough usage figure?</summary>
+        <p class="answer">You estimate the size of one record, multiply it by the expected number of records per day, and multiply that by the retention period. You add a safety margin, often 20 to 50 percent, for growth and for index or replication overhead.</p>
+      </details></li>
+      <li><details>
+        <summary><span class="qnum">200.</span> How do you estimate the number of servers a system needs to handle a given request rate?</summary>
+        <p class="answer">You measure, or estimate, how many requests a single server instance can handle per second under realistic load, then divide the total expected request rate by that per-server figure. You round up and add headroom for a traffic spike and for one server&#x27;s planned or unplanned downtime.</p>
+      </details></li>
+      </ul>
+    </section>
+
+  <footer>
+    <p>200 questions across 16 topics. Click any question to reveal its answer.</p>
+  </footer>
+</main>
+</body>
+</html>

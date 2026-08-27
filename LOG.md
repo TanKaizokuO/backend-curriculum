@@ -475,6 +475,53 @@ against both and getting identical output is the argument for Nginx over a
 hand-rolled proxy — it is the same mechanism, not a different one, with
 correctness and performance the demo does not need to prove.
 
+
+### Lesson 0016 covers
+
+Rules the browser enforces. Structure: the one idea (CORS and CSP are
+instructions to the browser; they protect the user, not the server) →
+two real origins on the loopback interface, `http://127.0.0.1:8051`
+(`static_site.py`) and `http://127.0.0.2:8040` (`api.py`), chosen as two
+different loopback addresses so no `/etc/hosts` edit is needed →
+**observable failure 1**: a real headless Chromium's `fetch()` rejects a
+simple `GET /bookmarks` with `TypeError: Failed to fetch` while
+`api.py`'s own log shows `200` — curl on the identical URL gets a clean
+`200` body, because curl enforces no same-origin policy at all →
+**observable failure 2**: the identical page's `POST /login` never
+reaches the server at all, because its JSON body makes it a
+non-*simple* request, and the preflight `OPTIONS` gets no
+`Access-Control-Allow-*` headers back → the fix: `CORS_ALLOW=on` echoes
+the calling origin, never `*`, so the response can carry
+`Access-Control-Allow-Credentials` → **observable failure 3**: with CORS
+fixed, login succeeds and sets a cookie, but the very next
+cross-*site* `GET /whoami` reports `cookie_header: null` — a
+`SameSite=Lax` cookie set by a cross-site response is never stored at
+all, confirmed with `page.cookies()` returning `[]`, not merely
+withheld from being sent → `SameSite=None` set instead is dropped too,
+because it requires `Secure`, and this demo stays on plain HTTP → a
+same-origin control case proves `HttpOnly` separately: the server sees
+the cookie, `document.cookie` reads `""` on the cookie's own origin →
+CSP: `Content-Security-Policy: default-src 'self'` blocks a deliberate
+inline `<script>` and, independently, the page's own cross-origin
+`fetch()`, since `connect-src` falls back to `default-src` too → five
+practice steps → five retrieval-practice questions.
+
+**Every transcript and every console error quoted in this lesson is
+real output**, captured with the `browser` tool driving a real headless
+Chromium against `Code/Lesson_16_code/api.py` and `static_site.py`, then
+reproduced against the TypeScript twin. No error message, header value,
+or cookie-store result is invented or recalled from memory.
+
+**Teaching hook worth reusing — origin, site, and two different loopback
+addresses.** `CORS` is enforced per *origin* (scheme, host, port); a
+cookie's `SameSite` is enforced per *site* (scheme, registrable domain,
+ignoring port). Two ports on `127.0.0.1` would have been different
+origins but the same site, silently hiding the `SameSite` failure this
+lesson needed to show. Moving the API to `127.0.0.2` — still loopback,
+still no `/etc/hosts` — made both boundaries real at once. Worth
+repeating whenever a lesson needs a genuine cross-site case without
+standing up DNS.
+
 ---
 
 ## Built infrastructure
@@ -594,6 +641,14 @@ correctness and performance the demo does not need to prove.
   terminating TLS for the same two hostnames). `demo.sh` in each directory
   runs the raw mechanism first, then a real `nginx:1.27-alpine` container
   against the same certificates and origin.
+- `Code/Lesson_16_code/` + `Code/js/Lesson_16_code/` — `api.py` / `api.ts`
+  (two origins' worth of routes: `/bookmarks`, `/login`, `/whoami`, gated
+  behind `CORS_ALLOW` and `COOKIE_SAMESITE` environment variables) and
+  `static_site.py` / `staticSite.ts` (serves `static/`, gated behind
+  `CSP_MODE`). `static/index.html`, `script.js`, and `style.css` are
+  identical files in both directories — CORS, CSP, and cookie attributes
+  are protocol rules, not language features. `demo.sh` in each directory
+  proves every header transcript with curl; the console errors and
+  cookie-store results need a real browser, noted in each `README.md`.
 - `lesson_plan.md` — the order of the course: what is done, what each finished lesson
-  proved, and thirteen planned lessons (16–28) with their one idea.
-
+  proved, and twelve planned lessons (17–28) with their one idea.

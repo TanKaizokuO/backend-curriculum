@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lesson 16 demo — a second origin</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<script>window.__inlineRan = true;</script>
+<h1>http://127.0.0.1:8051 — calling the API on http://127.0.0.2:8040</h1>
+<p>Inline script executed: <span id="inline-status">checking…</span></p>
+<p>
+  <button id="load">Load bookmarks (GET)</button>
+  <button id="login">Log in (POST)</button>
+  <button id="whoami">Who am I? (GET)</button>
+</p>
+<pre id="output">(no request yet)</pre>
+<script src="script.js"></script>
+</body>
+</html>

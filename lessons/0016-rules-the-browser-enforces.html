@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 16 · Rules the browser enforces</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Lesson 16 ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../GLOSSARY.md">Glossary</a> ·
+    <a href="../lesson_plan.md">Plan</a> ·
+    <a href="0015-the-edge-reverse-proxy-and-tls.html">← Lesson 15</a>
+  </p>
+  <h1>Rules the browser enforces
+    <span class="sub">CORS and CSP are instructions to the browser. They protect the user, not the server.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">Every lesson so far tested a server with curl or a raw
+socket. Neither one enforces same-origin rules, so neither one can show
+what this lesson is about. curl sends whatever bytes you tell it to and
+prints whatever comes back. A browser does not: it decides for itself,
+after your server has already answered, whether the calling page is
+allowed to read that answer at all. This lesson needs a real browser,
+because a real browser is the thing enforcing the rule.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>CORS and CSP are instructions to the browser. They protect the user, not the server.</p>
+</div>
+
+<div class="note">
+  <span class="note-label">How the two languages sit together</span>
+  <p>CORS, CSP, and cookie attributes are protocol rules, read by the
+  browser, not by either server language. <code>api.py</code> and
+  <code>api.ts</code> answer with the identical headers, and
+  <code>static/index.html</code> is the same file in both projects. Read
+  the Python steps first. The TypeScript section at the end runs the same
+  page against the same browser and gets the same result.</p>
+</div>
+
+<h2>Step 1 · Two origins on the loopback interface</h2>
+
+<p>An <strong>origin</strong> is a scheme, a host, and a port, taken
+together. Change any one of the three and the browser treats it as a
+different origin, even on the same machine. This lesson needs two:
+<code>static_site.py</code> serves a page from
+<code>http://127.0.0.1:8051</code>, and <code>api.py</code> answers on
+<code>http://127.0.0.2:8040</code> — a different loopback address, so the
+two count as different origins without needing a domain name or
+<code>/etc/hosts</code> entry.</p>
+
+<p class="filename">Code/Lesson_16_code/static/script.js</p>
+<pre class="wide"><code><span class="c-key">const</span> API = <span class="c-str">"http://127.0.0.2:8040"</span>;
+<span class="c-key">const</span> res = <span class="c-key">await</span> <span class="c-fn">fetch</span>(<span class="c-str">`${API}/bookmarks`</span>);</code></pre>
+
+<p>Nothing about this line looks dangerous — it is the same
+<code>fetch()</code> every earlier lesson used. What changes is where the
+page making the call was loaded from.</p>
+
+<h2>Step 2 · The observable failure: a 200 the page never sees</h2>
+
+<p>Start both servers and open <code>http://127.0.0.1:8051/</code> in a
+browser. Click "Load bookmarks". The button calls <code>GET
+/bookmarks</code> — a <strong>simple request</strong> in the Fetch
+standard's terms, since it uses an allowed method and adds no headers
+beyond the safelisted ones, so the browser sends it immediately, with no
+preflight. The server answers. The page still shows an error.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> curl -s http://127.0.0.2:8040/bookmarks
+{
+  "bookmarks": [
+    { "id": 1, "title": "MDN: same-origin policy" },
+    { "id": 2, "title": "MDN: CORS" }
+  ]
+}</code></pre>
+
+<p>curl gets a normal <code>200</code>, because curl enforces no
+same-origin rule at all. The browser's own console, on the same request
+from the same server, reads differently:</p>
+
+<pre class="wide"><code>Access to fetch at 'http://127.0.0.2:8040/bookmarks' from origin
+'http://127.0.0.1:8051' has been blocked by CORS policy: No
+'Access-Control-Allow-Origin' header is present on the requested resource.
+Failed to load resource: net::ERR_FAILED</code></pre>
+
+<p><code>api.py</code>'s own log for this request reads
+<code>"GET /bookmarks HTTP/1.1" 200 -</code> — the server did the work and
+sent the full response over the wire. The browser received it, read the
+headers, found no <code>Access-Control-Allow-Origin</code>, and threw the
+body away before any of the page's own JavaScript could touch it.
+<code>fetch()</code>'s promise rejects with a plain <code>TypeError:
+Failed to fetch</code>; the specific reason lives only in the console, by
+design — a script is not allowed to learn why a cross-origin read failed.</p>
+
+<h2>Step 3 · The observable failure: a request that never leaves</h2>
+
+<p>Click "Log in". This button calls <code>POST /login</code> with a
+JSON body, which is <em>not</em> a simple request — <code>Content-Type:
+application/json</code> is not on the safelist, so the browser sends a
+<strong>preflight request</strong> first: an <code>OPTIONS</code> asking
+the server's permission before it sends the real one.</p>
+
+<pre class="wide"><code><span class="c-key">$</span> curl -sD - -o /dev/null -X OPTIONS http://127.0.0.2:8040/login \
+    -H "Origin: http://127.0.0.1:8051" \
+    -H "Access-Control-Request-Method: POST" \
+    -H "Access-Control-Request-Headers: content-type"
+HTTP/1.1 204 No Content
+Content-Length: 0
+Connection: close</code></pre>
+
+<p>No <code>Access-Control-*</code> header comes back, so a real browser
+stops here. The console names the exact step that failed, distinct from
+Step 2's:</p>
+
+<pre class="wide"><code>Access to fetch at 'http://127.0.0.2:8040/login' from origin
+'http://127.0.0.1:8051' has been blocked by CORS policy: Response to
+preflight request doesn't pass access control check: No
+'Access-Control-Allow-Origin' header is present on the requested resource.</code></pre>
+
+<p><code>api.py</code>'s log shows only the <code>OPTIONS</code> request,
+never a <code>POST</code>. The real request was never sent at all — a
+failed preflight cancels it before it exists, the same way Lesson 15's
+oversize-body check stopped a request before the origin ever saw it.</p>
+
+<h2>Step 4 · The fix: answer both questions the browser is asking</h2>
+
+<p>A browser sends two different questions across these two requests: "is
+this origin allowed?", and, before a non-simple request, "is this method
+and these headers allowed?" <code>api.py</code> answers both, only for the
+one origin this demo trusts.</p>
+
+<p class="filename">Code/Lesson_16_code/api.py</p>
+<pre class="wide"><code><span class="c-key">def</span> <span class="c-fn">_cors_headers</span>(self, for_preflight: <span class="c-fn">bool</span>) -&gt; <span class="c-key">None</span>:
+    origin = self.headers.get(<span class="c-str">"Origin"</span>)
+    <span class="c-key">if</span> origin <span class="c-key">not in</span> ALLOWED_ORIGINS:
+        <span class="c-key">return</span>
+    <span class="c-com"># Echo the one calling origin back, never "*" — a wildcard cannot</span>
+    <span class="c-com"># carry Access-Control-Allow-Credentials, and login needs credentials.</span>
+    self.send_header(<span class="c-str">"Access-Control-Allow-Origin"</span>, origin)
+    self.send_header(<span class="c-str">"Access-Control-Allow-Credentials"</span>, <span class="c-str">"true"</span>)
+    self.send_header(<span class="c-str">"Vary"</span>, <span class="c-str">"Origin"</span>)
+    <span class="c-key">if</span> for_preflight:
+        self.send_header(<span class="c-str">"Access-Control-Allow-Methods"</span>, <span class="c-str">"GET, POST"</span>)
+        self.send_header(<span class="c-str">"Access-Control-Allow-Headers"</span>, <span class="c-str">"Content-Type"</span>)</code></pre>
+
+<div class="note note--warn">
+  <span class="note-label">Never echo credentials onto a wildcard</span>
+  <p>MDN's CORS reference states it plainly: a credentialed response must
+  name one origin, never <code>*</code>. A server that both accepts
+  cookies and answers every origin with <code>*</code> would let any site
+  on the internet read a signed-in user's data by asking on their behalf.
+  Checking <code>Origin</code> against an explicit allow-list, the way
+  <code>api.py</code> does, is the only safe way to combine credentials
+  with more than one trusted caller.</p>
+</div>
+
+<p>With <code>CORS_ALLOW=on</code>, both transcripts change. The preflight
+now answers, and the real requests both succeed in a real browser:</p>
+
+<pre class="wide"><code><span class="c-key">$</span> curl -sD - -o /dev/null -X OPTIONS http://127.0.0.2:8040/login \
+    -H "Origin: http://127.0.0.1:8051" \
+    -H "Access-Control-Request-Method: POST" \
+    -H "Access-Control-Request-Headers: content-type"
+HTTP/1.1 204 No Content
+Access-Control-Allow-Origin: http://127.0.0.1:8051
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, POST
+Access-Control-Allow-Headers: Content-Type
+Access-Control-Max-Age: 600
+
+<span class="c-key">$</span> curl -s http://127.0.0.2:8040/bookmarks -H "Origin: http://127.0.0.1:8051"
+{ "bookmarks": [ ... ] }   <span class="c-com"># now with Access-Control-Allow-Origin on the response</span></code></pre>
+
+<p>In the browser, "Load bookmarks" now shows the two bookmarks, and "Log
+in" shows <code>{"logged_in": true}</code>. Both buttons call the same
+code as Steps 2 and 3; only the server's headers changed.</p>
+
+<h2>Step 5 · The observable failure that CORS headers do not fix</h2>
+
+<p><code>POST /login</code> sets a cookie:</p>
+
+<pre class="wide"><code>Set-Cookie: session=demo-session-token; HttpOnly; SameSite=Lax; Path=/</code></pre>
+
+<p>Click "Who am I?" right after logging in. It calls <code>GET
+/whoami</code> with <code>credentials: "include"</code>, so the browser
+should attach any cookie it has for <code>127.0.0.2:8040</code>. The
+response says otherwise:</p>
+
+<pre class="wide"><code>GET /whoami -&gt;
+{
+  "origin_header": "http://127.0.0.1:8051",
+  "cookie_header": null,
+  "logged_in": false
+}</code></pre>
+
+<p>The login two clicks ago reported success. This request, to the same
+server, from the same page, has no memory of it. CORS is not the
+problem — the CORS headers are correct, and the request reached the
+server. Something else decided this cookie should not exist for this
+caller.</p>
+
+<h2>Step 6 · SameSite: a second, separate boundary</h2>
+
+<p>CORS asks about <strong>origin</strong> — scheme, host, and port,
+all three. Cookies ask about <strong>site</strong> — scheme and
+registrable domain, <em>ignoring port</em>. Lesson 15's two hostnames,
+<code>bookmarks-api.local</code> and <code>admin.bookmarks-api.local</code>,
+were different origins <em>and</em> different sites. Two ports on the same
+<code>127.0.0.1</code> would have been different origins but the <em>same</em>
+site — which is exactly why this lesson put the API on
+<code>127.0.0.2</code> instead: the cookie failure in Step 5 only shows up
+across a genuine cross-site boundary.</p>
+
+<p>A cookie with no <code>SameSite</code> attribute defaults to
+<code>Lax</code>. MDN's cookies guide states the rule this demo just
+proved: browsers already withhold a cross-site cookie by default as a
+privacy measure, and <code>SameSite=Lax</code> reinforces the same
+restriction for the cookie's own site. The <code>Set-Cookie</code> from
+Step 5 arrived on a cross-site response, so the browser never kept it at
+all — not "kept it but withheld it", <em>never stored it</em>:</p>
+
+<pre class="wide"><code>&gt; await page.cookies('http://127.0.0.2:8040')
+[]</code></pre>
+
+<p><code>COOKIE_SAMESITE=None</code> asks for the opposite of
+<code>Lax</code>: send this cookie on cross-site requests too. Restart
+<code>api.py</code> with it set, log in again, and the cookie still does
+not appear in the store. MDN's rule again: <code>SameSite=None</code>
+requires the <code>Secure</code> attribute, and a cookie missing it is
+rejected outright. This demo runs on plain HTTP — the same choice
+<code>origin.py</code> made in Lesson 15 — so <code>Secure</code> is not
+present, and the browser drops the cookie before it is ever stored.
+Finishing this step for real needs Lesson 15's TLS proxy in front of both
+origins; it is this lesson's closing practice step, not part of the demo,
+so this lesson stays on plain HTTP throughout.</p>
+
+<div class="note">
+  <span class="note-label">HttpOnly, checked separately</span>
+  <p><code>Set-Cookie</code> above also carries <code>HttpOnly</code>.
+  Logging in directly against <code>http://127.0.0.2:8040</code> — same
+  origin, no cross-site question involved — stores the cookie
+  and sends it back on the next request, but <code>document.cookie</code>
+  on that same page reads <code>""</code>. The server sees
+  <code>cookie_header: "session=demo-session-token"</code>; the page's own
+  JavaScript sees nothing. <code>HttpOnly</code> is unrelated to CORS or
+  <code>SameSite</code> — it hides a cookie from script on every origin,
+  including the one that set it, which is why a session cookie should
+  always carry it.</p>
+</div>
+
+<h2>Step 7 · CSP: a policy about a page's own content, not about origins</h2>
+
+<p>CORS and <code>SameSite</code> both govern a browser's dealings with
+another origin. <strong>Content-Security-Policy</strong> governs
+something narrower: what a page is allowed to load and run, stated by
+that page's own server, independent of any other origin's cooperation.
+<code>static/index.html</code> ships one inline script on purpose:</p>
+
+<p class="filename">Code/Lesson_16_code/static/index.html</p>
+<pre class="wide"><code>&lt;script&gt;window.__inlineRan = <span class="c-key">true</span>;&lt;/script&gt;</code></pre>
+
+<p>With no CSP header, it runs, and the page reports "Inline script
+executed: yes". Restart <code>static_site.py</code> with
+<code>CSP_MODE=on</code>, which adds one header to the HTML response:</p>
+
+<pre class="wide"><code>Content-Security-Policy: default-src 'self'</code></pre>
+
+<p>Reload the page. It reports "Inline script executed: no", and the
+console names exactly what happened:</p>
+
+<pre class="wide"><code>Executing inline script violates the following Content Security Policy
+directive: "default-src 'self'". Either the 'unsafe-inline' keyword, a
+hash ('sha256-...'), or a nonce ('nonce-...') is required to enable
+inline execution. Note also that 'script-src' was not explicitly set, so
+'default-src' is used as a fallback. The action has been blocked.</code></pre>
+
+<p><code>script.js</code>, loaded from <code>&lt;script
+src="script.js"&gt;</code>, still runs — it is same-origin, so
+<code>'self'</code> allows it. Only the inline snippet is refused. This is
+the whole value of the policy: it does not ask whether the code is
+correct, only whether it arrived the way the policy trusts code to
+arrive. An attacker who manages to inject
+<code>&lt;script&gt;steal(document.cookie)&lt;/script&gt;</code> into this
+page — the classic reflected-XSS payload — gets refused by the same rule,
+without the server ever having to detect the injection at all.</p>
+
+<div class="note note--warn">
+  <span class="note-label">default-src is a fallback for every fetch directive, including connect-src</span>
+  <p><code>default-src 'self'</code> does not only govern scripts. Point
+  "Load bookmarks" at the API origin while this CSP header is active, and
+  the request is refused before it leaves the page at all — a second,
+  independent block on top of anything CORS allows, because
+  <code>connect-src</code> was never set and falls back to
+  <code>default-src</code> too. Fixing CORS on the server does not help;
+  the page's own policy needs
+  <code>connect-src 'self' http://127.0.0.2:8040</code> before the request
+  is allowed to leave.</p>
+</div>
+
+<h2>TypeScript: the same policy, the same browser, the same result</h2>
+
+<p>CORS, cookies, and CSP are read by the browser, not by either server
+language, so <code>api.ts</code> and <code>staticSite.ts</code> answer
+with headers identical to the Python versions, and
+<code>src/static/</code> is the same three files unchanged — HTML, CSS,
+and client JavaScript need no port at all.</p>
+
+<p class="filename">Code/js/Lesson_16_code/src/api.ts</p>
+<pre class="wide"><code><span class="c-key">function</span> <span class="c-fn">corsHeaders</span>(req, res, forPreflight: <span class="c-fn">boolean</span>): <span class="c-key">void</span> {
+  <span class="c-key">const</span> origin = req.headers.origin;
+  <span class="c-key">if</span> (!origin || !ALLOWED_ORIGINS.<span class="c-fn">has</span>(origin)) <span class="c-key">return</span>;
+  res.<span class="c-fn">setHeader</span>(<span class="c-str">"Access-Control-Allow-Origin"</span>, origin);
+  res.<span class="c-fn">setHeader</span>(<span class="c-str">"Access-Control-Allow-Credentials"</span>, <span class="c-str">"true"</span>);
+  <span class="c-key">if</span> (forPreflight) {
+    res.<span class="c-fn">setHeader</span>(<span class="c-str">"Access-Control-Allow-Methods"</span>, <span class="c-str">"GET, POST"</span>);
+    res.<span class="c-fn">setHeader</span>(<span class="c-str">"Access-Control-Allow-Headers"</span>, <span class="c-str">"Content-Type"</span>);
+  }
+}</code></pre>
+
+<pre class="wide"><code><span class="c-key">$</span> node src/api.ts &amp;
+api listening on http://127.0.0.2:8040 (CORS_ALLOW=false, COOKIE_SAMESITE=Lax)
+
+<span class="c-key">$</span> curl -sD - -o /dev/null -X OPTIONS http://127.0.0.2:8040/login \
+    -H "Origin: http://127.0.0.1:8051" \
+    -H "Access-Control-Request-Method: POST" \
+    -H "Access-Control-Request-Headers: content-type"
+HTTP/1.1 204 No Content
+Content-Length: 0
+Connection: close        <span class="c-com"># same missing headers as api.py, Step 3</span></code></pre>
+
+<p>Opened in the same headless Chromium the Python steps used,
+<code>http://127.0.0.1:8051/</code> against <code>api.ts</code> with
+<code>CORS_ALLOW=on</code> reproduces Step 5's exact failure — login
+answers <code>{"loggedIn": true}</code>, and the very next
+<code>whoami</code> call still reports <code>cookieHeader: null</code>.
+Nothing about the language changed the outcome, because nothing about the
+language enforced the rule in the first place: the browser did.</p>
+
+<h2>Practice</h2>
+
+<ol class="steps">
+  <li><strong>Run the demo.</strong> From <code>Code/Lesson_16_code</code>,
+  run <code>./demo.sh</code>. It needs <code>python3</code> and
+  <code>curl</code>, and prints every header transcript in this lesson.</li>
+  <li><strong>Watch it fail in your own browser.</strong> Start
+  <code>api.py</code> and <code>static_site.py</code> with no environment
+  variables, open <code>http://127.0.0.1:8051/</code>, open the browser's
+  console, and click all three buttons. Read the exact wording of each
+  error before reading it here again.</li>
+  <li><strong>Break the fix on purpose.</strong> With
+  <code>CORS_ALLOW=on</code>, comment out
+  <code>Access-Control-Allow-Credentials</code> in <code>api.py</code>,
+  restart it, and reload. "Load bookmarks" still works; "Log in" now
+  fails differently — read what the console says changed.</li>
+  <li><strong>Finish the SameSite=None cookie with real TLS.</strong> Put
+  <code>api.py</code> behind
+  <code>Code/Lesson_15_code/tls_proxy.py</code> on a certificate for a
+  <code>127.0.0.2</code>-reachable hostname, serve
+  <code>static_site.py</code> over HTTPS the same way, set
+  <code>COOKIE_SAMESITE=None</code>, and confirm the cookie in Step 6
+  finally survives a cross-site <code>whoami</code>.</li>
+  <li><strong>Let CORS and CSP both pass.</strong> With
+  <code>CSP_MODE=on</code>, add
+  <code>connect-src 'self' http://127.0.0.2:8040</code> to the policy in
+  <code>static_site.py</code>, restart, and confirm "Load bookmarks" works
+  again while the inline script stays blocked.</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "A browser's fetch() to another origin returns a TypeError, and the server's own log shows a 200 for that exact request. What does this prove?",
+    "options": [
+      "The server crashed after logging the request",
+      "The server did the work and sent a full response; the browser read the missing Access-Control-Allow-Origin header and discarded it before the page's own code could see it",
+      "The request never reached the network",
+      "curl and the browser both enforce the same same-origin policy"
+    ],
+    "answer": 1,
+    "why": "CORS is enforced by the browser after a normal HTTP exchange completes, not by blocking the exchange itself. The server always sees and can log the request; only the browser withholds the response from the calling script." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "POST /login with a JSON body triggers a CORS preflight, but GET /bookmarks does not. Why?",
+    "options": [
+      "POST is always preflighted and GET never is",
+      "GET /bookmarks uses an allowed method and only safelisted headers, so it counts as a simple request; Content-Type: application/json is not on that safelist",
+      "Preflight only applies to requests with a body, regardless of headers",
+      "The server decides which requests get preflighted"
+    ],
+    "answer": 1,
+    "why": "The Fetch standard preflights any request outside a narrow 'simple request' definition: an allowed method, and only CORS-safelisted headers with safelisted values. application/json is not one of the three safelisted Content-Type values, so it forces a preflight even though the method, POST, is otherwise allowed unpreflighted." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "A cookie's SameSite attribute is None but the response that sets it did not also add which attribute, causing the browser to reject the cookie entirely?",
+    "answer": "Secure",
+    "accept": ["Secure", "secure"],
+    "why": "SameSite=None asks the browser to send a cookie on cross-site requests. Browsers require Secure alongside it, so a cookie meant to cross sites is never carried over plain HTTP even accidentally." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Two API instances answer on http://127.0.0.1:8040 and http://127.0.0.1:8041. For the purposes of a cookie's SameSite attribute, are they the same site or different sites?",
+    "options": [
+      "Different sites, because the ports differ",
+      "The same site, because SameSite compares scheme and registrable domain only, and ignores the port",
+      "Different sites, because CORS treats them as different origins",
+      "It depends on which one sets the cookie first"
+    ],
+    "answer": 1,
+    "why": "CORS's 'origin' includes the port; a cookie's 'site' does not. Two ports on the same host are different origins but the same site, which is why this lesson had to move the API to a second loopback address, 127.0.0.2, to show a real cross-site cookie failure." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "A page carries Content-Security-Policy: default-src 'self'. Its own CORS headers from another origin are all correct. A fetch() to that other origin still fails. Why, and what fixes it?",
+    "answer": "default-src is a fallback for every fetch directive that is not set explicitly, including connect-src, which governs fetch() and XMLHttpRequest destinations. With no connect-src of its own, the policy falls back to default-src 'self' and refuses any cross-origin request the page's own script tries to make, regardless of what the other origin's CORS headers allow. Adding an explicit connect-src that names the other origin fixes it.",
+    "why": "CORS and CSP are independent mechanisms enforced by the same browser for different reasons: CORS asks whether the other origin will share its response; CSP asks whether this page is allowed to make the request at all. Either one can block a request the other one would have allowed." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<nav class="lesson-nav">
+  <a href="0015-the-edge-reverse-proxy-and-tls.html">← Lesson 15: The edge: reverse proxy and TLS</a>
+  <span>Lesson 17: Attacking your own API →</span>
+</nav>
+
+</main>
+</body>
+</html>
