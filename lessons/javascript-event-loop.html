@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JavaScript Event Loop</title>
+<style>html{background-color:#14141a;color:#e6e3da;}</style>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="stylesheet" href="../assets/quiz.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">
+    Backend · Reference ·
+    <a href="../MISSION.md">Mission</a> ·
+    <a href="../RESOURCES.md">Resources</a> ·
+    <a href="../GLOSSARY.md">Glossary</a> ·
+    <a href="../lesson_plan.md">Plan</a> ·
+    <a href="0008-authentication.html">← Lesson 08</a>
+  </p>
+  <h1>The JavaScript Event Loop
+    <span class="sub">JavaScript runs one line at a time on one thread. The event loop decides which queued line runs next.</span>
+  </h1>
+</header>
+
+<main>
+
+<p class="lede">You already met the failure this lesson explains. Lesson 8
+measured ten slow password hashes that blocked the event loop for 1.7
+seconds — every other request waited, on one thread, with no error. This
+lesson shows the mechanism that made that true, and the two separate
+queues, a timer and a promise, that decide the order your callbacks run
+in.</p>
+
+<div class="note note--key">
+  <span class="note-label">The whole lesson in one sentence</span>
+  <p>All synchronous code runs first. Then the event loop drains the
+  whole microtask queue. Only then does it run one task from a macrotask
+  queue, such as a timer. It repeats this cycle for as long as the
+  program runs.</p>
+</div>
+
+<h2>1. The call stack runs one thing at a time</h2>
+
+<p>A JavaScript engine has one call stack. The call stack holds the
+function that runs now, and the functions that called it. The engine
+takes one line, runs it to completion, and only then takes the next
+line. No other code interrupts a running function.</p>
+
+<p>This is why a function does not need a lock to protect a shared
+variable inside one process. Two functions never run at the same
+instant. Lesson 6 needed a lock for PostgreSQL rows because two separate
+database connections truly run at the same time. One JavaScript
+process never does.</p>
+
+<h2>2. The observable failure: three lines print out of order</h2>
+
+<p>Run this script. Read the order of the four <code>console.log</code>
+calls before you read the order of the four lines below the code.</p>
+
+<pre class="wide"><code><span class="c-fn">console</span>.log(<span class="c-str">'A: first line'</span>);
+<span class="c-fn">setTimeout</span>(() =&gt; <span class="c-fn">console</span>.log(<span class="c-str">'B: setTimeout callback'</span>), <span class="c-num">0</span>);
+<span class="c-fn">Promise</span>.resolve().then(() =&gt; <span class="c-fn">console</span>.log(<span class="c-str">'C: promise callback'</span>));
+<span class="c-fn">console</span>.log(<span class="c-str">'D: last line'</span>);</code></pre>
+
+<pre class="wide"><code><span class="c-key">$</span> node demo1.js
+A: first line
+D: last line
+C: promise callback
+B: setTimeout callback</code></pre>
+
+<p>Line B has a delay of <code>0</code>. It still prints last. The
+delay you write is not a promise about when the callback runs. It is
+the earliest time the callback becomes eligible to run. Line C has no
+delay in the code at all, and it still prints after every synchronous
+line and before the timer. Two separate rules produced this order, and
+you need both to predict it.</p>
+
+<h2>3. Three places a callback can wait: the stack, the microtask queue, the macrotask queue</h2>
+
+<p>A callback that is not running yet waits in one of two queues:</p>
+
+<ul>
+  <li><strong>The microtask queue.</strong> Holds callbacks from a
+  resolved or rejected <code>Promise</code>, from <code>queueMicrotask</code>,
+  and from <code>await</code>.</li>
+  <li><strong>The macrotask queue</strong> (also called the task queue).
+  Holds callbacks from <code>setTimeout</code>, <code>setInterval</code>,
+  and completed I/O, such as a finished file read or an arrived network
+  response.</li>
+</ul>
+
+<p>The event loop follows one rule, on every pass:</p>
+
+<ol class="steps">
+  <li>Run the synchronous code already on the call stack, to the end.</li>
+  <li>Take every callback out of the microtask queue and run each one to
+  the end. A microtask that queues another microtask extends this
+  step — the queue must run empty before the next step starts.</li>
+  <li>Take exactly <strong>one</strong> callback from the macrotask
+  queue and run it to the end.</li>
+  <li>Go back to step 2.</li>
+</ol>
+
+<p>This rule explains Section 2's output. Lines A and D are synchronous
+code: they run in step 1, in the order written. Line C is a microtask:
+it runs in step 2, before the loop is allowed to touch the macrotask
+queue at all. Line B is a macrotask: it waits for step 3, which is
+always last.</p>
+
+<div class="note note--warn">
+  <span class="note-label">The microtask queue is drained fully, on every pass</span>
+  <p>Step 2 does not run one microtask and move on. It runs microtasks
+  until none remain, even ones added by other microtasks while it runs.
+  A macrotask never starts while a microtask is still queued.</p>
+</div>
+
+<h2>4. process.nextTick runs before every other microtask, in Node</h2>
+
+<p>Node adds a third queue that browsers do not have:
+<code>process.nextTick</code>. Node drains the <code>nextTick</code>
+queue completely, then drains the promise microtask queue, on every
+pass — <code>nextTick</code> always wins the race against a promise,
+regardless of the order you wrote them in.</p>
+
+<pre class="wide"><code><span class="c-fn">process</span>.nextTick(() =&gt; <span class="c-fn">console</span>.log(<span class="c-str">'nextTick callback'</span>));
+<span class="c-fn">Promise</span>.resolve().then(() =&gt; <span class="c-fn">console</span>.log(<span class="c-str">'promise callback'</span>));
+<span class="c-fn">queueMicrotask</span>(() =&gt; <span class="c-fn">console</span>.log(<span class="c-str">'queueMicrotask callback'</span>));
+<span class="c-fn">console</span>.log(<span class="c-str">'synchronous line'</span>);</code></pre>
+
+<pre class="wide"><code><span class="c-key">$</span> node demo2.js
+synchronous line
+nextTick callback
+promise callback
+queueMicrotask callback</code></pre>
+
+<p><code>queueMicrotask</code> and a promise's <code>.then</code> share
+one queue, so they run in the order you queued them. <code>nextTick</code>
+is a second, earlier queue. A library that overuses
+<code>process.nextTick</code> can starve promise callbacks the same way
+Section 8 starves a timer — the reason Node's own documentation
+recommends <code>queueMicrotask</code> for new code and reserves
+<code>nextTick</code> for cases that truly need to run before any
+promise.</p>
+
+<h2>5. setImmediate and setTimeout(0), inside real I/O</h2>
+
+<p>At the top of a script, the order of <code>setTimeout(fn, 0)</code>
+and <code>setImmediate(fn)</code> is not guaranteed — it depends on how
+long the process took to start. Inside an I/O callback, the order is
+fixed. Node's event loop has phases, and the <strong>check</strong>
+phase, where <code>setImmediate</code> callbacks run, always comes
+before the next pass reaches the <strong>timers</strong> phase.</p>
+
+<pre class="wide"><code><span class="c-key">const</span> fs = <span class="c-fn">require</span>(<span class="c-str">'fs'</span>);
+fs.readFile(__filename, () =&gt; {
+  <span class="c-fn">setTimeout</span>(() =&gt; <span class="c-fn">console</span>.log(<span class="c-str">'timeout'</span>), <span class="c-num">0</span>);
+  <span class="c-fn">setImmediate</span>(() =&gt; <span class="c-fn">console</span>.log(<span class="c-str">'immediate'</span>));
+});</code></pre>
+
+<pre class="wide"><code><span class="c-key">$</span> node demo3.js
+immediate
+timeout</code></pre>
+
+<p>Node's full phase order, one pass of the loop: <strong>timers</strong>
+(due <code>setTimeout</code>/<code>setInterval</code> callbacks),
+<strong>pending callbacks</strong> (a few deferred system-level ones),
+<strong>poll</strong> (retrieve new I/O events, run their callbacks),
+<strong>check</strong> (<code>setImmediate</code>), <strong>close
+callbacks</strong>. The queued file-read callback runs during
+<strong>poll</strong>; the loop reaches <strong>check</strong> next, in
+the same pass, so <code>setImmediate</code> always wins from inside an
+I/O callback specifically.</p>
+
+<h2>6. async/await is the same queue, with different-looking syntax</h2>
+
+<p>An <code>async</code> function always returns a <code>Promise</code>.
+<code>await</code> pauses the function and schedules the rest of it as a
+microtask, the moment the awaited value settles. It changes nothing
+about the two queues from Section 3 — it only changes how the code
+reads.</p>
+
+<pre class="wide"><code><span class="c-key">async function</span> <span class="c-fn">foo</span>() {
+  <span class="c-fn">console</span>.log(<span class="c-str">'foo: before await'</span>);
+  <span class="c-key">await</span> <span class="c-key">null</span>;
+  <span class="c-fn">console</span>.log(<span class="c-str">'foo: after await'</span>);
+}
+<span class="c-fn">console</span>.log(<span class="c-str">'script: start'</span>);
+<span class="c-fn">foo</span>();
+<span class="c-fn">console</span>.log(<span class="c-str">'script: end'</span>);</code></pre>
+
+<pre class="wide"><code><span class="c-key">$</span> node demo5.js
+script: start
+foo: before await
+script: end
+foo: after await</code></pre>
+
+<p>Calling <code>foo()</code> runs it synchronously up to the
+<code>await</code>. The line after <code>await</code> does not run
+next — it goes to the microtask queue, and <code>script: end</code>
+runs first, because it is still on the call stack from step 1. Nothing
+here differs from a plain <code>.then()</code> chain. <code>async</code>
+and <code>await</code> are syntax over the same two queues, not a third
+mechanism.</p>
+
+<h2>7. Blocking the event loop: the failure with no error message</h2>
+
+<p>A callback that does not finish holds the call stack, and step 1
+never ends. Every other queued callback — a timer, a network response, a
+second user's request — waits for it, silently. No exception fires.</p>
+
+<pre class="wide"><code><span class="c-fn">console</span>.log(<span class="c-str">'scheduling a timer for 0ms'</span>);
+<span class="c-key">const</span> scheduledAt = Date.now();
+<span class="c-fn">setTimeout</span>(() =&gt; {
+  <span class="c-fn">console</span>.log(`timer ran after ${Date.now() - scheduledAt}ms`);
+}, <span class="c-num">0</span>);
+
+<span class="c-key">const</span> blockUntil = Date.now() + <span class="c-num">300</span>;
+<span class="c-key">while</span> (Date.now() &lt; blockUntil) {
+  <span class="c-com">// busy loop: blocks the single thread on purpose</span>
+}
+<span class="c-fn">console</span>.log(<span class="c-str">'busy loop finished'</span>);</code></pre>
+
+<pre class="wide"><code><span class="c-key">$</span> node demo4.js
+scheduling a timer for 0ms
+busy loop finished
+timer ran after 300ms</code></pre>
+
+<p>The timer's due time passed after roughly 0 ms. It did not run at 0
+ms. It ran at 300 ms, the exact length of the busy loop, because the
+call stack never emptied until the loop finished. This is the exact
+mechanism behind Lesson 8's measurement: ten synchronous
+<code>bcrypt</code> hashes at roughly 170 ms each held the stack for
+1.7 seconds, and every other request — each one a queued callback —
+waited the whole time.</p>
+
+<div class="note note--warn">
+  <span class="note-label">A flooded microtask queue blocks the loop the same way</span>
+  <p>Step 2 must run empty before step 3 starts. A microtask that
+  queues another microtask, forever, blocks every timer and every I/O
+  callback exactly like a synchronous busy loop does — the callback
+  keeps returning, but the queue it feeds never empties. Scheduling
+  2,000,000 microtasks ahead of one due timer delayed that timer from
+  its usual 1 ms to 76 ms, measured. A true infinite chain would delay
+  it forever.</p>
+</div>
+
+<h2>8. Keep the event loop free</h2>
+
+<ul>
+  <li>Move CPU-heavy work off the one thread: a <code>worker_threads</code>
+  worker in Node, or a Web Worker in a browser. The work still finishes;
+  it stops blocking every other callback while it runs.</li>
+  <li>If you cannot move the work, break it into chunks and yield
+  between chunks with <code>setImmediate</code> or
+  <code>setTimeout(fn, 0)</code>. This lets a queued timer or I/O
+  callback run between chunks, at the cost of total wall-clock time for
+  the chunked work itself.</li>
+  <li>Prefer the asynchronous version of a Node API
+  (<code>fs.readFile</code>) over the synchronous one
+  (<code>fs.readFileSync</code>) on any path a server request can take.
+  The synchronous call blocks the stack for its full duration, on the
+  one thread every other request shares.</li>
+  <li>An unbounded recursive <code>queueMicrotask</code> or
+  <code>process.nextTick</code> call is a bug, not a feature — Section 7
+  showed why. Reach for <code>setImmediate</code> when you need to defer
+  work without starving the timer and I/O phases.</li>
+</ul>
+
+<h2>Practice</h2>
+
+<ol class="steps">
+  <li><strong>Run the six demos.</strong> Save each code block in this
+  lesson as its own file and run it with <code>node</code>. Predict the
+  output before you run it, then compare.</li>
+  <li><strong>Reorder demo 1.</strong> Move the <code>Promise.resolve()</code>
+  line above <code>console.log('A: first line')</code>. Predict whether
+  the output order changes, then run it.</li>
+  <li><strong>Replace the busy loop in demo 4 with real async work.</strong>
+  Swap the <code>while</code> loop for
+  <code>await new Promise(r =&gt; setTimeout(r, 300))</code> inside an
+  <code>async</code> wrapper. Measure when the first timer now fires,
+  and explain the difference from the busy-loop version.</li>
+  <li><strong>Reproduce Lesson 8's stall.</strong> Open
+  <code>Code/Lesson_8_code/</code> (or its TypeScript twin) and time ten
+  sequential <code>bcrypt</code> hashes against ten
+  <code>Promise.all</code>-parallel ones. Explain which queue each
+  version keeps free, and why only one of them actually runs the hashes
+  concurrently on Node's single thread.</li>
+</ol>
+
+<h2>Check yourself</h2>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "A script calls setTimeout(fn, 0) and then Promise.resolve().then(fn2), in that order. Which callback runs first?",
+    "options": [
+      "fn, because setTimeout was called first",
+      "fn2, because every microtask runs before the next macrotask, regardless of call order",
+      "They run at the same time",
+      "It depends on the machine's clock speed"
+    ],
+    "answer": 1,
+    "why": "The event loop always drains the whole microtask queue before it takes one callback from the macrotask queue. A promise callback is a microtask; setTimeout's callback is a macrotask. Call order inside a single synchronous block does not change which queue a callback lands in." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "Inside an fs.readFile callback, a script schedules setTimeout(fn, 0) and then setImmediate(fn2). Which runs first, and why?",
+    "options": [
+      "fn, because setTimeout always beats setImmediate",
+      "fn2, because the poll phase where the I/O callback runs is immediately followed by the check phase in the same pass of the loop",
+      "It is unpredictable in every case",
+      "They run in the order they were scheduled, like microtasks"
+    ],
+    "answer": 1,
+    "why": "Node's event loop has fixed phases: timers, pending callbacks, poll, check, close callbacks. An I/O callback runs during poll; the loop moves to check next, where setImmediate lives, before it can return to timers on a later pass. This ordering is only guaranteed from inside an I/O callback, not at the top of a script." }
+  </script>
+</div>
+
+<div class="quiz" data-type="type">
+  <script type="application/json">
+  { "q": "Node runs process.nextTick(fn1) and Promise.resolve().then(fn2), in that order. Which one prints first?",
+    "answer": "nextTick",
+    "accept": ["nextTick", "fn1", "process.nextTick"],
+    "why": "Node drains the process.nextTick queue completely before it drains the promise microtask queue, on every pass of the loop. This is a Node-specific extra queue; browsers have no equivalent." }
+  </script>
+</div>
+
+<div class="quiz" data-type="mcq">
+  <script type="application/json">
+  { "q": "A synchronous while loop runs for 300ms. A setTimeout(fn, 0) was scheduled just before the loop started. When does fn run?",
+    "options": [
+      "Exactly at 0ms, on a separate thread",
+      "Only after the loop finishes and the call stack empties, so at roughly 300ms",
+      "It never runs, because the loop blocked it permanently",
+      "Immediately, interrupting the loop"
+    ],
+    "answer": 1,
+    "why": "JavaScript has one call stack. The engine cannot start any queued callback, timer or otherwise, until the running synchronous code returns control and the stack empties. The measured delay in this lesson was exactly the length of the busy loop, not the timer's requested delay." }
+  </script>
+</div>
+
+<div class="quiz" data-type="recall">
+  <script type="application/json">
+  { "q": "State the four-step rule the event loop follows on every pass, and name which queue setTimeout callbacks and Promise callbacks each belong to.",
+    "answer": "1) Run the synchronous code on the call stack to completion. 2) Drain the microtask queue completely, including microtasks queued by other microtasks, before moving on. 3) Take exactly one callback from the macrotask (task) queue and run it. 4) Repeat from step 2. Promise callbacks (and queueMicrotask, and the code after an await) are microtasks; setTimeout, setInterval, and completed I/O callbacks are macrotasks.",
+    "why": "This rule predicts the order of every demo in this lesson, and explains both the microtask-starvation failure and the busy-loop failure: in each case something kept the loop from ever reaching the step where the delayed callback was waiting." }
+  </script>
+</div>
+
+<div class="quiz-score"></div>
+
+<nav class="lesson-nav">
+  <a href="0008-authentication.html">← Lesson 08: Authentication</a>
+  <a href="../lesson_plan.md">Lesson plan →</a>
+</nav>
+
+</main>
+</body>
+</html>
