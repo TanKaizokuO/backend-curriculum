@@ -1,10 +1,13 @@
 # Backend, from a socket to a deploy
 
-Eight lessons that build one JSON API. Lesson 1 starts with `socket.accept()`
+Sixteen lessons that build one JSON API. Lesson 1 starts with `socket.accept()`
 and a hand-written HTTP response. Lesson 7 ends with a container that reads
 its configuration from the environment, runs its own migrations, and answers
-a health check. Lesson 8 adds accounts, and it teaches Python and TypeScript
-side by side.
+a health check. Lesson 8 adds accounts. Lessons 9 to 16 continue from there:
+testing, caching, observability, scaling, version control, DNS, TLS, and the
+rules browsers enforce. Each lesson is available in Python; a parallel
+JavaScript/Express track in `lessons/js/` covers lessons 1 to 7, and the
+TypeScript code runs alongside Python from Lesson 8 onward.
 
 Each lesson states one idea, shows the failure that motivates it, and ends in
 something a reviewer can open. The numbers in this repository are real output
@@ -29,6 +32,14 @@ Open the HTML files in a browser. Each one carries its own retrieval quiz.
 | 6 | [Concurrency and the ORM](./lessons/0006-concurrency-and-the-orm.html) | A transaction protects you from a crash. It does not protect you from another transaction. | [`Code/Lesson_6_code/`](./Code/Lesson_6_code/) |
 | 7 | [Deployment](./lessons/0007-deployment.html) | A deploy is one image plus one set of environment variables. | [`Code/Lesson_7_code/`](./Code/Lesson_7_code/) |
 | 8 | [Authentication](./lessons/0008-authentication.html) | The server must never trust the client. It must only trust what it can verify. | [`Code/Lesson_8_code/`](./Code/Lesson_8_code/) · [`Code/js/Lesson_8_code/`](./Code/js/Lesson_8_code/) |
+| 9 | [Testing and CI](./lessons/0009-testing-and-ci.html) | A test that cannot fail proves nothing. Test the contract, not the plumbing. | [`Code/Lesson_9_code/`](./Code/Lesson_9_code/) · [`Code/js/Lesson_9_code/`](./Code/js/Lesson_9_code/) |
+| 10 | [Caching](./lessons/0010-caching.html) | A cache is a copy that can be wrong. Name the moment it goes stale before you add it. | [`Code/Lesson_10_code/`](./Code/Lesson_10_code/) · [`Code/js/Lesson_10_code/`](./Code/js/Lesson_10_code/) |
+| 11 | [Observability](./lessons/0011-observability.html) | You cannot debug what you cannot see. A log line, a metric, and a trace answer different questions. | [`Code/Lesson_11_code/`](./Code/Lesson_11_code/) · [`Code/js/Lesson_11_code/`](./Code/js/Lesson_11_code/) |
+| 12 | [Scaling](./lessons/0012-scaling.html) | Add a second instance and every assumption about local state breaks. | [`Code/Lesson_12_code/`](./Code/Lesson_12_code/) · [`Code/js/Lesson_12_code/`](./Code/js/Lesson_12_code/) |
+| 13 | [Version control](./lessons/0013-version-control.html) | A commit is a snapshot with a parent. History is a graph, not a list. | [`Code/Lesson_13_code/`](./Code/Lesson_13_code/) · [`Code/js/Lesson_13_code/`](./Code/js/Lesson_13_code/) |
+| 14 | [How a request finds your server](./lessons/0014-how-a-request-finds-your-server.html) | A name becomes an address through caches you do not control. | [`Code/Lesson_14_code/`](./Code/Lesson_14_code/) · [`Code/js/Lesson_14_code/`](./Code/js/Lesson_14_code/) |
+| 15 | [The edge: reverse proxy and TLS](./lessons/0015-the-edge-reverse-proxy-and-tls.html) | The process that answers port 443 is not your application. | [`Code/Lesson_15_code/`](./Code/Lesson_15_code/) · [`Code/js/Lesson_15_code/`](./Code/js/Lesson_15_code/) |
+| 16 | [Rules the browser enforces](./lessons/0016-rules-the-browser-enforces.html) | CORS and CSP are instructions to the browser. They protect the user, not the server. | [`Code/Lesson_16_code/`](./Code/Lesson_16_code/) · [`Code/js/Lesson_16_code/`](./Code/js/Lesson_16_code/) |
 
 ## What the repository demonstrates
 
@@ -102,14 +113,14 @@ python Code/Lesson_1_code/server.py
 curl -v localhost:8080/
 ```
 
-Lessons 3 to 8 need FastAPI:
+Lessons 3 to 16 need FastAPI:
 
 ```shell
 python -m venv .venv && . .venv/bin/activate
 pip install -r Code/Lesson_8_code/requirements.txt
 ```
 
-Lessons 4 to 8 need PostgreSQL. Do not use SQLite: the types, the constraints,
+Lessons 4 to 16 need PostgreSQL. Do not use SQLite: the types, the constraints,
 and the concurrency behaviour all differ.
 
 ```shell
@@ -135,7 +146,7 @@ files directly.
 ## Layout
 
 ```
-lessons/            the eight lessons, plus lessons/js/ for the Node.js port
+lessons/            the sixteen Python lessons, plus lessons/js/ for the Node.js port (lessons 1–7)
 reference/          reference cards: HTTP anatomy, reading a query plan
 reference-pdfs/     specifications kept for offline reading
 summaries/          consolidated recall material
