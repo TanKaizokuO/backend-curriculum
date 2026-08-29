@@ -64,3 +64,10 @@ Code/js/Lesson_15_code/src/certs/
 # OS & System
 .DS_Store
 Thumbs.db
+
+# Local agent/tooling config
+.omp/
+.claude/
+AGENTS.md
+CLAUDE.md
+*.patch

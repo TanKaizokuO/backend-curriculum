@@ -543,7 +543,7 @@ standing up DNS.
   generated 2026-08-02: `asgi-spec-key-points.pdf` (6pp), `rfc9110-methods-key-points.pdf`
   (7pp, all eight methods with safe/idempotent/cacheable/body properties), and
   `pep3333-wsgi-key-points.pdf` (6pp). Light-background A4 — the dark-mode rule in
-  `AGENTS.md` governs HTML, and these are made to be printed.
+  `CONVENTIONS.md` governs HTML, and these are made to be printed.
 - `Code/Lesson_4_code/` — runnable reference implementation: `migrations/0001…0002.sql`,
   `migrate.py` (the hand-written runner), `main.py` (DB-backed API on a psycopg pool),
   `sql_injection_demo.py`. Needs `DATABASE_URL` and `pip install "psycopg[binary,pool]"`.

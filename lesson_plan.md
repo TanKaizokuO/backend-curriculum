@@ -226,7 +226,7 @@ must own.
 ## Rules that hold for every lesson
 
 1. **Dark mode.** Every HTML page uses the tokens in `assets/course.css`.
-2. **Simplified Technical English.** `AGENTS.md` states the rules. They cover
+2. **Simplified Technical English.** `CONVENTIONS.md` states the rules. They cover
    the prose, not the code, the SQL, or the terminal output.
 3. **Raw mechanism before the abstraction.** You write the mechanism by hand,
    then you use the library that hides it.

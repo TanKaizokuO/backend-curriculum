@@ -164,7 +164,7 @@ learning-records/   decisions and the evidence behind them
 ## Conventions
 
 Two rules hold across the repository, and
-[`AGENTS.md`](./AGENTS.md) states them in full.
+[`CONVENTIONS.md`](./CONVENTIONS.md) states them in full.
 
 1. **Every page is dark.** The theme comes from the `:root` tokens in
    `assets/course.css`. No lesson sets its own colours.

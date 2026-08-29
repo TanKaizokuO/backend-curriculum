@@ -16,7 +16,7 @@ Scratchpad for teaching preferences and working state. Not a journal — see
 
 ## Teaching preferences
 
-- **All HTML ships dark mode.** Stated preference, recorded in `AGENTS.md`. Theme is
+- **All HTML ships dark mode.** Stated preference, recorded in `CONVENTIONS.md`. Theme is
   token-driven from `:root` in `assets/course.css`; never override per lesson.
 - Default assumption until told otherwise: show the raw mechanism before the abstraction.
   This learner can already code, so hiding the machinery behind a framework would waste
@@ -28,7 +28,7 @@ Scratchpad for teaching preferences and working state. Not a journal — see
   question settled (Python-first, TypeScript layered later — LR-0001). Built
   `assets/course.css` + `assets/quiz.{js,css}`. Shipped Lesson 0001 (raw HTTP over a
   socket) and the HTTP reference card.
-  Retheme: all HTML is dark mode (`AGENTS.md`), print media resets to light.
+  Retheme: all HTML is dark mode (`CONVENTIONS.md`), print media resets to light.
   `ROADMAP.md` added as local scope checklist.
 - **Session 2 (2026-08-01):** Shipped Lesson 0002 (server without a framework: parsing,
   routing, status codes, WSGI/ASGI). Created `GLOSSARY.md` with first five terms

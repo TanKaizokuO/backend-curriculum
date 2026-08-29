@@ -39,7 +39,7 @@ Do not restate the mission back to the learner — they wrote it. Pick up and te
 
 ## Conventions that must hold
 
-1. **All HTML is dark mode** (`AGENTS.md`). Theme from `:root` tokens in `course.css`;
+1. **All HTML is dark mode** (`CONVENTIONS.md`). Theme from `:root` tokens in `course.css`;
    never override per lesson, never inline styles.
 2. **Raw mechanism before the abstraction.** This learner can already code. Show the
    socket before the framework, the SQL before the ORM. Hiding machinery wastes their
@@ -56,7 +56,7 @@ Do not restate the mission back to the learner — they wrote it. Pick up and te
 7. **`lessons/js/` is frozen.** It holds a condensed port of Lessons 1 to 7. Do not add
    Lesson 8 or later files to it. New TypeScript teaching goes in the main lesson page,
    and new TypeScript code goes in `Code/js/Lesson_N_code/`.
-8. **All lesson prose follows ASD-STE100 Simplified Technical English** (`AGENTS.md`).
+8. **All lesson prose follows ASD-STE100 Simplified Technical English** (`CONVENTIONS.md`).
    One meaning for each word, one part of speech for each word, active voice, simple
    tenses, sentences of 20–25 words maximum, no -ing constructions, no idiom. This
    applies to lessons, reference cards, glossary entries, and summaries — not to code,
