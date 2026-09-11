@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>100 JavaScript Interview Questions</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #12141a;
+    --bg-alt: #1a1d25;
+    --fg: #e8e9ec;
+    --muted: #9aa0ac;
+    --accent: #7dd3fc;
+    --border: #2a2e38;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg);
+    color: var(--fg);
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    line-height: 1.55;
+    padding: 2rem 1rem 4rem;
+  }
+  main {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+  }
+  h1 {
+    font-size: 1.9rem;
+    margin: 0 0 0.5rem;
+    color: var(--fg);
+  }
+  p.lede {
+    color: var(--muted);
+    max-width: 65ch;
+  }
+  nav.toc {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.5rem 0 2.5rem;
+  }
+  nav.toc h2 {
+    font-size: 1rem;
+    margin: 0 0 0.6rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  nav.toc ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.35rem 1rem;
+  }
+  nav.toc a {
+    color: var(--fg);
+    text-decoration: none;
+  }
+  nav.toc a:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  nav.toc .count {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  section {
+    margin-bottom: 2.25rem;
+  }
+  h2 {
+    font-size: 1.25rem;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.4rem;
+    margin-bottom: 0.9rem;
+  }
+  ul.qlist {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  li.qitem {
+    border-bottom: 1px solid var(--border);
+  }
+  li.qitem:last-child {
+    border-bottom: none;
+  }
+  details {
+    padding: 0.15rem 0;
+  }
+  summary {
+    padding: 0.5rem 0.25rem;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+    border-radius: 6px;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary::before {
+    content: "+";
+    color: var(--accent);
+    font-weight: 700;
+    width: 1rem;
+    flex: 0 0 auto;
+  }
+  details[open] summary::before {
+    content: "\2212";
+  }
+  summary:hover {
+    background: var(--bg-alt);
+  }
+  summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .qnum {
+    color: var(--muted);
+    display: inline-block;
+    min-width: 2.6rem;
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+  }
+  p.answer {
+    margin: 0 0 0.85rem 3.1rem;
+    padding: 0.6rem 0.9rem;
+    background: var(--bg-alt);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+    color: var(--fg);
+    max-width: 68ch;
+  }
+  footer {
+    color: var(--muted);
+    font-size: 0.85rem;
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+    margin-top: 2rem;
+  }
+  a { color: var(--accent); }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #22262f;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.05rem 0.3rem;
+    font-size: 0.92em;
+  }
+  summary code {
+    background: transparent;
+    border: none;
+    padding: 0;
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>100 JavaScript Interview Questions</h1>
+    <p class="lede">
+      This page lists 100 common questions from JavaScript interviews. The list
+      groups the questions into 10 topics, from the language basics to the
+      event loop and performance. Click a question to show its answer. Read the
+      question first, try to answer it yourself, then compare your answer with
+      the text.
+    </p>
+  </header>
+
+  <nav class="toc">
+    <h2>Topics</h2>
+    <ul>
+<li><a href="#sec-types-and-coercion">Types and Coercion</a> <span class="count">(10)</span></li>
+<li><a href="#sec-scope-closures-and-hoisting">Scope, Closures and Hoisting</a> <span class="count">(10)</span></li>
+<li><a href="#sec-functions-and-this">Functions and this</a> <span class="count">(10)</span></li>
+<li><a href="#sec-objects-prototypes-and-classes">Objects, Prototypes and Classes</a> <span class="count">(10)</span></li>
+<li><a href="#sec-arrays-and-iteration">Arrays and Iteration</a> <span class="count">(10)</span></li>
+<li><a href="#sec-asynchronous-javascript">Asynchronous JavaScript</a> <span class="count">(10)</span></li>
+<li><a href="#sec-the-event-loop">The Event Loop</a> <span class="count">(10)</span></li>
+<li><a href="#sec-modules-tooling-and-modern-syntax">Modules, Tooling and Modern Syntax</a> <span class="count">(10)</span></li>
+<li><a href="#sec-browser-dom-and-events">Browser, DOM and Events</a> <span class="count">(10)</span></li>
+<li><a href="#sec-patterns-errors-and-performance">Patterns, Errors and Performance</a> <span class="count">(10)</span></li>
+    </ul>
+  </nav>
+
+    <section id="sec-types-and-coercion">
+      <h2>Types and Coercion</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">1.</span> What are the primitive types in JavaScript?</summary>
+          <p class="answer">JavaScript has seven primitive types: <code>string</code>, <code>number</code>, <code>boolean</code>, <code>null</code>, <code>undefined</code>, <code>symbol</code> and <code>bigint</code>. A primitive holds one immutable value directly in the variable. Every other value is an object, and the variable holds only a reference to that object. Two objects with the same contents are still two different references.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">2.</span> Why does typeof null return "object"?</summary>
+          <p class="answer">The first JavaScript engine stored a type tag in the low bits of each value, and the tag for an object was <code>0</code>. The machine representation of <code>null</code> was the null pointer, so its tag was <code>0</code> too. The result is a bug from 1995. A fix breaks old code, so the standard keeps the behaviour.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">3.</span> What is the difference between == and ===?</summary>
+          <p class="answer">The <code>===</code> operator compares the type and the value, and it converts nothing. The <code>==</code> operator runs the abstract equality algorithm, so it converts operands of different types first. For example <code>"1" == 1</code> is true, but <code>"1" === 1</code> is false. Use <code>===</code> by default, and use <code>x == null</code> only as a short test for <code>null</code> or <code>undefined</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">4.</span> Why is NaN === NaN false, and how do you test for NaN?</summary>
+          <p class="answer">IEEE 754 defines <code>NaN</code> as not equal to any value, including itself. The <code>===</code> operator follows that rule, so the comparison gives <code>false</code>. Use <code>Number.isNaN(x)</code>, because it checks the type and the value without a conversion. The global <code>isNaN</code> converts the argument first, so <code>isNaN("abc")</code> also returns <code>true</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">5.</span> What is the difference between null and undefined?</summary>
+          <p class="answer"><code>undefined</code> means that the engine found no value: an unassigned variable, a missing argument or a missing property gives <code>undefined</code>. <code>null</code> means that a programmer set an empty value on purpose. <code>typeof undefined</code> is <code>"undefined"</code>, but <code>typeof null</code> is <code>"object"</code>. A default parameter applies to <code>undefined</code> only, not to <code>null</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">6.</span> Which values are falsy in JavaScript?</summary>
+          <p class="answer">JavaScript treats eight values as falsy: <code>false</code>, <code>0</code>, <code>-0</code>, <code>0n</code>, <code>""</code>, <code>null</code>, <code>undefined</code> and <code>NaN</code>. Every other value is truthy, and that group includes <code>[]</code>, <code>{}</code> and the string <code>"0"</code>. A truthiness test therefore hides the difference between the number zero and a missing value. Test the exact value when zero or an empty string is valid input.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">7.</span> How can a primitive string have methods?</summary>
+          <p class="answer">The engine boxes the primitive: it creates a temporary <code>String</code> wrapper object, reads the method from <code>String.prototype</code>, then discards the wrapper. A property that you write on that wrapper disappears at once, so <code>s.x = 1</code> loses the value. Numbers and booleans follow the same rule. Never build wrappers with <code>new String()</code>, because such an object is truthy even for an empty string.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">8.</span> How does Object.is differ from ===?</summary>
+          <p class="answer"><code>Object.is</code> implements the SameValue algorithm and changes two cases. It reports <code>Object.is(NaN, NaN)</code> as <code>true</code>, and it reports <code>Object.is(0, -0)</code> as <code>false</code>. For all other pairs the result matches <code>===</code>. React and other libraries use this algorithm for state comparisons.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">9.</span> Why is 0.1 + 0.2 not exactly 0.3?</summary>
+          <p class="answer">A JavaScript number is a 64-bit IEEE 754 binary float. The fractions 0.1 and 0.2 have no exact binary form, so the engine stores the nearest representable values. The sum of those approximations prints as <code>0.30000000000000004</code>. Compare with a small tolerance, scale the values to integers, or use <code>BigInt</code> for money.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">10.</span> What is a Symbol and when do you use one?</summary>
+          <p class="answer">A symbol is a unique primitive, and two symbols with the same description are never equal. You use a symbol as a property key when you need a key that no other code can collide with. A symbol key stays out of <code>Object.keys</code>, <code>for...in</code> and <code>JSON.stringify</code>. Well-known symbols such as <code>Symbol.iterator</code> connect your object to a language protocol.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-scope-closures-and-hoisting">
+      <h2>Scope, Closures and Hoisting</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">11.</span> What is the difference between var, let and const?</summary>
+          <p class="answer"><code>var</code> declares a function-scoped variable, so a pair of braces does not limit it. <code>let</code> and <code>const</code> declare block-scoped variables. You can reassign a <code>let</code> binding, but a second assignment to a <code>const</code> binding throws a <code>TypeError</code>. <code>const</code> protects the binding only, so you can still change the properties of a const object.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">12.</span> What is the temporal dead zone?</summary>
+          <p class="answer">The engine creates the <code>let</code> and <code>const</code> bindings at the start of the block but leaves them uninitialised. The temporal dead zone is the region between the start of the block and the declaration line. A read in that region throws a <code>ReferenceError</code>. The rule turns a silent <code>undefined</code> from <code>var</code> into a clear error.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">13.</span> How does function scope differ from block scope?</summary>
+          <p class="answer">A function scope covers the whole function body, so a <code>var</code> inside an <code>if</code> block stays visible after the block ends. A block scope covers one pair of braces, and <code>let</code> and <code>const</code> respect it. Block scope gives each loop iteration a separate binding. It also keeps a temporary variable out of the rest of the function.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">14.</span> What is hoisting?</summary>
+          <p class="answer">The engine scans each scope before it runs the code and registers every declaration. A function declaration becomes available with its full body, so an early call works. A <code>var</code> declaration also moves to the top but starts with the value <code>undefined</code>. A <code>let</code>, a <code>const</code> and a class stay in the temporal dead zone until the engine reaches the line.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">15.</span> What is a closure?</summary>
+          <p class="answer">A closure is a function together with the scope where you defined it. The inner function keeps a reference to the outer variables, so those variables stay alive after the outer function returns. A counter factory uses this behaviour to hold private state. Closures also support module patterns, event handlers and memoisation caches.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">16.</span> What is an IIFE and why did developers use it?</summary>
+          <p class="answer">An immediately invoked function expression runs at once, for example <code>(function () { ... })();</code>. Before ES6 it gave the only reliable private scope, so a library hid its helpers inside one. It also created a fresh scope for each loop iteration. Modules and block-scoped <code>let</code> now cover these needs.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">17.</span> Why do three timers in a var loop print the same number?</summary>
+          <p class="answer">A <code>var</code> loop variable has one binding for the whole function, and every callback reads that one binding. The timers run after the loop ends, so each one sees the final value <code>3</code>. A <code>let</code> loop variable gets a new binding for each iteration, so the timers print <code>0</code>, <code>1</code> and <code>2</code>. The old fix passed the current value into an IIFE.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">18.</span> How does module scope differ from global scope?</summary>
+          <p class="answer">Each ES module has a private top-level scope, so a top-level <code>const</code> stays hidden until you export it. A classic script shares the single global scope, and two scripts can overwrite each other. Module code runs in strict mode automatically, and top-level <code>this</code> is <code>undefined</code>. The loader evaluates each module once and caches the namespace.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">19.</span> What is variable shadowing?</summary>
+          <p class="answer">Shadowing happens when an inner scope declares a name that already exists in an outer scope. The inner binding hides the outer one for the whole inner block. A shadowed parameter in a long function confuses readers and hides bugs. A <code>let</code> that shadows a parameter in the same function body is a <code>SyntaxError</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">20.</span> How can a closure cause a memory leak?</summary>
+          <p class="answer">The garbage collector frees an object when no reachable reference points to it. A closure keeps its variable environment reachable, so one small callback can hold a large array or a detached DOM node. The memory stays in use until you drop the last reference to the callback. Remove the listener, clear the timer, or set the reference to <code>null</code>.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-functions-and-this">
+      <h2>Functions and this</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">21.</span> What is the difference between call, apply and bind?</summary>
+          <p class="answer">All three set the <code>this</code> value of a function. <code>call</code> invokes the function at once with separate arguments, and <code>apply</code> invokes it at once with an array of arguments. <code>bind</code> invokes nothing and returns a new function with a permanent receiver and optional preset arguments. A later <code>call</code> on a bound function cannot change that receiver.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">22.</span> How does this work in an arrow function?</summary>
+          <p class="answer">An arrow function has no <code>this</code> binding of its own. It reads <code>this</code> from the enclosing lexical scope, so a callback inside a method keeps the method receiver. An arrow function is therefore wrong for an object method that needs the object and for a constructor. It also has no <code>arguments</code> object and no <code>super</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">23.</span> How do default parameters behave?</summary>
+          <p class="answer">A default parameter supplies a value when the argument is <code>undefined</code>. The engine keeps <code>null</code>, <code>0</code> and <code>""</code>, so the default does not apply to them. The default expression runs at call time, so <code>function f(list = [])</code> creates a new array for each call. A later parameter can read an earlier one, for example <code>function f(a, b = a * 2)</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">24.</span> What is the difference between rest parameters and the arguments object?</summary>
+          <p class="answer">A rest parameter <code>...args</code> collects the remaining arguments into a real array, so <code>map</code> and <code>filter</code> work directly. The <code>arguments</code> object is array-like: it has <code>length</code> and numeric keys but no array methods. An arrow function has no <code>arguments</code> object at all. Prefer the rest parameter, because it states the intent in the signature.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">25.</span> What is currying?</summary>
+          <p class="answer">Currying converts a function of several arguments into a chain of functions of one argument, so <code>add(1, 2)</code> becomes <code>add(1)(2)</code>. Each call returns a closure that stores the argument it received. Currying builds a specialised function from a general one, for example a logger with a fixed level. Partial application is the related idea, and <code>bind</code> performs it.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">26.</span> What is a higher-order function?</summary>
+          <p class="answer">A higher-order function takes a function as an argument, returns a function, or does both. <code>map</code>, <code>filter</code>, <code>setTimeout</code> and <code>addEventListener</code> are common examples. The pattern separates the loop mechanism from the operation on each item. It also builds decorators such as a retry wrapper or a rate limiter.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">27.</span> What makes a function pure?</summary>
+          <p class="answer">A pure function returns the same output for the same input and changes nothing outside itself. It reads no mutable global state and it writes no DOM node, no file and no argument object. Pure functions are easy to test, safe to cache and safe to run in any order. React expects pure render functions for these reasons.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">28.</span> What limits recursion depth in JavaScript?</summary>
+          <p class="answer">Each call pushes a frame on the call stack, and the stack has a fixed size. Deep recursion therefore throws a <code>RangeError</code> about the maximum call stack size, often near ten thousand frames. The exact limit depends on the frame size and on the engine. Rewrite the algorithm as a loop, use an explicit stack, or split the work across tasks, because only Safari implements proper tail calls.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">29.</span> What is method borrowing?</summary>
+          <p class="answer">Method borrowing calls a method of one object on a different object. <code>Array.prototype.slice.call(arguments)</code> converts an array-like value into a real array. <code>Object.prototype.toString.call(v)</code> returns a precise tag such as <code>"[object Date]"</code>. The technique works because a method reads only the properties of its receiver.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">30.</span> What do fn.length and fn.name report?</summary>
+          <p class="answer"><code>fn.length</code> gives the number of declared parameters before the first default parameter or rest parameter. <code>fn.name</code> gives the function name, and the engine infers it from the variable for an anonymous function expression. A curry helper reads <code>length</code> to decide the arity. Both properties are configurable but not writable, so <code>Object.defineProperty</code> changes them.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-objects-prototypes-and-classes">
+      <h2>Objects, Prototypes and Classes</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">31.</span> What is the prototype chain?</summary>
+          <p class="answer">Every object holds an internal link to another object, its prototype. A property read that fails on the object continues to the prototype, then to the next prototype, until the chain reaches <code>null</code>. This lookup gives JavaScript its inheritance. A write never follows the chain; it creates the property on the object itself.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">32.</span> What is the difference between __proto__ and prototype?</summary>
+          <p class="answer"><code>prototype</code> is a property of a constructor function, and it holds the object that becomes the prototype of each instance. <code>__proto__</code> is an accessor on any object, and it points to the prototype of that object. So <code>new Dog().__proto__ === Dog.prototype</code> is true. Use <code>Object.getPrototypeOf</code> in new code, because <code>__proto__</code> is a legacy feature.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">33.</span> What does Object.create do?</summary>
+          <p class="answer"><code>Object.create(proto)</code> builds a new object with the given prototype and calls no constructor. <code>Object.create(null)</code> builds an object with no prototype, which makes a safe dictionary without <code>toString</code> and without a prototype pollution path. A second argument accepts property descriptors. The method shows that JavaScript links objects to objects, not classes to classes.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">34.</span> What are the steps of the new operator?</summary>
+          <p class="answer"><code>new</code> creates an empty object and sets its prototype to the <code>prototype</code> property of the function. It calls the function with <code>this</code> bound to that object. It returns the new object, unless the function returns a different object explicitly. A call without <code>new</code> in strict mode leaves <code>this</code> as <code>undefined</code> and throws on the first property write.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">35.</span> How does instanceof work and when does it fail?</summary>
+          <p class="answer"><code>a instanceof B</code> walks the prototype chain of <code>a</code> and looks for the object <code>B.prototype</code>. It therefore reports inherited relations, not the exact constructor. The check fails across an iframe or a worker, because each realm has separate built-in prototypes. Use <code>Array.isArray</code> or <code>Object.prototype.toString</code> for a cross-realm test.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">36.</span> What does super do in a class?</summary>
+          <p class="answer"><code>extends</code> links the prototype of the child class to the parent class. <code>super(...)</code> calls the parent constructor, and a derived constructor must call it before any use of <code>this</code>. <code>super.method()</code> calls the parent version of an overridden method. A class body always runs in strict mode, and the methods are non-enumerable.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">37.</span> What are static members and private # fields?</summary>
+          <p class="answer">A <code>static</code> member belongs to the class object, so you call <code>Counter.reset()</code> and not <code>instance.reset()</code>. A field with a <code>#</code> prefix is truly private: only code inside the class body reads it, and bracket access cannot reach it. An access from outside is a <code>SyntaxError</code> at parse time. The expression <code>#id in obj</code> tests for the brand without an exception.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">38.</span> When do you use getters and setters?</summary>
+          <p class="answer">A getter runs a function when code reads the property, and a setter runs when code writes it. They add validation or a computed value without a change at the call sites. Keep the work small, because a reader expects the cost of a plain property read. A property with a setter but no getter always reads as <code>undefined</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">39.</span> What is a property descriptor?</summary>
+          <p class="answer">Each property carries a descriptor with <code>value</code>, <code>writable</code>, <code>enumerable</code> and <code>configurable</code>, or with <code>get</code> and <code>set</code>. A normal assignment sets all three flags to true, but <code>Object.defineProperty</code> defaults each flag to false. A non-enumerable property stays out of <code>Object.keys</code> and <code>for...in</code>. A non-configurable property blocks a later delete and a later redefinition.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">40.</span> What is a mixin?</summary>
+          <p class="answer">A mixin adds a set of methods to a class or an object without a parent-child relation. One form copies the methods with <code>Object.assign(Target.prototype, behaviour)</code>. Another form is a function that takes a base class and returns a subclass, so the mixin joins the prototype chain. Mixins pass the single-inheritance limit, but they hide the source of a method.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-arrays-and-iteration">
+      <h2>Arrays and Iteration</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">41.</span> How do map, filter and reduce differ?</summary>
+          <p class="answer"><code>map</code> returns a new array with one result for each item, so the length stays the same. <code>filter</code> returns a new array with the items that pass a test. <code>reduce</code> folds the array into one value through an accumulator, and an empty array without an initial value throws a <code>TypeError</code>. None of the three methods changes the source array.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">42.</span> When do you prefer for...of over forEach?</summary>
+          <p class="answer"><code>forEach</code> calls a function for each item, and <code>break</code> or <code>continue</code> cannot stop it. <code>for...of</code> is a loop statement, so <code>break</code>, <code>continue</code>, <code>return</code> and <code>await</code> all work inside it. <code>forEach</code> also skips holes in a sparse array. Choose <code>for...of</code> for asynchronous work or for an early exit.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">43.</span> What is a sparse array?</summary>
+          <p class="answer">A sparse array has holes, and <code>[1, , 3]</code>, <code>new Array(3)</code> or a write past the end creates one. A hole differs from <code>undefined</code>, because <code>1 in arr</code> returns <code>false</code>. Older methods such as <code>forEach</code> and <code>map</code> skip holes but keep them in the result. <code>Array.from</code> and the spread syntax convert each hole into <code>undefined</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">44.</span> Which array methods mutate the array?</summary>
+          <p class="answer"><code>push</code>, <code>pop</code>, <code>shift</code>, <code>unshift</code>, <code>splice</code>, <code>sort</code>, <code>reverse</code> and <code>fill</code> change the array in place. <code>slice</code>, <code>concat</code>, <code>map</code> and <code>filter</code> return a new array. A mutation of shared state breaks React state checks and any code that compares references. Modern engines add <code>toSorted</code>, <code>toReversed</code>, <code>toSpliced</code> and <code>with</code> for copies.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">45.</span> Why does [1, 5, 10].sort() give [1, 10, 5]?</summary>
+          <p class="answer">The default <code>sort</code> converts each item to a string and compares the strings, and <code>"10"</code> comes before <code>"5"</code>. Pass a comparator such as <code>(a, b) =&gt; a - b</code> for numbers. The comparator must return a negative number, zero or a positive number, and it must stay consistent for every pair. The specification requires a stable sort, so equal items keep their original order.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">46.</span> What do flat and flatMap do?</summary>
+          <p class="answer"><code>flat(depth)</code> returns a new array with the nested arrays unpacked to the given depth, and the default depth is one. <code>flat(Infinity)</code> unpacks every level. <code>flatMap</code> maps each item and then flattens one level, so the callback returns zero, one or many items. <code>flatMap</code> therefore replaces a <code>map</code> plus a <code>filter</code> in one pass.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">47.</span> What is the difference between the spread syntax and concat?</summary>
+          <p class="answer">Both build a new array and leave the sources unchanged. <code>concat</code> accepts arrays and single values, and it unpacks only array arguments one level deep. The spread syntax works on any iterable, so it also accepts a <code>Set</code>, a string or a generator. <code>concat</code> is often faster for two large arrays, because the engine copies in bulk.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">48.</span> What is an array-like object?</summary>
+          <p class="answer">An array-like object has a <code>length</code> property and numeric keys but no array methods. The <code>arguments</code> object, a <code>NodeList</code> and an <code>HTMLCollection</code> are common examples. Convert with <code>Array.from(x)</code>, or with <code>[...x]</code> when the value is iterable. <code>Array.from</code> also accepts a map function and handles a non-iterable array-like value.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">49.</span> What is the iterator protocol?</summary>
+          <p class="answer">An iterable is an object with a <code>Symbol.iterator</code> method. That method returns an iterator, and the iterator has a <code>next()</code> method that returns <code>{ value, done }</code>. <code>for...of</code>, the spread syntax and array destructuring all use this protocol. You can add the method to your own class and join all three features.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">50.</span> What is a generator function?</summary>
+          <p class="answer">A generator function uses <code>function*</code> and returns an iterator. Each <code>yield</code> pauses the function and gives a value back, and the next <code>next()</code> call continues from that point with the local state intact. Generators produce lazy or infinite sequences without a large array in memory. <code>next(value)</code> also sends a value into the generator, so the communication runs in two directions.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-asynchronous-javascript">
+      <h2>Asynchronous JavaScript</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">51.</span> What is callback hell?</summary>
+          <p class="answer">A callback is a function that you pass to another function for a later call. Nested callbacks create deep indentation, and each level needs a separate error branch. The shape makes the order of operations hard to read and the errors easy to drop. Promises and <code>async</code>/<code>await</code> express the same logic in a flat sequence.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">52.</span> What states does a promise have?</summary>
+          <p class="answer">A promise starts in the pending state. It moves once to fulfilled with a value, or once to rejected with a reason, and no later call changes the result. The word settled covers both end states. A handler that you attach after the settlement still runs, because the promise stores the result.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">53.</span> How do then, catch and finally differ?</summary>
+          <p class="answer"><code>then</code> registers a handler for the value and returns a new promise, so a chain works. <code>catch(fn)</code> is short for <code>then(undefined, fn)</code> and it handles a rejection from any earlier step in the chain. <code>finally</code> runs for both outcomes and passes the original result through, so it suits cleanup. A value that you return inside <code>then</code> becomes the value of the next promise.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">54.</span> Compare Promise.all, allSettled, race and any.</summary>
+          <p class="answer"><code>Promise.all</code> waits for every promise but rejects at the first rejection. <code>Promise.allSettled</code> always waits for every promise and returns one status object for each input. <code>Promise.race</code> settles with the first result, and a rejection wins the race too. <code>Promise.any</code> returns the first fulfilment and rejects with an <code>AggregateError</code> only when every input rejects.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">55.</span> What does async/await do?</summary>
+          <p class="answer">An <code>async</code> function always returns a promise, and a plain return value becomes a fulfilled promise. <code>await</code> pauses the function until the promise settles and then gives the fulfilment value. The engine does not block the thread; it schedules the rest of the function as a microtask. Only an <code>async</code> function body or a module top level accepts <code>await</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">56.</span> How do you handle errors with await?</summary>
+          <p class="answer">A rejected promise makes <code>await</code> throw, so a normal <code>try</code>/<code>catch</code> block catches the reason. A missing <code>await</code> in front of the call moves the rejection outside the block, and the <code>catch</code> never runs. A <code>catch</code> that logs and continues hides the failure from the caller. Rethrow a wrapped error when the caller must react to it.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">57.</span> How do you run two awaited calls at the same time?</summary>
+          <p class="answer">Two <code>await</code> statements on separate lines run the requests one after the other, so the total time is the sum. Start both calls first, keep the promises in variables, then await them, or pass them to <code>Promise.all</code>. The concurrent form costs the time of the slowest request. Keep the sequential form only when the second call needs the result of the first.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">58.</span> What happens on an unhandled promise rejection?</summary>
+          <p class="answer">A rejected promise with no rejection handler triggers the <code>unhandledrejection</code> event in the browser. Node.js prints an error and stops the process by default since version 15. The runtime reports the problem only after the microtask queue drains, so a handler in the same tick still counts. Attach the <code>catch</code> immediately, and add a global listener for the logs.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">59.</span> What is async iteration?</summary>
+          <p class="answer">An async iterable implements <code>Symbol.asyncIterator</code>, and each step returns a promise. The loop <code>for await (const chunk of stream)</code> awaits every value in order. An async generator uses <code>async function*</code> and mixes <code>await</code> with <code>yield</code>. This pattern reads a paged API or a network stream without a full buffer in memory.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">60.</span> What does AbortController solve?</summary>
+          <p class="answer">An <code>AbortController</code> exposes a <code>signal</code> object and an <code>abort()</code> method. Pass the signal to <code>fetch</code>, to <code>addEventListener</code> or to your own function, and the operation stops after the <code>abort()</code> call. A cancelled fetch rejects with an <code>AbortError</code>, so your <code>catch</code> must separate it from a real failure. One controller cancels many operations at the same time.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-the-event-loop">
+      <h2>The Event Loop</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">61.</span> What is the call stack?</summary>
+          <p class="answer">The call stack is the list of active function frames. A call pushes a frame with the parameters and the local variables, and a return pops that frame. The engine runs one frame at a time, because JavaScript has one main thread for your code. A stack overflow error means that the frames exceed the size limit.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">62.</span> How does the event loop work?</summary>
+          <p class="answer">The event loop takes one task from the task queue and runs it to completion on the main thread. A timer, an I/O callback or a DOM event places a new task in the queue. Nothing else runs until the current task returns, so a long task freezes the page. The loop drains the microtask queue after each task and then lets the browser render.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">63.</span> What is the difference between a microtask and a macrotask?</summary>
+          <p class="answer">A macrotask comes from a timer, a message event or an I/O callback. A microtask comes from a promise handler, from <code>queueMicrotask</code> or from a mutation observer. The engine empties the whole microtask queue after the current task and before the next macrotask. A promise callback therefore runs before a <code>setTimeout</code> callback with a zero delay.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">64.</span> What does setTimeout(fn, 0) really do?</summary>
+          <p class="answer">It does not run the function at once. It queues a macrotask, so the function waits for the current task and for every pending microtask. The browser also clamps nested timers to about four milliseconds after five levels. Use the call to give the browser a chance to render, not for exact timing.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">65.</span> When do you use queueMicrotask?</summary>
+          <p class="answer"><code>queueMicrotask(fn)</code> puts a function on the microtask queue directly. It runs after the current synchronous code and before any timer. It is clearer than <code>Promise.resolve().then(fn)</code> and it allocates no promise. Keep the work small, because a microtask that queues another microtask delays rendering.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">66.</span> What is requestAnimationFrame for?</summary>
+          <p class="answer"><code>requestAnimationFrame(fn)</code> asks the browser to call the function before the next repaint, normally sixty times each second. The browser pauses these callbacks in a hidden tab and saves battery. An animation with this API stays in step with the display and avoids a torn frame. Read layout values first and write style changes second to prevent a forced reflow.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">67.</span> What is a long task and how does starvation happen?</summary>
+          <p class="answer">A task above fifty milliseconds counts as a long task, and it delays the response to input. An endless chain of microtasks starves the render step completely, because the queue must empty first. Split heavy work into chunks with <code>setTimeout</code>, with <code>scheduler.yield()</code> or with a worker. The Performance panel reports each long task with its source.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">68.</span> Why does setInterval drift?</summary>
+          <p class="answer"><code>setInterval</code> queues each call on a fixed schedule, but a busy thread delays the callback. The lateness accumulates, and two callbacks can also arrive back to back after a block. A recursive <code>setTimeout</code> guarantees a gap between the end of one run and the start of the next. For a precise clock, read <code>Date.now()</code> and correct the next delay.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">69.</span> What counts as blocking code in the browser?</summary>
+          <p class="answer">A long synchronous loop, a huge <code>JSON.parse</code>, a synchronous XHR and an <code>alert</code> call all hold the main thread. The page then ignores clicks, the animations stop and the browser may show the unresponsive page dialog. Move the computation to a worker or split it across several tasks. Measure the duration first, because the limit for a smooth frame is about sixteen milliseconds.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">70.</span> What is a Web Worker?</summary>
+          <p class="answer">A worker runs a script on a separate thread with its own global scope. It has no access to the DOM or to <code>window</code>, and it talks to the page through <code>postMessage</code>. The structured clone algorithm copies each message, and a transferable object such as an <code>ArrayBuffer</code> moves without a copy. Use a worker for parsing, image work or cryptography.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-modules-tooling-and-modern-syntax">
+      <h2>Modules, Tooling and Modern Syntax</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">71.</span> What is the difference between ESM and CommonJS?</summary>
+          <p class="answer">ESM uses <code>import</code> and <code>export</code>, and the loader resolves the bindings statically before evaluation. CommonJS uses <code>require</code> and <code>module.exports</code>, and it resolves at run time. An ESM import is a live binding to the exported variable, but <code>require</code> copies the value at that moment. ESM code is always strict, and the loader works asynchronously.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">72.</span> When do you use a dynamic import()?</summary>
+          <p class="answer">A static <code>import</code> stays at the top level, and the bundler puts the module in the initial graph. <code>import()</code> returns a promise, so you call it inside a condition, a route handler or an event listener. The bundler moves that module into a separate chunk and loads it on demand. Use it for a heavy chart library, a rare dialog or a route.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">73.</span> What is tree shaking and what blocks it?</summary>
+          <p class="answer">Tree shaking removes exports that no module imports. It needs the static structure of ESM, so a bundler cannot analyse a conditional <code>require</code>. A side effect in the module body blocks the removal, and the <code>sideEffects</code> field in <code>package.json</code> tells the bundler that a file is safe. Named exports shake better than one large default object.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">74.</span> Which do you prefer: named exports or default exports?</summary>
+          <p class="answer">A named export keeps one exact name, so a typo becomes a build error and a rename tool finds every use. A default export accepts any local name at the import site, and the names drift across the codebase. Named exports also help tree shaking and the auto-import feature of the editor. Use a default export only when the module has one clear subject.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">75.</span> What happens with a circular import?</summary>
+          <p class="answer">A circular import happens when module A imports B and B imports A. The loader marks a module as in progress, so the second import receives a partial namespace. A function call later works, because the binding is live, but a top-level read gets <code>undefined</code> or throws for a <code>const</code>. Move the shared part into a third module and break the cycle.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">76.</span> How does destructuring work?</summary>
+          <p class="answer">Destructuring reads values out of an object or an array into variables in one statement. Object destructuring matches by key, and array destructuring matches by position. You rename with <code>const { a: b } = obj</code> and add a default with <code>= 0</code>, and the default applies only to <code>undefined</code>. A destructure of <code>null</code> throws a <code>TypeError</code>, so give the parameter a default object.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">77.</span> What do optional chaining and nullish coalescing add?</summary>
+          <p class="answer"><code>a?.b</code> gives <code>undefined</code> when <code>a</code> is <code>null</code> or <code>undefined</code> instead of a <code>TypeError</code>, and it stops the rest of the chain. The same syntax works for a call with <code>fn?.()</code> and for an index with <code>arr?.[0]</code>. The <code>??</code> operator returns the right side only for <code>null</code> or <code>undefined</code>, so it keeps <code>0</code> and <code>""</code>. That behaviour is the difference from <code>||</code>, which replaces every falsy value.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">78.</span> What is a tagged template literal?</summary>
+          <p class="answer">A template literal uses backticks, holds a newline directly and interpolates with the <code>${...}</code> form. A tagged template puts a function name before the literal, and that function receives the static string parts and the values as separate arguments. The tag escapes HTML, builds a safe SQL fragment or formats a message. <code>String.raw</code> is a built-in tag that keeps the backslash sequences.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">79.</span> How do you make your own class iterable?</summary>
+          <p class="answer">Add a <code>[Symbol.iterator]()</code> method to the class. The method must return an object with a <code>next()</code> method, and a generator method supplies that object for free. Your class then works with <code>for...of</code>, with the spread syntax and with array destructuring. <code>Symbol.asyncIterator</code> plays the same role for <code>for await</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">80.</span> What does strict mode change?</summary>
+          <p class="answer"><code>"use strict"</code> turns silent mistakes into errors. An assignment to an undeclared variable throws, a write to a read-only property throws, and duplicate parameter names are a syntax error. <code>this</code> is <code>undefined</code> in a plain function call instead of the global object. A class body and an ES module use strict mode automatically.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-browser-dom-and-events">
+      <h2>Browser, DOM and Events</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">81.</span> What are the phases of DOM event propagation?</summary>
+          <p class="answer">An event travels in three phases: capture from the window down to the target, the target phase, then bubble back up to the window. A listener runs in the bubble phase by default. Pass <code>{ capture: true }</code> to <code>addEventListener</code> for the capture phase. <code>focus</code>, <code>blur</code> and <code>scroll</code> on an element do not bubble, but <code>focusin</code> does.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">82.</span> What is event delegation?</summary>
+          <p class="answer">Event delegation places one listener on a common ancestor instead of one listener on each child. The handler reads <code>event.target</code> and finds the item with <code>closest()</code>. The approach saves memory and it also serves elements that you add later. Exit the handler early when the target does not match the selector.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">83.</span> How does preventDefault differ from stopPropagation?</summary>
+          <p class="answer"><code>preventDefault()</code> cancels the default browser action, for example the form submission or the link navigation. <code>stopPropagation()</code> blocks the listeners on the ancestor elements, but the default action still happens. <code>stopImmediatePropagation()</code> also blocks the other listeners on the same element. A cancelled event sets <code>defaultPrevented</code> to <code>true</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">84.</span> What is a passive event listener?</summary>
+          <p class="answer">A listener with <code>{ passive: true }</code> promises that it never calls <code>preventDefault()</code>. The browser therefore starts the scroll at once and waits for no JavaScript. Chrome treats a <code>touchstart</code> or <code>wheel</code> listener on the document as passive by default. A <code>preventDefault()</code> call inside a passive listener does nothing and logs a warning.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">85.</span> Compare localStorage, sessionStorage and cookies.</summary>
+          <p class="answer"><code>localStorage</code> keeps data with no expiry and survives a browser restart. <code>sessionStorage</code> keeps data for one tab and clears it on close. Both APIs are synchronous, store strings only and offer about five megabytes for each origin. A cookie holds about four kilobytes, and the browser attaches it to each matching request, so the session token belongs there with the <code>HttpOnly</code> flag.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">86.</span> What is the difference between a reflow and a repaint?</summary>
+          <p class="answer">A reflow recomputes the geometry of the page: the position and the size of the elements. A repaint only redraws pixels for a change such as a colour, so it costs less. A read of <code>offsetHeight</code> right after a style write forces a synchronous reflow, and a loop of such pairs creates layout thrashing. Group the reads, then group the writes, and animate <code>transform</code> and <code>opacity</code> because they skip layout.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">87.</span> When do you use debounce and when do you use throttle?</summary>
+          <p class="answer">Debounce delays the call until the events stop for a chosen time, so a search field sends one request after the typing ends. Throttle runs the function at most once for each interval, so a scroll handler keeps a steady rate. Both helpers wrap the original function in a closure with a timer. Choose debounce for a final value and throttle for continuous feedback.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">88.</span> What surprises developers about fetch and CORS?</summary>
+          <p class="answer"><code>fetch</code> returns a promise for a <code>Response</code> and rejects only for a network failure. An HTTP 404 or 500 still fulfils the promise, so you must check <code>response.ok</code>. The browser blocks a cross-origin read unless the server sends a matching <code>Access-Control-Allow-Origin</code> header. A custom header or a method such as <code>PUT</code> triggers an <code>OPTIONS</code> preflight request first.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">89.</span> What is the difference between DOMContentLoaded and load?</summary>
+          <p class="answer"><code>DOMContentLoaded</code> fires when the parser finishes the HTML and builds the DOM tree. It waits for a synchronous script but not for images, stylesheets or iframes. <code>load</code> fires later, after every subresource arrives. Attach the setup code to <code>DOMContentLoaded</code>, or add the <code>defer</code> attribute to the script tag.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">90.</span> How do event listeners leak memory?</summary>
+          <p class="answer">A listener holds a reference to the handler and to the whole closure scope of that handler. A detached DOM node with a listener stays in memory when other code still references the node or the handler. Call <code>removeEventListener</code> with the same function reference, or pass an <code>AbortController</code> signal and abort it in the cleanup. Take a heap snapshot and search for detached nodes.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-patterns-errors-and-performance">
+      <h2>Patterns, Errors and Performance</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">91.</span> What is the difference between a shallow copy and a deep copy?</summary>
+          <p class="answer">A shallow copy with the spread syntax or <code>Object.assign</code> duplicates the top level only, so nested objects stay shared. <code>structuredClone(value)</code> makes a deep copy and supports <code>Map</code>, <code>Set</code>, <code>Date</code> and cyclic references. The old <code>JSON.parse(JSON.stringify(x))</code> trick drops functions and <code>undefined</code> and converts a date to a string. <code>structuredClone</code> throws on a function or a DOM node.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">92.</span> How do you use try, catch, finally and custom errors?</summary>
+          <p class="answer">The <code>try</code> block holds the risky code, <code>catch</code> receives the thrown value and <code>finally</code> always runs for the cleanup. A <code>return</code> inside <code>finally</code> replaces an earlier return or throw, so avoid it. Extend <code>Error</code> for a custom class, set <code>this.name</code> and pass <code>{ cause }</code> for the original error. A <code>catch</code> receives any value, so test with <code>instanceof Error</code> before you read <code>message</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">93.</span> How does memoisation work?</summary>
+          <p class="answer">Memoisation stores the result for each argument set in a cache, normally a <code>Map</code> inside a closure. A later call with the same key returns the stored value and skips the computation. The function must be pure, because a hidden dependency makes the cache wrong. Limit the cache size or use a <code>WeakMap</code> for object keys, because an unbounded cache leaks memory.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">94.</span> What does Object.freeze guarantee?</summary>
+          <p class="answer"><code>Object.freeze(obj)</code> blocks new properties, deletions and writes to the existing properties. The freeze is shallow, so a nested object stays mutable and a deep freeze needs recursion. A write fails silently in sloppy mode but throws a <code>TypeError</code> in strict mode. Immutable updates keep reference comparisons reliable for React and for an undo history.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">95.</span> When do you choose a Map or a Set over a plain object?</summary>
+          <p class="answer">A <code>Map</code> accepts any value as a key, including an object, but an object key is always a string or a symbol. A <code>Map</code> keeps the insertion order, reports <code>size</code> directly and inherits no keys from a prototype. A <code>Set</code> stores unique values and gives a fast <code>has</code> check instead of <code>includes</code> on an array. Keep a plain object for a fixed record and for JSON.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">96.</span> What is a WeakMap good for?</summary>
+          <p class="answer">A <code>WeakMap</code> holds its keys weakly, so the garbage collector removes an entry when no other reference to the key remains. It accepts objects as keys only, and you cannot iterate it or read its size. Use it to attach private data or a cache to an object without a leak. A <code>WeakSet</code> gives the same property for a collection of objects.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">97.</span> How do you compare two objects for equality?</summary>
+          <p class="answer">The <code>===</code> operator compares references, so two objects with identical contents are not equal. Compare the fields yourself, write a recursive deep-equal function, or use a tested library. A comparison of <code>JSON.stringify</code> output looks simple, but key order, <code>undefined</code> and <code>NaN</code> break it. In React, prefer immutable updates, because then a reference check is enough.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">98.</span> What are the limits of JSON.stringify?</summary>
+          <p class="answer"><code>JSON.stringify</code> drops functions, <code>undefined</code> values and symbol keys inside an object, and it writes <code>null</code> for them inside an array. A <code>Date</code> becomes an ISO string and never returns as a date object. A cyclic reference throws a <code>TypeError</code>, and a <code>BigInt</code> throws as well. A <code>toJSON</code> method or the replacer argument controls the output.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">99.</span> Which performance traps do you watch for in JavaScript?</summary>
+          <p class="answer">A DOM query inside a loop costs time on every iteration. A new large array for each step of a <code>reduce</code> turns a linear loop into a quadratic one. A closure that holds a large object keeps the memory alive and lengthens the collection pause. Measure with the Performance panel first, because a guess about the slow code is often wrong.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">100.</span> What is the module pattern and how does it create a singleton?</summary>
+          <p class="answer">The module pattern wraps state in a closure and returns only the public methods, so the internal variables stay private. An ES module gives the same result, and the loader evaluates each module once, so an exported object acts as a singleton. A singleton hides a dependency and makes tests harder, because the state survives between cases. Pass the instance as a parameter when a test needs a replacement.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+  <footer>
+    <p>Total questions: 100. The topics cover the JavaScript language, the
+    browser platform, and common interview patterns. Click a question to show
+    its answer. Click it again to hide the answer.</p>
+  </footer>
+</main>
+</body>
+</html>

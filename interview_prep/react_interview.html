@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>100 React Interview Questions</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #12141a;
+    --bg-alt: #1a1d25;
+    --fg: #e8e9ec;
+    --muted: #9aa0ac;
+    --accent: #7dd3fc;
+    --border: #2a2e38;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    background: var(--bg);
+    color: var(--fg);
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    line-height: 1.55;
+    padding: 2rem 1rem 4rem;
+  }
+  main {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+  }
+  h1 {
+    font-size: 1.9rem;
+    margin: 0 0 0.5rem;
+    color: var(--fg);
+  }
+  p.lede {
+    color: var(--muted);
+    max-width: 65ch;
+  }
+  nav.toc {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.5rem 0 2.5rem;
+  }
+  nav.toc h2 {
+    font-size: 1rem;
+    margin: 0 0 0.6rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  nav.toc ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.35rem 1rem;
+  }
+  nav.toc a {
+    color: var(--fg);
+    text-decoration: none;
+  }
+  nav.toc a:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  nav.toc .count {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  section {
+    margin-bottom: 2.25rem;
+  }
+  h2 {
+    font-size: 1.25rem;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.4rem;
+    margin-bottom: 0.9rem;
+  }
+  ul.qlist {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  li.qitem {
+    border-bottom: 1px solid var(--border);
+  }
+  li.qitem:last-child {
+    border-bottom: none;
+  }
+  details {
+    padding: 0.15rem 0;
+  }
+  summary {
+    padding: 0.5rem 0.25rem;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+    border-radius: 6px;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary::before {
+    content: "+";
+    color: var(--accent);
+    font-weight: 700;
+    width: 1rem;
+    flex: 0 0 auto;
+  }
+  details[open] summary::before {
+    content: "\2212";
+  }
+  summary:hover {
+    background: var(--bg-alt);
+  }
+  summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .qnum {
+    color: var(--muted);
+    display: inline-block;
+    min-width: 2.6rem;
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+  }
+  p.answer {
+    margin: 0 0 0.85rem 3.1rem;
+    padding: 0.6rem 0.9rem;
+    background: var(--bg-alt);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+    color: var(--fg);
+    max-width: 68ch;
+  }
+  footer {
+    color: var(--muted);
+    font-size: 0.85rem;
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+    margin-top: 2rem;
+  }
+  a { color: var(--accent); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #22262f; border: 1px solid var(--border); border-radius: 4px; padding: 0.05rem 0.3rem; font-size: 0.92em; }
+  summary code { background: transparent; border: none; padding: 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>100 React Interview Questions</h1>
+    <p class="lede">
+      This page lists 100 common questions from React developer interviews.
+      The list groups the questions into 10 topics, and it targets React 18
+      and React 19 with function components and hooks. Click a question to
+      show its answer. Read the question first, answer it yourself, and then
+      check your answer against the text.
+    </p>
+  </header>
+
+  <nav class="toc">
+    <h2>Topics</h2>
+    <ul>
+<li><a href="#sec-react-fundamentals">React Fundamentals</a> <span class="count">(10)</span></li>
+<li><a href="#sec-component-state-and-events">Component State and Events</a> <span class="count">(10)</span></li>
+<li><a href="#sec-effects-and-lifecycle">Effects and Lifecycle</a> <span class="count">(10)</span></li>
+<li><a href="#sec-hook-rules-and-other-hooks">Hook Rules and Other Hooks</a> <span class="count">(10)</span></li>
+<li><a href="#sec-rendering-and-reconciliation">Rendering and Reconciliation</a> <span class="count">(10)</span></li>
+<li><a href="#sec-custom-hooks-and-composition">Custom Hooks and Composition</a> <span class="count">(10)</span></li>
+<li><a href="#sec-state-management-and-data-fetching">State Management and Data Fetching</a> <span class="count">(10)</span></li>
+<li><a href="#sec-performance">Performance</a> <span class="count">(10)</span></li>
+<li><a href="#sec-routing-forms-and-side-concerns">Routing, Forms and Side Concerns</a> <span class="count">(10)</span></li>
+<li><a href="#sec-server-rendering-testing-and-ecosystem">Server Rendering, Testing and Ecosystem</a> <span class="count">(10)</span></li>
+    </ul>
+  </nav>
+
+    <section id="sec-react-fundamentals">
+      <h2>React Fundamentals</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">1.</span> What problem does React solve?</summary>
+          <p class="answer">React keeps the user interface in agreement with the application state. You describe the markup for a given state, and React updates the real DOM for you. Before React, teams wrote manual DOM updates for each event, and those updates drifted out of step with the data. React removes that manual step and makes the state the single source of truth.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">2.</span> What is the difference between declarative and imperative user interface code?</summary>
+          <p class="answer">Imperative code lists the steps that change the screen, such as <code>el.classList.add('active')</code> after a click. Declarative code states the target result, such as <code>&lt;Tab active={isActive} /&gt;</code>, and the library finds the steps. React is declarative, so you only map state to output. This approach cuts the number of intermediate states that you must hold in your head.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">3.</span> What is JSX and what does it compile to?</summary>
+          <p class="answer">JSX is a syntax extension that looks like HTML inside JavaScript. A compiler such as Babel or SWC transforms each tag into a function call. The modern automatic runtime produces <code>_jsx('div', { children: 'hi' })</code>, and the older classic runtime produces <code>React.createElement('div', null, 'hi')</code>. The browser never sees JSX, because the build step removes it.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">4.</span> What is the difference between a React element and a React component?</summary>
+          <p class="answer">An element is a plain immutable object that describes one node, with a <code>type</code>, a <code>props</code> object and a <code>key</code>. A component is a function that accepts props and returns elements. You call the component once per render, and React compares the returned elements. So a component is the recipe, and an element is the description of one dish.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">5.</span> What is the difference between props and state?</summary>
+          <p class="answer">Props come from the parent and stay read-only inside the child. State belongs to the component and changes through a setter such as the second value from <code>useState</code>. A prop change and a state change both trigger a new render. Use props for data that flows down, and use state for data that this component owns.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">6.</span> What does one-way data flow mean in React?</summary>
+          <p class="answer">Data moves from a parent to a child through props only. A child never writes to the props that it receives. To send information upward, the parent passes a callback prop, and the child calls that callback. This single direction makes the source of each value easy to trace during a bug hunt.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">7.</span> Why does React need a key prop in a list?</summary>
+          <p class="answer">The key gives each list item a stable identity between two renders. With a key, React matches the old element to the new element and moves the DOM node instead of a rebuild. Without a key, React falls back to the position in the array, so an insert at the front makes every later item mismatch. The key must be unique among siblings and must come from the data, such as a record id.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">8.</span> What is a fragment and when do you use it?</summary>
+          <p class="answer">A fragment groups several children without an extra DOM node. You write <code>&lt;&gt;...&lt;/&gt;</code> or <code>&lt;React.Fragment&gt;</code> for the long form. Use it when a wrapper <code>div</code> breaks the layout, for example inside a table row or a flex container. The long form accepts a <code>key</code>, so a list of pairs needs it.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">9.</span> How do you render markup conditionally?</summary>
+          <p class="answer">Use a ternary expression for a choice between two branches, such as <code>{ok ? &lt;Pass /&gt; : &lt;Fail /&gt;}</code>. Use <code>&amp;&amp;</code> for a single optional branch. Take care with <code>&amp;&amp;</code> and a numeric left side, because <code>0</code> renders as the text zero. React ignores <code>null</code>, <code>undefined</code> and <code>false</code>, so a guard clause that returns <code>null</code> also works.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">10.</span> What is the children prop?</summary>
+          <p class="answer">React puts the content between the open tag and the close tag into <code>props.children</code>. A layout component renders that value in a slot, so the parent controls the content and the child controls the frame. The value can be a string, an element or an array of elements. This prop is the main tool for composition in React.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-component-state-and-events">
+      <h2>Component State and Events</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">11.</span> How does useState work?</summary>
+          <p class="answer"><code>useState</code> returns an array with the current value and a setter function. React stores the value per component instance and per hook call order. The setter schedules a new render, and the component reads the new value on the next call. The initial argument applies on the first render only, so a later change to that argument has no effect.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">12.</span> When do you pass a function to a state setter?</summary>
+          <p class="answer">Pass a function when the next value depends on the previous value, for example <code>setCount(c =&gt; c + 1)</code>. React calls your function with the latest queued value, so two increments in one handler both apply. If you write <code>setCount(count + 1)</code> twice, both calls read the same stale variable and the count grows by one. This pattern is the functional update form.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">13.</span> What is automatic batching in React 18?</summary>
+          <p class="answer">React groups several state updates from the same event into one render pass. React 18 extends this behaviour to promises, timeouts and native event handlers. Batching cuts wasted work and prevents a half-updated screen. Call <code>flushSync</code> when you need a synchronous DOM update, such as a measurement before a scroll.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">14.</span> Why do people say that state is a snapshot?</summary>
+          <p class="answer">Each render captures the state values as constants for that render. The event handlers inside that render close over those constants. So a handler that reads <code>count</code> after a setter call still sees the old number. To act on the fresh value, use the updater function or read the value in an effect after the render.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">15.</span> What does it mean to lift state up?</summary>
+          <p class="answer">You move the state from a child into the closest common parent of the components that need it. The parent then passes the value down as a prop and passes a setter down as a callback. Two sibling inputs stay in step, because one owner holds the truth. Lift only as far as necessary, because a high owner re-renders a large subtree.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">16.</span> What is the difference between a controlled and an uncontrolled input?</summary>
+          <p class="answer">A controlled input takes its <code>value</code> from React state and reports each change through <code>onChange</code>. An uncontrolled input keeps the value in the DOM, and you read it later through a ref or through the form data. Controlled inputs allow instant validation and formatting. Uncontrolled inputs need less code and cause fewer renders for a large form.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">17.</span> How do you handle a form submit in React?</summary>
+          <p class="answer">Attach an <code>onSubmit</code> handler to the <code>form</code> element, not a click handler on the button. Call <code>event.preventDefault()</code> to stop the browser navigation, then read the fields and send the request. The submit event also fires for the Enter key, so keyboard users get the same path. Disable the button while the request runs to block a double submit.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">18.</span> What is a synthetic event?</summary>
+          <p class="answer">React wraps the native browser event in a <code>SyntheticEvent</code> object with a stable cross-browser interface. React attaches one listener at the root container and dispatches events through its own tree, so per-node listeners are not needed. The wrapper exposes <code>preventDefault</code>, <code>stopPropagation</code> and a <code>nativeEvent</code> escape hatch. Since React 17, the pooled reuse of these objects is gone, so you may read the event asynchronously.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">19.</span> What is derived state and how should you handle it?</summary>
+          <p class="answer">Derived state is a value that you can compute from existing props or state, such as a full name or a filtered list. Do not copy it into another <code>useState</code>, because the copy goes stale when the source changes. Compute it during the render instead, and wrap it in <code>useMemo</code> only when the calculation is slow. A duplicate source of truth is a common cause of inconsistent screens.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">20.</span> What is lazy initial state and why does it matter?</summary>
+          <p class="answer">Pass a function to <code>useState</code>, as in <code>useState(() =&gt; JSON.parse(raw))</code>. React calls that function on the first render only, so the expensive parse never repeats. If you write <code>useState(JSON.parse(raw))</code>, the parse runs on every render and React discards the result. Use the lazy form for reads from <code>localStorage</code> and for large computed defaults.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-effects-and-lifecycle">
+      <h2>Effects and Lifecycle</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">21.</span> What does useEffect do?</summary>
+          <p class="answer"><code>useEffect</code> runs code after React commits the render to the screen. It exists for synchronisation with systems outside React, such as a network client, a timer or a browser API. React runs the effect after the paint, so the effect never blocks the first frame. The function that you return becomes the cleanup for that effect.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">22.</span> How does the dependency array control an effect?</summary>
+          <p class="answer">React compares each dependency with the previous value through <code>Object.is</code>. An empty array means one run after the mount. A list of values means a run whenever one of those values changes. If you omit the array, the effect runs after every render, and that choice often creates a loop.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">23.</span> Why does an effect need a cleanup function?</summary>
+          <p class="answer">The cleanup stops the work that the effect started. React calls it before the next run of the same effect and once before the unmount. A subscription without a cleanup leaks memory and writes state into a component that is gone. Return a function that clears the timer, aborts the request or removes the listener.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">24.</span> When do you use useLayoutEffect instead of useEffect?</summary>
+          <p class="answer"><code>useLayoutEffect</code> runs synchronously after the DOM mutation and before the browser paints. Use it when you must measure a node and then change the layout in the same frame, such as a tooltip position. The trade-off is a blocked paint, so heavy work in this hook makes the interface feel slow. In server rendering it does not run, and React prints a warning.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">25.</span> Why does StrictMode call my component and my effect twice?</summary>
+          <p class="answer">In development, StrictMode mounts each component, unmounts it and mounts it again. It also calls the render function twice. This behaviour surfaces missing cleanups and impure render code before those bugs reach production. The double call never happens in a production build, so the correct fix is a pure render and a complete cleanup.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">26.</span> How do you fetch data in an effect without a race condition?</summary>
+          <p class="answer">Two fast requests can resolve out of order, so a stale response overwrites the fresh one. Declare a local flag such as <code>let active = true</code>. Set it to <code>false</code> in the cleanup, and ignore the response when the flag is false. An <code>AbortController</code> gives the same guard and also cancels the request. Most teams now use a data library instead, because it solves this problem and caching together.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">27.</span> Which effects do you not need?</summary>
+          <p class="answer">You do not need an effect to transform data for the render, because a plain calculation in the body is enough. You do not need an effect to reset state on a prop change, because a <code>key</code> on the component does that. You do not need an effect to handle a user event, because the handler is the right place. Keep effects for external systems only.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">28.</span> How do you tell a mount run from an update run inside an effect?</summary>
+          <p class="answer">Use a ref as a flag: start it as <code>true</code>, check it inside the effect, then set it to <code>false</code>. The presence of this code often signals a design problem, so review it first. Frequently the correct fix is two effects with different dependencies. React gives no built-in mount-only hook other than an effect with an empty dependency array.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">29.</span> What does useSyncExternalStore solve?</summary>
+          <p class="answer">It subscribes a component to a store outside React, such as a Redux store or a browser media query. You pass a subscribe function and a function that reads the current snapshot. React reads the snapshot at the correct moment, so concurrent renders never show two different values in one frame. This hook replaced the old pattern of a manual subscription in an effect.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">30.</span> Which class lifecycle methods map to which hooks?</summary>
+          <p class="answer"><code>componentDidMount</code> maps to an effect with an empty dependency array. <code>componentDidUpdate</code> maps to an effect with dependencies. <code>componentWillUnmount</code> maps to the cleanup function. <code>getSnapshotBeforeUpdate</code> maps to <code>useLayoutEffect</code>, and <code>componentDidCatch</code> has no hook, so an error boundary still needs a class.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-hook-rules-and-other-hooks">
+      <h2>Hook Rules and Other Hooks</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">31.</span> What are the rules of hooks and why do they exist?</summary>
+          <p class="answer">Call hooks at the top level of a component or of another hook, never inside a condition, a loop or a nested function. Call them from React functions only. React stores hook state in an ordered list per component, and it matches each call to a slot by position. A conditional call shifts that order, so one hook reads the state of another.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">32.</span> What do you use useRef for?</summary>
+          <p class="answer"><code>useRef</code> returns a mutable object with a <code>current</code> property that survives every render. A write to <code>current</code> never triggers a render, so it suits timer ids, previous values and instance flags. Pass the same object to the <code>ref</code> attribute of an element, and React puts the DOM node into <code>current</code> after the commit. Do not read or write a ref during the render, because the value is not part of the render output.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">33.</span> When do you prefer useReducer over useState?</summary>
+          <p class="answer">Use <code>useReducer</code> when several values change together or when the next state depends on an action type. The reducer holds the transition rules in one pure function, so tests need no component. Dispatch also keeps a stable identity, so child components avoid a re-render from a new callback. For a single independent value, <code>useState</code> stays simpler.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">34.</span> How does useContext work?</summary>
+          <p class="answer">You create a context with <code>createContext</code>, wrap a subtree in the provider, and read the value with <code>useContext</code>. The hook finds the closest provider above the component and returns its value. Without a provider, the hook returns the default value from the create call. A new provider value re-renders every consumer in that subtree.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">35.</span> What does useMemo do?</summary>
+          <p class="answer"><code>useMemo</code> caches the result of a calculation between renders while the dependencies stay equal. Use it for an expensive computation or for a value that must keep a stable identity for a memoised child. The hook adds its own cost, so a cheap calculation does not deserve it. React may discard the cached value, so never treat <code>useMemo</code> as a semantic guarantee.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">36.</span> What does useCallback do and when do you need it?</summary>
+          <p class="answer"><code>useCallback</code> returns the same function object between renders while the dependencies stay equal. It matters when you pass the function to a component wrapped in <code>React.memo</code> or into a dependency array. Without a stable identity, the child sees a new prop on every render and the memo check fails. On a plain DOM element the wrapper gives no benefit.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">37.</span> What is useId for?</summary>
+          <p class="answer"><code>useId</code> generates a unique stable string for accessibility attributes, such as a pair of <code>htmlFor</code> and <code>id</code>. The value matches between the server render and the client render, so hydration reports no mismatch. Never use it as a key in a list, because it identifies a hook call and not a data record. One call can serve several fields through a suffix.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">38.</span> What do forwardRef and useImperativeHandle do?</summary>
+          <p class="answer"><code>forwardRef</code> passes a ref from a parent through your component to an inner element, because a ref is not a normal prop. <code>useImperativeHandle</code> replaces the exposed value with a small object of methods, such as <code>focus</code> or <code>scrollToTop</code>. Together they hide the DOM node and publish a narrow interface. React 19 accepts <code>ref</code> as a plain prop, so new code needs <code>forwardRef</code> less often.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">39.</span> What is the difference between useTransition and useDeferredValue?</summary>
+          <p class="answer"><code>useTransition</code> gives you a <code>startTransition</code> function and a pending flag, so you mark a state update as non-urgent. <code>useDeferredValue</code> takes a value and returns a version that lags behind during heavy work. Use the transition when you own the update, and use the deferred value when the value arrives as a prop. Both keep typing responsive while a large list re-renders.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">40.</span> What does useOptimistic do?</summary>
+          <p class="answer"><code>useOptimistic</code> shows a predicted state while an asynchronous action runs. You pass the real value and a function that merges an optimistic update, then you call the setter inside the action. React shows the predicted value at once and returns to the real value when the action settles. If the action fails, the optimistic value disappears, so you must still report the error.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-rendering-and-reconciliation">
+      <h2>Rendering and Reconciliation</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">41.</span> What is the difference between the render phase and the commit phase?</summary>
+          <p class="answer">In the render phase React calls your components and builds a tree of elements. This phase must stay pure, and React can pause, restart or discard it. In the commit phase React applies the minimum DOM changes and then runs layout effects and passive effects. Only the commit phase touches the browser, and React never interrupts it.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">42.</span> What is the virtual DOM?</summary>
+          <p class="answer">The virtual DOM is a tree of plain JavaScript objects that describes the intended output. React compares the new tree with the previous tree and computes a patch for the real DOM. Object creation costs far less than a DOM write or a layout read. The concept is a diff buffer, not a faster DOM.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">43.</span> Which assumptions drive the React diff algorithm?</summary>
+          <p class="answer">React compares two trees level by level and never searches for a moved subtree across levels. If the element type differs at one position, React destroys that subtree and builds a new one. Inside a list, the <code>key</code> prop matches a child to its previous instance. These assumptions turn a hard tree diff into a linear pass.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">44.</span> Why must a list key stay stable across renders?</summary>
+          <p class="answer">React uses the key to find the previous instance and its state. An array index changes when you insert, remove or sort, so React pairs the wrong items and moves state into the wrong row. A random key such as <code>Math.random()</code> forces a full rebuild on every render and destroys focus and scroll. Use a stable id from the data.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">45.</span> How does reconciliation decide the identity of a component?</summary>
+          <p class="answer">Identity comes from the position in the tree, the element type and the key. React keeps the state of a component while these three stay the same. A move to a different parent counts as a different position, so the state resets. This rule explains why two branches of a ternary can share or lose state.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">46.</span> What happens to state when the element type at a position changes?</summary>
+          <p class="answer">React unmounts the old component, runs its cleanups and mounts the new type with fresh state. The change from <code>&lt;Input /&gt;</code> to <code>&lt;textarea /&gt;</code> therefore clears the value. You can use this behaviour on purpose: a changed <code>key</code> on the same component resets its state. That trick replaces a reset effect on a prop change.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">47.</span> What does React.memo do?</summary>
+          <p class="answer"><code>React.memo</code> wraps a component and skips the re-render while the props stay shallowly equal. It compares each prop with <code>Object.is</code>, so a new object, array or function breaks the check. You can pass a custom comparison function as the second argument. The wrapper helps a heavy subtree, and it wastes work on a cheap one.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">48.</span> What causes a component to re-render?</summary>
+          <p class="answer">A state update in the component, a new value from a context that it reads, or a re-render of its parent. A prop change alone is not a separate cause, because the parent renders first. Hooks such as <code>useSyncExternalStore</code> also request a render when the external store changes. A parent render walks the children even when the props stay identical, unless a memo boundary stops it.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">49.</span> Why can a context update cost performance?</summary>
+          <p class="answer">Every consumer of the context re-renders when the provider value changes, and a shallow compare does not apply. A provider value built inline, such as <code>value={{user, setUser}}</code>, creates a new object on every parent render. Wrap that object in <code>useMemo</code>, or split one large context into several small ones. For high-frequency values, an external store with a selector performs better.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">50.</span> How does useMemo help referential stability?</summary>
+          <p class="answer">Objects and arrays that you create during the render get a new identity each time. A memoised child, an effect dependency or a context value then sees a change that has no meaning. <code>useMemo</code> keeps the same reference while the inputs stay equal, so the comparison succeeds. This use of the hook is about identity, not about calculation cost.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-custom-hooks-and-composition">
+      <h2>Custom Hooks and Composition</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">51.</span> When do you write a custom hook?</summary>
+          <p class="answer">Write one when two components repeat the same stateful logic, such as a debounce, a media query or a form field. A custom hook is a plain function that calls other hooks, so the rules of hooks apply to it. It hides the wiring and exposes a small result. If the logic calls no hook, write a normal utility function instead.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">52.</span> Does a custom hook share state between components?</summary>
+          <p class="answer">No. Each call to the hook creates its own state, because the state lives in the calling component. Two components that call <code>useCounter</code> get two independent counters. To share one value, put the state in a common parent, in a context or in an external store. A custom hook shares logic only.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">53.</span> What is the render prop pattern?</summary>
+          <p class="answer">The parent accepts a function as a prop, often as <code>children</code>, and calls it with data. The caller then decides the markup, so one component supplies behaviour for many layouts. Libraries used this pattern for mouse position and for data loaders before hooks existed. Hooks cover most of these cases with less nesting.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">54.</span> What is a higher-order component?</summary>
+          <p class="answer">A higher-order component is a function that takes a component and returns a new component with extra props or behaviour, for example <code>withRouter(Page)</code>. It was the main reuse tool in the class era. The drawbacks are a deep wrapper tree, prop name collisions and a loss of the display name. Custom hooks replace most of these wrappers today.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">55.</span> What is the compound component pattern?</summary>
+          <p class="answer">A parent component and a set of child components share implicit state through a context, for example <code>&lt;Tabs&gt;</code> with <code>&lt;Tab&gt;</code> and <code>&lt;TabPanel&gt;</code>. The consumer arranges the children freely, so the markup stays readable and the props list stays short. The parent keeps the selection state and the children read it. Many design systems use this pattern for menus and accordions.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">56.</span> What is prop drilling and how do you fix it?</summary>
+          <p class="answer">Prop drilling passes a value through components that do not use it, only to reach a deep child. The fixes are composition, a context, or an external store. Composition often wins: pass the finished element as <code>children</code> and skip the middle layers. Reach for a context when many separated components need the same value.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">57.</span> What does composition over inheritance mean in React?</summary>
+          <p class="answer">React has no component inheritance, so you build variants from smaller parts and props. A <code>Dialog</code> component accepts a header and a footer as props or children instead of a subclass. This approach keeps the relationship explicit and avoids a fragile base class. The official documents recommend it for every specialisation case.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">58.</span> How do you test a custom hook?</summary>
+          <p class="answer">Test it through a component, because a hook needs a React render. The React Testing Library gives <code>renderHook</code>, which mounts a small host component and returns the hook result. Wrap state updates in <code>act</code> so React flushes them before the assertion. Assert on the returned values and on the side effects, not on the internal hook order.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">59.</span> Which naming rules apply to a hook?</summary>
+          <p class="answer">The name must start with <code>use</code> and continue with a camel case word, such as <code>useOnlineStatus</code>. The linter and the compiler detect hooks by this prefix, so a wrong name disables the checks. Do not use the prefix for a function that calls no hook. Name the hook after the problem, not after the implementation.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">60.</span> What shape should a custom hook return?</summary>
+          <p class="answer">Return an array when the hook exposes two related values and the caller renames them often, as <code>useState</code> does. Return an object when the hook exposes three or more values, because named keys stop an order mistake. Keep the shape stable across renders, and memoise any object or function that a consumer puts in a dependency array. A clear shape also documents the hook.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-state-management-and-data-fetching">
+      <h2>State Management and Data Fetching</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">61.</span> When do you choose a context and when do you choose a store?</summary>
+          <p class="answer">A context suits low-frequency values such as the theme, the locale or the signed-in user. A store suits data that changes often or that many distant components read, because a store lets each component subscribe to one slice. A context re-renders every consumer on each value change. So the frequency of change, not the size of the app, drives the choice.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">62.</span> What are the core ideas of Redux?</summary>
+          <p class="answer">One store holds the whole state tree. You describe an intent as a plain action object and dispatch it. A pure reducer takes the current state and the action, then returns the next state. This flow makes each change traceable and supports time-travel tools and log replay.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">63.</span> What does Redux Toolkit add to Redux?</summary>
+          <p class="answer">Redux Toolkit gives <code>configureStore</code>, <code>createSlice</code> and <code>createAsyncThunk</code>, so the old boilerplate disappears. <code>createSlice</code> generates the action creators and the reducers from one object. It bundles Immer, so you write direct mutations on a draft and Immer produces an immutable result. It is now the official recommended way to write Redux.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">64.</span> Why must a reducer stay pure and immutable?</summary>
+          <p class="answer">React and Redux detect a change through a reference comparison. A direct mutation keeps the same reference, so the subscribers see no change and the screen stays stale. A pure reducer also gives the same output for the same input, which makes tests and replay reliable. Return a new object with the spread syntax, or use Immer to get the copy for you.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">65.</span> What is a selector and why do you memoise it?</summary>
+          <p class="answer">A selector is a function that reads one piece of data from the store state. It keeps the component free of the store shape, so a refactor touches one place. A selector that builds a new array or object returns a new reference on every call and forces a re-render. A memoised selector, from <code>createSelector</code> for example, caches the result while the inputs stay equal.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">66.</span> How does a Zustand-style store differ from Redux?</summary>
+          <p class="answer">You create the store as a hook, and each component selects the slice that it needs, as in <code>useStore(s =&gt; s.count)</code>. There is no provider, no action type and no reducer file, because the setter functions live inside the store. The subscription is per selector, so unrelated changes cause no render. The trade-off is a weaker audit trail than the strict action log of Redux.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">67.</span> What does a server cache library such as React Query give you?</summary>
+          <p class="answer">It treats server data as a cache, not as client state. It supplies the request status, deduplication, retries, background refresh and cache invalidation from one hook. The cache key, for example <code>['todos', userId]</code>, identifies the entry, so two components with the same key share one request. Every value inside the key must appear there, or a stale entry serves the wrong user.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">68.</span> What does stale-while-revalidate mean?</summary>
+          <p class="answer">The library returns the cached data at once and marks it stale. It then starts a background request and replaces the data when the response arrives. The user sees content with no spinner, and the screen catches up a moment later. A <code>staleTime</code> setting controls how long the cache counts as fresh.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">69.</span> How do you implement an optimistic update?</summary>
+          <p class="answer">Write the expected result into the cache or the state before the server answers, and keep the previous value. On success, replace the guess with the server response or invalidate the key. On failure, restore the previous value and show an error message. This pattern fits a like button or a checkbox, where a failure is rare and cheap to undo.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">70.</span> How do you model the loading state and the error state?</summary>
+          <p class="answer">Model one status value with the cases <code>idle</code>, <code>loading</code>, <code>success</code> and <code>error</code>, instead of separate independent booleans. Separate booleans allow impossible pairs, such as a load and an error at the same time. Render a skeleton for the load, a message with a retry action for the error, and the data for the success. An error boundary catches the render errors that a status value cannot express.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-performance">
+      <h2>Performance</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">71.</span> How do you profile a React application?</summary>
+          <p class="answer">Open the Profiler tab in the React DevTools and record an interaction. The flame chart shows each committed render, its duration and the components that rendered. The ranked chart sorts the components by cost, and the settings can show why each component rendered. Measure first, because the slow component is rarely the one that you suspect.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">72.</span> What is list virtualisation?</summary>
+          <p class="answer">Virtualisation renders only the rows that fit in the viewport plus a small buffer. A library such as react-window or TanStack Virtual measures the scroll offset and the row height, then it positions a small window of rows. Ten thousand rows then cost the same as twenty rows. The cost is more complex code for the row height, the scroll restore and the search in the page.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">73.</span> How does code splitting work with React.lazy?</summary>
+          <p class="answer"><code>React.lazy</code> takes a function that returns a dynamic <code>import()</code> and gives you a component. The bundler puts that module in a separate chunk, and the browser fetches it on first use. Wrap the component in <code>&lt;Suspense fallback={...}&gt;</code> to show a placeholder during the fetch. Split at a route boundary or at a heavy widget, such as a chart or an editor.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">74.</span> How do you keep the bundle small?</summary>
+          <p class="answer">Measure it first with a bundle analyser and find the largest modules. Replace a heavy dependency with a smaller one, for example a date utility instead of a full library. Import only the parts that you use, and confirm that the package supports tree shaking through ES modules. Move a rarely used feature into a lazy chunk.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">75.</span> Why do inline objects and functions as props hurt a memoised child?</summary>
+          <p class="answer">Each render creates a new object or function, so the shallow compare in <code>React.memo</code> fails and the child renders again. A style object such as <code>style={{margin: 4}}</code> has the same effect. Hoist the constant out of the component, or wrap the value in <code>useMemo</code> or <code>useCallback</code>. For a component without a memo boundary, this concern does not apply.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">76.</span> How do you handle expensive derived data?</summary>
+          <p class="answer">Compute it once during the render and wrap the calculation in <code>useMemo</code> with the real inputs as dependencies. Measure the calculation first with <code>performance.now()</code>, because a filter over one hundred rows needs no cache. Move a truly heavy job to the server or to a web worker. Never copy the result into state, because a second source of truth goes stale.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">77.</span> How do images and static assets affect a React page?</summary>
+          <p class="answer">A large image often costs more than the JavaScript bundle. Serve the correct size, use a modern format such as WebP or AVIF, and set <code>loading="lazy"</code> for content below the fold. Always set the width and the height, so the browser reserves the space and the layout does not shift. A framework image component applies most of these steps for you.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">78.</span> What is the real cost of an unstable list key?</summary>
+          <p class="answer">React unmounts and remounts each row whose key changed. The remount destroys the DOM node, the component state, the focus and the scroll position, and it runs every effect again. A form inside the list loses the typed text. So a stable key protects correctness first and performance second.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">79.</span> What does the React Compiler do?</summary>
+          <p class="answer">The React Compiler analyses your components and inserts the memoisation for you. It caches the values and the JSX output, so most manual <code>useMemo</code> and <code>useCallback</code> calls become unnecessary. It relies on the rules of React, so an impure render or a mutation of a prop blocks the optimisation. The compiler runs as a build plugin and needs no change in your component code.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">80.</span> Which React optimisations are usually premature?</summary>
+          <p class="answer">A <code>React.memo</code> wrapper on every component, a <code>useCallback</code> for a handler on a plain <code>button</code>, and a <code>useMemo</code> for a simple sum. Each wrapper adds a comparison, a closure and a cache entry, so the total cost can exceed the saved render. Fix the real causes first: a huge unvirtualised list, a context that changes on every keystroke, or a heavy render in a parent. Profile, change one thing, then measure again.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-routing-forms-and-side-concerns">
+      <h2>Routing, Forms and Side Concerns</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">81.</span> How do routes and nested routes work in React Router?</summary>
+          <p class="answer">You declare a route table that maps a URL path to an element, and the router renders the match for the current URL. Navigation happens through a <code>Link</code> component, so the browser makes no full page request. A child route renders inside the parent element at the position of <code>&lt;Outlet /&gt;</code>, so the parent keeps the shared layout. The URL segments join, and <code>/settings/profile</code> renders the settings layout with the profile panel.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">82.</span> How do you read a route parameter and a query string?</summary>
+          <p class="answer">Declare the parameter in the path as <code>/users/:id</code> and read it with the <code>useParams</code> hook. For the query string, use <code>useSearchParams</code>, which returns a <code>URLSearchParams</code> object and a setter. Every value arrives as a string, so convert a number yourself and validate it. Keep filters and the pagination state in the query string, so the user can share the link.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">83.</span> How do you build a protected route?</summary>
+          <p class="answer">Wrap the private routes in a guard component that reads the authentication state. If the user is not signed in, render a <code>&lt;Navigate to="/login" replace /&gt;</code> element and save the target path in the location state. After the sign-in, send the user back to that path. This check is a convenience only, because the server must still authorise every request.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">84.</span> How do you navigate in code and how do you redirect?</summary>
+          <p class="answer">Call the function from <code>useNavigate</code> after an event, for example <code>navigate('/orders/42')</code>. Pass <code>{ replace: true }</code> when the current entry must not stay in the history, such as after a sign-in. During a render, use the <code>&lt;Navigate /&gt;</code> element instead of a navigate call, because a render must stay pure. A data router can also redirect from a loader or an action.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">85.</span> What is a portal and when do you need one?</summary>
+          <p class="answer"><code>createPortal</code> renders children into a different DOM node, such as <code>document.body</code>, while the component stays in the React tree. Events still bubble through the React tree, and the context still works. Use it for a modal, a tooltip or a toast, because an ancestor with <code>overflow: hidden</code> or a low <code>z-index</code> would clip the element. The portal solves a stacking problem, not a state problem.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">86.</span> What is an error boundary and what does it catch?</summary>
+          <p class="answer">An error boundary is a component with <code>componentDidCatch</code> or <code>getDerivedStateFromError</code> that renders a fallback after a render error in its subtree. It catches errors from the render phase, from the lifecycle methods and from the constructors of its children. It does not catch errors in an event handler, in an asynchronous callback or on the server. Place one boundary per major region, so one broken widget does not blank the page.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">87.</span> How do you integrate a third-party widget that needs a DOM node?</summary>
+          <p class="answer">Render an empty element and attach a ref to it. Create the widget inside an effect, pass <code>ref.current</code> to its constructor, and destroy it in the cleanup. Let the library own that DOM subtree and never render React children into it. Sync later prop changes through the imperative API of the widget in a separate effect.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">88.</span> Which accessibility basics does an interviewer expect in React?</summary>
+          <p class="answer">Every input needs a real label, through a <code>&lt;label htmlFor&gt;</code> pair with <code>useId</code> or through <code>aria-label</code>. Use semantic elements, so a <code>button</code> for an action and an <code>a</code> for a link, and add a role only when no element fits. Manage the focus for a dialog: move the focus in, trap it, and return it to the trigger on close. Keep the keyboard path complete and never remove the focus outline without a replacement.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">89.</span> How do you approach internationalisation in a React app?</summary>
+          <p class="answer">Keep every user-visible string in a message catalogue and look it up by key, for example with react-i18next or FormatJS. Never build a sentence from concatenated fragments, because word order differs between languages. Use the <code>Intl</code> APIs for dates, numbers and plural rules. Load the catalogue for the active locale as a lazy chunk, and set the <code>lang</code> and <code>dir</code> attributes on the document.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">90.</span> When is dangerouslySetInnerHTML acceptable?</summary>
+          <p class="answer">Use it only for markup that you trust or that you sanitised, for example rendered Markdown that passed through DOMPurify. React escapes normal text output, so a plain <code>{userInput}</code> is safe, and this prop turns that protection off. Raw user HTML allows a script injection and a stolen session. The name warns you on purpose, so treat each use as a security review item.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+    <section id="sec-server-rendering-testing-and-ecosystem">
+      <h2>Server Rendering, Testing and Ecosystem</h2>
+      <ul class="qlist">
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">91.</span> What is the difference between CSR, SSR, SSG and ISR?</summary>
+          <p class="answer">Client-side rendering sends an empty shell, and the browser builds the page from JavaScript. Server-side rendering builds the HTML per request, so the first paint arrives earlier and crawlers see the content. Static site generation builds the HTML at build time and serves it from a CDN. Incremental static regeneration serves the static page and rebuilds it in the background after a set period.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">92.</span> What is hydration and what causes a hydration mismatch?</summary>
+          <p class="answer">Hydration attaches React to server-rendered HTML and adds the event listeners without a rebuild of the DOM. A mismatch happens when the first client render differs from the server HTML, so React reports an error and may replace the markup. Common causes are <code>Date.now()</code>, <code>Math.random()</code>, a read from <code>window</code> or <code>localStorage</code>, and invalid nested tags. Move that browser-only output into an effect, or mark the element with <code>suppressHydrationWarning</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">93.</span> What are React Server Components?</summary>
+          <p class="answer">A server component renders on the server only, and React sends its output as a serialised description, not as HTML alone. Its code never enters the client bundle, so it can read a database or a secret directly. It holds no state and uses no effect, and a client component must carry the <code>'use client'</code> directive. You pass serialisable props from a server component to a client component.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">94.</span> What are the basics of the Next.js app router?</summary>
+          <p class="answer">A folder under <code>app/</code> defines a route segment, and the special files <code>page</code>, <code>layout</code>, <code>loading</code> and <code>error</code> define its parts. A layout wraps the nested segments and keeps its state during a navigation between children. Components default to server components, so you add <code>'use client'</code> only where you need state or an event. A dynamic segment uses a bracket folder name such as <code>[id]</code>.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">95.</span> How does streaming work with Suspense on the server?</summary>
+          <p class="answer">The server sends the shell HTML at once and leaves a placeholder for each suspended boundary. When the data for a boundary resolves, the server streams that chunk, and the client script swaps it into place. The user reads the header and the navigation while the slow panel still loads. <code>renderToPipeableStream</code> provides this behaviour, and React hydrates each boundary as it arrives.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">96.</span> Which queries does the React Testing Library recommend?</summary>
+          <p class="answer">Prefer <code>getByRole</code> with an accessible name, because it matches the way a user and a screen reader find an element. Then use <code>getByLabelText</code> for form fields, and <code>getByText</code> for static content. Use <code>getByTestId</code> as a last resort only. The <code>getBy</code> form throws at once, <code>queryBy</code> returns <code>null</code> for an absence check, and <code>findBy</code> returns a promise for an asynchronous appearance.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">97.</span> What does an act warning mean?</summary>
+          <p class="answer">It means that a state update happened outside the window where the test framework flushed the renders. The usual cause is an asynchronous update, such as a resolved promise, after the assertion. Fix it with <code>await screen.findBy...</code> or <code>await waitFor(...)</code> instead of a manual <code>act</code> wrapper. A warning after the test often signals a missing cleanup in an effect.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">98.</span> How do you mock network calls in a test?</summary>
+          <p class="answer">Intercept at the network layer with Mock Service Worker, so the component keeps its real fetch code. Define handlers per endpoint and override one handler inside a test for an error case. This approach survives a change from <code>fetch</code> to a client library, because the test asserts on the request and the screen. A stub on the global <code>fetch</code> works too, but it couples the test to the transport.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">99.</span> How do you type component props in TypeScript?</summary>
+          <p class="answer">Declare a type or an interface for the props and annotate the parameter, as in <code>function Card({title}: CardProps)</code>. Use <code>React.ReactNode</code> for children and <code>React.ComponentProps&lt;'button'&gt;</code> to inherit the native attributes of an element. Prefer a discriminated union over several optional booleans, so the compiler rejects an impossible combination. Avoid <code>React.FC</code>, because it adds little and complicates the generic cases.</p>
+        </details>
+      </li>
+      <li class="qitem">
+        <details>
+          <summary><span class="qnum">100.</span> Which changes from React 18 to React 19 do interviewers ask about?</summary>
+          <p class="answer">React 19 adds actions, so a form can call an async function and <code>useActionState</code> reports its status. New hooks arrived: <code>useOptimistic</code> for a predicted state and <code>use</code> to read a promise or a context during the render. <code>ref</code> became a normal prop, so <code>forwardRef</code> is no longer needed, and a ref callback can return a cleanup. React 19 also renders document metadata tags in place and improves the hydration error messages.</p>
+        </details>
+      </li>
+      </ul>
+    </section>
+
+  <footer>
+    <p>Total questions: 100. Compiled from common React, hooks, rendering,
+    and front-end ecosystem interview question lists. Click a question to
+    show its answer. Click it again to hide the answer.</p>
+  </footer>
+</main>
+</body>
+</html>
